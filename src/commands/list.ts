@@ -4,6 +4,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import { loadConfig } from '../core/config.js';
 import { listTemplates } from '../core/template.js';
 import { templatesDir } from '../lib/paths.js';
+import { PgError } from '../lib/errors.js';
 import { output, formatTable, type Column } from '../lib/output.js';
 
 export interface ListOptions {
@@ -12,7 +13,7 @@ export interface ListOptions {
 
 export async function listCommand(type: string, options: ListOptions): Promise<void> {
   if (type !== 'templates') {
-    throw new Error(`Unknown list type: ${type}. Available: templates`);
+    throw new PgError(`Unknown list type: ${type}. Available: templates`, 'INVALID_ARGS');
   }
 
   const projectRoot = await getRepoRoot();

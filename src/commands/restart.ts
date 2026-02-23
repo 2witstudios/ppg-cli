@@ -7,7 +7,7 @@ import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { promptFile, resultFile } from '../lib/paths.js';
-import { NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
+import { PgError, NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { renderTemplate, type TemplateContext } from '../core/template.js';
 
@@ -49,8 +49,9 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
     try {
       promptText = await fs.readFile(pFile, 'utf-8');
     } catch {
-      throw new Error(
+      throw new PgError(
         `Could not read original prompt for agent ${oldAgent.id}. Use --prompt to provide one.`,
+        'PROMPT_NOT_FOUND',
       );
     }
   }

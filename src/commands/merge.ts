@@ -1,9 +1,9 @@
 import { execa } from 'execa';
-import { readManifest, updateManifest, getWorktree } from '../core/manifest.js';
+import { readManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
-import { NotInitializedError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
+import { PgError, NotInitializedError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 
 export interface MergeOptions {
@@ -26,8 +26,7 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
     throw new NotInitializedError(projectRoot);
   }
 
-  const wt = getWorktree(manifest, worktreeId)
-    ?? Object.values(manifest.worktrees).find((w) => w.name === worktreeId);
+  const wt = resolveWorktree(manifest, worktreeId);
 
   if (!wt) throw new WorktreeNotFoundError(worktreeId);
 
@@ -37,8 +36,9 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
   if (incomplete.length > 0 && !options.force) {
     const ids = incomplete.map((a) => a.id).join(', ');
-    throw new Error(
+    throw new PgError(
       `${incomplete.length} agent(s) still running: ${ids}. Use --force to merge anyway.`,
+      'AGENTS_RUNNING',
     );
   }
 

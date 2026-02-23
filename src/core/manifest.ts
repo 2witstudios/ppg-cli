@@ -72,6 +72,10 @@ export function findWorktreeByName(manifest: Manifest, name: string): WorktreeEn
   );
 }
 
+export function resolveWorktree(manifest: Manifest, ref: string): WorktreeEntry | undefined {
+  return getWorktree(manifest, ref) ?? findWorktreeByName(manifest, ref);
+}
+
 export function findAgent(
   manifest: Manifest,
   agentId: string,

@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import { readManifest, getWorktree } from '../core/manifest.js';
+import { readManifest, resolveWorktree } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output } from '../lib/output.js';
@@ -20,8 +20,7 @@ export async function diffCommand(worktreeRef: string, options: DiffOptions): Pr
     throw new NotInitializedError(projectRoot);
   }
 
-  const wt = getWorktree(manifest, worktreeRef)
-    ?? Object.values(manifest.worktrees).find((w) => w.name === worktreeRef);
+  const wt = resolveWorktree(manifest, worktreeRef);
 
   if (!wt) throw new WorktreeNotFoundError(worktreeRef);
 

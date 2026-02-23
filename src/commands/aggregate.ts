@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { readManifest, getWorktree, updateManifest } from '../core/manifest.js';
+import { readManifest, resolveWorktree, updateManifest } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
@@ -33,8 +33,7 @@ export async function aggregateCommand(
   if (options?.all) {
     worktrees = Object.values(manifest.worktrees);
   } else if (worktreeId) {
-    const wt = getWorktree(manifest, worktreeId)
-      ?? Object.values(manifest.worktrees).find((w) => w.name === worktreeId);
+    const wt = resolveWorktree(manifest, worktreeId);
     if (!wt) throw new WorktreeNotFoundError(worktreeId);
     worktrees = [wt];
   } else {

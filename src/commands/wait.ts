@@ -1,4 +1,4 @@
-import { updateManifest, getWorktree } from '../core/manifest.js';
+import { updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
@@ -21,7 +21,7 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
   const startTime = Date.now();
 
   if (!worktreeRef && !options.all) {
-    throw new Error('Specify a worktree ID or use --all');
+    throw new PgError('Specify a worktree ID or use --all', 'INVALID_ARGS');
   }
 
   if (!options.json) {
@@ -94,8 +94,7 @@ function collectAgents(
     return agents;
   }
 
-  const wt = getWorktree(manifest, worktreeRef!)
-    ?? Object.values(manifest.worktrees).find((w) => w.name === worktreeRef);
+  const wt = resolveWorktree(manifest, worktreeRef!);
   if (!wt) throw new WorktreeNotFoundError(worktreeRef!);
   return Object.values(wt.agents);
 }

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import { loadConfig, resolveAgentConfig } from '../core/config.js';
-import { readManifest, updateManifest, getWorktree } from '../core/manifest.js';
+import { readManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
 import { getRepoRoot, getCurrentBranch, createWorktree } from '../core/worktree.js';
 import { setupWorktreeEnv } from '../core/env.js';
 import { loadTemplate, renderTemplate, type TemplateContext } from '../core/template.js';
@@ -9,7 +9,7 @@ import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { resultFile, manifestPath } from '../lib/paths.js';
-import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import type { WorktreeEntry, AgentEntry } from '../types/manifest.js';
 
@@ -87,7 +87,7 @@ async function resolvePrompt(options: SpawnOptions, projectRoot: string): Promis
     return templateContent;
   }
 
-  throw new Error('One of --prompt, --prompt-file, or --template is required');
+  throw new PgError('One of --prompt, --prompt-file, or --template is required', 'INVALID_ARGS');
 }
 
 async function spawnNewWorktree(
@@ -230,8 +230,7 @@ async function spawnIntoExistingWorktree(
   options: SpawnOptions,
 ): Promise<void> {
   const manifest = await readManifest(projectRoot);
-  const wt = getWorktree(manifest, worktreeRef)
-    ?? Object.values(manifest.worktrees).find((w) => w.name === worktreeRef);
+  const wt = resolveWorktree(manifest, worktreeRef);
 
   if (!wt) throw new WorktreeNotFoundError(worktreeRef);
 

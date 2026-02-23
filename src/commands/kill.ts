@@ -1,10 +1,10 @@
-import { readManifest, updateManifest, findAgent, getWorktree } from '../core/manifest.js';
+import { readManifest, updateManifest, findAgent, resolveWorktree } from '../core/manifest.js';
 import { killAgent, killAgents } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
-import { NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
-import { output, success, info, warn } from '../lib/output.js';
-import type { Manifest } from '../types/manifest.js';
+import { PgError, NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
+import { output, success, info } from '../lib/output.js';
+import type { AgentEntry } from '../types/manifest.js';
 
 export interface KillOptions {
   agent?: string;
@@ -18,7 +18,7 @@ export async function killCommand(options: KillOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
   if (!options.agent && !options.worktree && !options.all) {
-    throw new Error('One of --agent, --worktree, or --all is required');
+    throw new PgError('One of --agent, --worktree, or --all is required', 'INVALID_ARGS');
   }
 
   if (options.agent) {
@@ -66,8 +66,7 @@ async function killWorktreeAgents(
   options: KillOptions,
 ): Promise<void> {
   const manifest = await readManifest(projectRoot);
-  const wt = getWorktree(manifest, worktreeRef)
-    ?? Object.values(manifest.worktrees).find((w) => w.name === worktreeRef);
+  const wt = resolveWorktree(manifest, worktreeRef);
 
   if (!wt) throw new WorktreeNotFoundError(worktreeRef);
 
@@ -110,7 +109,7 @@ async function killAllAgents(
   options: KillOptions,
 ): Promise<void> {
   const manifest = await readManifest(projectRoot);
-  const toKill: import('../types/manifest.js').AgentEntry[] = [];
+  const toKill: AgentEntry[] = [];
 
   for (const wt of Object.values(manifest.worktrees)) {
     for (const agent of Object.values(wt.agents)) {
@@ -124,7 +123,10 @@ async function killAllAgents(
   for (const a of toKill) info(`Killing agent ${a.id}`);
   await killAgents(toKill);
 
-  const worktreeIds = Object.keys(manifest.worktrees);
+  // Only track active worktrees for removal (not already merged/cleaned)
+  const activeWorktreeIds = Object.values(manifest.worktrees)
+    .filter((wt) => wt.status === 'active')
+    .map((wt) => wt.id);
 
   await updateManifest(projectRoot, (m) => {
     for (const wt of Object.values(m.worktrees)) {
@@ -139,24 +141,24 @@ async function killAllAgents(
   });
 
   if (options.remove) {
-    for (const wtId of worktreeIds) {
+    for (const wtId of activeWorktreeIds) {
       await removeWorktreeCleanup(projectRoot, wtId);
     }
   }
 
   if (options.json) {
-    output({ success: true, killed: killedIds, removed: options.remove ? worktreeIds : [] }, true);
+    output({ success: true, killed: killedIds, removed: options.remove ? activeWorktreeIds : [] }, true);
   } else {
-    success(`Killed ${killedIds.length} agent(s) across ${worktreeIds.length} worktree(s)`);
+    success(`Killed ${killedIds.length} agent(s) across ${activeWorktreeIds.length} worktree(s)`);
     if (options.remove) {
-      success(`Removed ${worktreeIds.length} worktree(s)`);
+      success(`Removed ${activeWorktreeIds.length} worktree(s)`);
     }
   }
 }
 
 async function removeWorktreeCleanup(projectRoot: string, wtId: string): Promise<void> {
   const manifest = await readManifest(projectRoot);
-  const wt = getWorktree(manifest, wtId);
+  const wt = resolveWorktree(manifest, wtId);
   if (!wt) return;
   await cleanupWorktree(projectRoot, wt);
 }

@@ -21,10 +21,9 @@ export async function sessionExists(name: string): Promise<boolean> {
 export async function ensureSession(name: string): Promise<void> {
   if (!(await sessionExists(name))) {
     await execa('tmux', ['new-session', '-d', '-s', name, '-x', '220', '-y', '50']);
+    await execa('tmux', ['set-option', '-t', name, 'mouse', 'on']);
+    await execa('tmux', ['set-option', '-t', name, 'history-limit', '50000']);
   }
-  // Always ensure mouse scrolling and scrollback buffer are set
-  await execa('tmux', ['set-option', '-t', name, 'mouse', 'on']);
-  await execa('tmux', ['set-option', '-t', name, 'history-limit', '50000']);
 }
 
 export async function createWindow(
