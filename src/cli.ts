@@ -5,8 +5,8 @@ import { outputError } from './lib/output.js';
 const program = new Command();
 
 program
-  .name('pg')
-  .description('Point Guard — local orchestration runtime for parallel CLI coding agents')
+  .name('ppg')
+  .description('Pure Point Guard — local orchestration runtime for parallel CLI coding agents')
   .version('0.1.0');
 
 program
@@ -30,6 +30,7 @@ program
   .option('-b, --base <branch>', 'Base branch for the worktree')
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
   .option('-c, --count <n>', 'Number of agents to spawn', parseInt, 1)
+  .option('--no-open', 'Do not open a Terminal window for the spawned agents')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { spawnCommand } = await import('./commands/spawn.js');

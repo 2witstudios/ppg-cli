@@ -62,7 +62,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
 
   // 5. Write empty manifest
   const dirName = path.basename(projectRoot);
-  const sessionName = `pg-${dirName}`;
+  const sessionName = `ppg-${dirName}`;
   const manifest = createEmptyManifest(projectRoot, sessionName);
   await writeManifest(projectRoot, manifest);
   info('Wrote empty manifest.json');

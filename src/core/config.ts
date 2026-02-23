@@ -4,13 +4,12 @@ import type { Config, AgentConfig } from '../types/config.js';
 import { configPath } from '../lib/paths.js';
 
 const DEFAULT_CONFIG: Config = {
-  sessionName: 'pg',
+  sessionName: 'ppg',
   defaultAgent: 'claude',
   agents: {
     claude: {
       name: 'claude',
-      command: 'claude',
-      promptFlag: '-p',
+      command: 'claude --dangerously-skip-permissions',
       interactive: true,
       resultInstructions: [
         'When you have completed the task, write a summary of what you did and any important notes',

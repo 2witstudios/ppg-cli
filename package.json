@@ -1,18 +1,31 @@
 {
-  "name": "@pagespace/point-guard",
+  "name": "ppg-cli",
   "version": "0.1.0",
   "type": "module",
-  "description": "Local orchestration runtime for parallel CLI coding agents",
+  "description": "Pure Point Guard — local orchestration runtime for parallel CLI coding agents",
   "bin": {
-    "pg": "./dist/cli.js",
-    "pointguard": "./dist/cli.js"
+    "ppg": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "cli",
+    "agent",
+    "orchestration",
+    "tmux",
+    "worktree",
+    "parallel",
+    "claude"
+  ],
+  "license": "MIT",
   "dependencies": {
     "commander": "^14.0.0",
     "execa": "^9.5.2",

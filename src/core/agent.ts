@@ -66,13 +66,15 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
 }
 
 function buildAgentCommand(agentConfig: AgentConfig, promptFilePath: string): string {
+  // Unset CLAUDECODE so spawned Claude instances don't think they're nested
+  const envPrefix = 'unset CLAUDECODE;';
   const { command, promptFlag } = agentConfig;
   if (promptFlag) {
-    // claude -p "$(cat .pg/prompts/ag-xxxxxxxx.md)"
-    return `${command} ${promptFlag} "$(cat ${promptFilePath})"`;
+    // Use explicit flag: command --flag "$(cat prompt-file)"
+    return `${envPrefix} ${command} ${promptFlag} "$(cat ${promptFilePath})"`;
   }
-  // Fallback: pipe file as stdin
-  return `cat ${promptFilePath} | ${command}`;
+  // Pass prompt as positional argument: command "$(cat prompt-file)"
+  return `${envPrefix} ${command} "$(cat ${promptFilePath})"`;
 }
 
 /**

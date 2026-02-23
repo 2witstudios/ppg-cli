@@ -43,7 +43,7 @@ export async function statusCommand(worktreeFilter?: string, options?: StatusOpt
   }
 
   if (worktrees.length === 0) {
-    console.log('No active worktrees. Use `pg spawn` to create one.');
+    console.log('No active worktrees. Use `ppg spawn` to create one.');
     return;
   }
 

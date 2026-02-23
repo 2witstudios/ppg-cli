@@ -32,7 +32,7 @@ export class NotGitRepoError extends PgError {
 export class NotInitializedError extends PgError {
   constructor(dir: string) {
     super(
-      `Point Guard not initialized in ${dir}. Run 'pg init' first.`,
+      `Point Guard not initialized in ${dir}. Run 'ppg init' first.`,
       'NOT_INITIALIZED',
     );
     this.name = 'NotInitializedError';
@@ -42,7 +42,7 @@ export class NotInitializedError extends PgError {
 export class ManifestLockError extends PgError {
   constructor() {
     super(
-      'Could not acquire manifest lock. Another pg process may be running.',
+      'Could not acquire manifest lock. Another ppg process may be running.',
       'MANIFEST_LOCK',
     );
     this.name = 'ManifestLockError';

@@ -1,6 +1,7 @@
 import { readManifest, getWorktree, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
+import { openTerminalWindow } from '../core/terminal.js';
 import { NotInitializedError } from '../lib/errors.js';
 import { info } from '../lib/output.js';
 
@@ -47,11 +48,9 @@ export async function attachCommand(target: string): Promise<void> {
     }
     info(`Switched to ${tmuxTarget}`);
   } else {
-    // Attach to the tmux session, then select the target
-    info(`Attaching to session ${sessionName}, target ${tmuxTarget}`);
-    if (wt) {
-      await tmux.selectWindow(tmuxTarget);
-    }
-    await tmux.attachSession(sessionName);
+    // Open a new Terminal.app window attached to the target
+    const title = wt ? wt.name : target;
+    info(`Opening Terminal window for ${title}`);
+    await openTerminalWindow(sessionName, tmuxTarget, title);
   }
 }

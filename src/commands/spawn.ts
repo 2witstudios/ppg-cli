@@ -6,6 +6,7 @@ import { setupWorktreeEnv } from '../core/env.js';
 import { loadTemplate, renderTemplate, type TemplateContext } from '../core/template.js';
 import { spawnAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
+import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId } from '../lib/id.js';
 import { worktreePath as getWorktreePath } from '../lib/paths.js';
 import { resultFile } from '../lib/paths.js';
@@ -23,6 +24,7 @@ export interface SpawnOptions {
   base?: string;
   worktree?: string;
   count?: number;
+  open?: boolean;
   json?: boolean;
 }
 
@@ -99,7 +101,7 @@ async function spawnNewWorktree(
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
   const name = options.name ?? wtId;
-  const branchName = `pg/${name}`;
+  const branchName = `ppg/${name}`;
 
   // Create git worktree
   info(`Creating worktree ${wtId} on branch ${branchName}`);
@@ -180,6 +182,11 @@ async function spawnNewWorktree(
     return m;
   });
 
+  // Auto-open Terminal window unless --no-open
+  if (options.open !== false) {
+    await openTerminalWindow(manifest.sessionName, windowTarget, name);
+  }
+
   if (options.json) {
     output({
       success: true,
@@ -200,7 +207,7 @@ async function spawnNewWorktree(
     for (const a of agents) {
       info(`  Agent ${a.id} → ${a.tmuxTarget}`);
     }
-    info(`Attach: pg attach ${wtId}`);
+    info(`Attach: ppg attach ${wtId}`);
   }
 }
 
@@ -262,6 +269,11 @@ async function spawnIntoExistingWorktree(
     }
     return m;
   });
+
+  // Auto-open Terminal window unless --no-open
+  if (options.open !== false) {
+    await openTerminalWindow(manifest.sessionName, wt.tmuxWindow, wt.name);
+  }
 
   if (options.json) {
     output({

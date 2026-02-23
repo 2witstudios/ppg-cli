@@ -67,11 +67,11 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
     if (strategy === 'squash') {
       await execa('git', ['merge', '--squash', wt.branch], { cwd: projectRoot });
-      await execa('git', ['commit', '-m', `pg: merge ${wt.name} (${wt.branch})`], {
+      await execa('git', ['commit', '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
         cwd: projectRoot,
       });
     } else {
-      await execa('git', ['merge', '--no-ff', wt.branch, '-m', `pg: merge ${wt.name} (${wt.branch})`], {
+      await execa('git', ['merge', '--no-ff', wt.branch, '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
         cwd: projectRoot,
       });
     }
