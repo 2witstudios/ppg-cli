@@ -27,8 +27,8 @@ npm run typecheck  # tsc --noEmit
 ```
 src/
 ├── cli.ts              # Entry point — registers commands with Commander.js
-├── commands/           # Command implementations (init, spawn, status, kill, attach, logs, aggregate, merge, list)
-├── core/               # Domain logic (manifest, agent, worktree, tmux, terminal, config, template, env)
+├── commands/           # Command implementations (init, spawn, status, kill, attach, logs, aggregate, merge, list, clean, diff, restart, send, ui, wait, worktree)
+├── core/               # Domain logic (manifest, agent, worktree, tmux, terminal, config, template, env, cleanup)
 ├── lib/                # Utilities (paths, errors, id, output, shell, cjs-compat)
 └── types/              # Type definitions (manifest, config, common)
 ```
@@ -40,7 +40,8 @@ src/
 - **Lazy command imports** — `cli.ts` uses dynamic `import()` for each command to keep startup fast
 - **Manifest locking** — Always use `updateManifest(projectRoot, updater)` for read-modify-write. Never read + write separately. Lock: 10s stale timeout, 5 retries
 - **Atomic writes** — All manifest writes go through `write-file-atomic`
-- **`PgError` hierarchy** — Typed errors with codes: `TMUX_NOT_FOUND`, `NOT_GIT_REPO`, `NOT_INITIALIZED`, `MANIFEST_LOCK`, `WORKTREE_NOT_FOUND`, `AGENT_NOT_FOUND`
+- **`PgError` hierarchy** — Typed errors with codes: `TMUX_NOT_FOUND`, `NOT_GIT_REPO`, `NOT_INITIALIZED`, `MANIFEST_LOCK`, `WORKTREE_NOT_FOUND`, `AGENT_NOT_FOUND`, `MERGE_FAILED`, `INVALID_ARGS`, `AGENTS_RUNNING`, `WAIT_TIMEOUT`, `AGENTS_FAILED`, `NO_SESSION_ID`
+- **Worktree resolution** — Use `resolveWorktree(manifest, ref)` from `core/manifest.ts` to look up worktrees by ID, name, or branch. Never duplicate the lookup pattern.
 - **Dual output** — Every command supports `--json` flag. Use `output(data, json)` and `outputError(error, json)` from `lib/output.ts`
 - **Functional style** — Pure functions, composition, `const`, destructuring, no classes except `PgError`
 - **Path helpers** — All path computation in `lib/paths.ts`: `pgDir()`, `manifestPath()`, `resultFile()`, `worktreePath()`, etc.

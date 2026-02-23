@@ -2,12 +2,18 @@ node_modules/
 dist/
 *.tsbuildinfo
 .worktrees/
+.DS_Store
 
 # Point Guard
 .pg/results/
 .pg/logs/
 .pg/manifest.json
 .pg/prompts/
+.pg/dashboard-sessions.json
 
 # Xcode
 PPG CLI/build/
+DerivedData/
+**/xcuserdata/
+*.xcuserstate
+*.profraw
