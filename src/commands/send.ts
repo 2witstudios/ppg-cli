@@ -1,4 +1,3 @@
-import { execa } from 'execa';
 import { readManifest, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
@@ -28,10 +27,10 @@ export async function sendCommand(agentId: string, text: string, options: SendOp
 
   if (options.keys) {
     // Raw tmux key names (e.g., "C-c", "Enter", "Escape")
-    await execa('tmux', ['send-keys', '-t', agent.tmuxTarget, text]);
+    await tmux.sendRawKeys(agent.tmuxTarget, text);
   } else if (options.enter === false) {
     // Send literal text without Enter
-    await execa('tmux', ['send-keys', '-t', agent.tmuxTarget, '-l', text]);
+    await tmux.sendLiteral(agent.tmuxTarget, text);
   } else {
     // Default: send literal text + Enter
     await tmux.sendKeys(agent.tmuxTarget, text);

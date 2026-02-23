@@ -1,12 +1,11 @@
 import fs from 'node:fs/promises';
 import { readManifest, updateManifest, findAgent } from '../core/manifest.js';
 import { loadConfig, resolveAgentConfig } from '../core/config.js';
-import { spawnAgent } from '../core/agent.js';
-import { killAgent } from '../core/agent.js';
+import { spawnAgent, killAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
-import { agentId as genAgentId } from '../lib/id.js';
+import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { promptFile, resultFile } from '../lib/paths.js';
 import { NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
@@ -78,6 +77,7 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
   };
   const renderedPrompt = renderTemplate(promptText, ctx);
 
+  const newSessionId = genSessionId();
   const agentEntry = await spawnAgent({
     agentId: newAgentId,
     agentConfig,
@@ -86,6 +86,7 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
     tmuxTarget: windowTarget,
     projectRoot,
     branch: wt.branch,
+    sessionId: newSessionId,
   });
 
   // Update manifest: mark old agent as killed, add new agent
@@ -114,6 +115,7 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
       newAgent: {
         id: newAgentId,
         tmuxTarget: windowTarget,
+        sessionId: newSessionId,
         worktreeId: wt.id,
         worktreeName: wt.name,
         branch: wt.branch,

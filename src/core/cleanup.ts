@@ -1,4 +1,4 @@
-import { updateManifest, readManifest, getWorktree } from './manifest.js';
+import { updateManifest } from './manifest.js';
 import { removeWorktree } from './worktree.js';
 import { teardownWorktreeEnv } from './env.js';
 import * as tmux from './tmux.js';

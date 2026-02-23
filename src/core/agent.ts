@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { resultFile, promptFile } from '../lib/paths.js';
 import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
+import { updateManifest } from './manifest.js';
 import type { AgentEntry, AgentStatus } from '../types/manifest.js';
 import type { AgentConfig } from '../types/config.js';
 import { renderTemplate, type TemplateContext } from './template.js';
@@ -194,6 +195,38 @@ export async function refreshAllAgentStatuses(
   await Promise.all(wtChecks);
 
   return manifest;
+}
+
+export interface ResumeAgentOptions {
+  agent: AgentEntry;
+  worktreeId: string;
+  sessionName: string;
+  cwd: string;
+  windowName: string;
+  projectRoot: string;
+}
+
+/**
+ * Resume a dead agent's session in a new tmux window, updating the manifest.
+ * Returns the new tmux target.
+ */
+export async function resumeAgent(options: ResumeAgentOptions): Promise<string> {
+  const { agent, worktreeId, sessionName, cwd, windowName, projectRoot } = options;
+
+  await tmux.ensureSession(sessionName);
+  const newTarget = await tmux.createWindow(sessionName, windowName, cwd);
+  await tmux.sendKeys(newTarget, `unset CLAUDECODE; claude --resume ${agent.sessionId}`);
+
+  await updateManifest(projectRoot, (m) => {
+    const mAgent = m.worktrees[worktreeId]?.agents[agent.id];
+    if (mAgent) {
+      mAgent.tmuxTarget = newTarget;
+      mAgent.status = 'running';
+    }
+    return m;
+  });
+
+  return newTarget;
 }
 
 export async function killAgent(agent: AgentEntry): Promise<void> {

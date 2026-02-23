@@ -1,4 +1,3 @@
-import { execa } from 'execa';
 import { readManifest, updateManifest } from '../core/manifest.js';
 import { getRepoRoot, pruneWorktrees } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';

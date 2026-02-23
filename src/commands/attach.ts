@@ -1,6 +1,7 @@
-import { readManifest, getWorktree, findAgent, updateManifest } from '../core/manifest.js';
+import { readManifest, getWorktree, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { getPaneInfo } from '../core/tmux.js';
+import { resumeAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { NotInitializedError } from '../lib/errors.js';
@@ -19,7 +20,7 @@ export async function attachCommand(target: string): Promise<void> {
 
   // Try to resolve target as worktree ID, worktree name, or agent ID
   let tmuxTarget: string | undefined;
-  let sessionName = manifest.sessionName;
+  const sessionName = manifest.sessionName;
   let agent: AgentEntry | undefined;
   let worktreeId: string | undefined;
 
@@ -47,31 +48,23 @@ export async function attachCommand(target: string): Promise<void> {
   }
 
   // Check if the pane is dead and agent has a sessionId — auto-resume
-  if (agent?.sessionId) {
+  if (agent?.sessionId && worktreeId) {
     const paneInfo = await getPaneInfo(tmuxTarget);
     if (!paneInfo || paneInfo.isDead) {
       info(`Pane is dead. Resuming session ${agent.sessionId}...`);
-      await tmux.ensureSession(sessionName);
-
-      // Find the worktree path for cwd
-      const resumeWt = worktreeId ? manifest.worktrees[worktreeId] : undefined;
+      const resumeWt = manifest.worktrees[worktreeId];
       const cwd = resumeWt?.path ?? projectRoot;
       const windowName = resumeWt?.name ?? agent.name ?? target;
 
-      const newTarget = await tmux.createWindow(sessionName, windowName, cwd);
-      await tmux.sendKeys(newTarget, `unset CLAUDECODE; claude --resume ${agent.sessionId}`);
-
-      // Update manifest with new tmux target
-      await updateManifest(projectRoot, (m) => {
-        if (worktreeId && m.worktrees[worktreeId]?.agents[agent!.id]) {
-          m.worktrees[worktreeId].agents[agent!.id].tmuxTarget = newTarget;
-          m.worktrees[worktreeId].agents[agent!.id].status = 'running';
-        }
-        return m;
+      tmuxTarget = await resumeAgent({
+        agent,
+        worktreeId,
+        sessionName,
+        cwd,
+        windowName,
+        projectRoot,
       });
-
-      tmuxTarget = newTarget;
-      success(`Resumed agent ${agent.id} in ${newTarget}`);
+      success(`Resumed agent ${agent.id} in ${tmuxTarget}`);
     }
   }
 

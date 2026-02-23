@@ -1,7 +1,7 @@
 import { updateManifest, getWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, info } from '../lib/output.js';
 import type { AgentEntry, AgentStatus, Manifest } from '../types/manifest.js';
 
@@ -31,27 +31,19 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
   while (true) {
     // Check timeout
     if (timeout && (Date.now() - startTime) >= timeout) {
+      const manifest = await refreshAndGet(projectRoot);
+      const agents = collectAgents(manifest, worktreeRef, options.all);
       if (options.json) {
-        const manifest = await refreshAndGet(projectRoot);
-        const agents = collectAgents(manifest, worktreeRef, options.all);
         output({
           timedOut: true,
           agents: agents.map(formatAgent),
         }, true);
       }
-      process.exit(2);
+      throw new PgError('Timed out waiting for agents', 'WAIT_TIMEOUT', 2);
     }
 
     const manifest = await refreshAndGet(projectRoot);
-
-    let agents: AgentEntry[];
-    try {
-      agents = collectAgents(manifest, worktreeRef, options.all);
-    } catch (err) {
-      if (err instanceof WorktreeNotFoundError) throw err;
-      throw err;
-    }
-
+    const agents = collectAgents(manifest, worktreeRef, options.all);
     const allTerminal = agents.every((a) => TERMINAL_STATUSES.includes(a.status));
 
     if (allTerminal) {
@@ -68,7 +60,10 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
         }
       }
 
-      process.exit(anyFailed ? 1 : 0);
+      if (anyFailed) {
+        throw new PgError('Some agents failed', 'AGENTS_FAILED', 1);
+      }
+      return;
     }
 
     // Wait before next poll

@@ -21,6 +21,9 @@ export async function sessionExists(name: string): Promise<boolean> {
 export async function ensureSession(name: string): Promise<void> {
   if (await sessionExists(name)) return;
   await execa('tmux', ['new-session', '-d', '-s', name, '-x', '220', '-y', '50']);
+  // Enable mouse scrolling and set generous scrollback buffer
+  await execa('tmux', ['set-option', '-t', name, 'mouse', 'on']);
+  await execa('tmux', ['set-option', '-t', name, 'history-limit', '50000']);
 }
 
 export async function createWindow(
@@ -59,6 +62,14 @@ export async function splitPane(
 export async function sendKeys(target: string, command: string): Promise<void> {
   // Send command text with trailing newline in a single call
   await execa('tmux', ['send-keys', '-t', target, '-l', command + '\n']);
+}
+
+export async function sendLiteral(target: string, text: string): Promise<void> {
+  await execa('tmux', ['send-keys', '-t', target, '-l', text]);
+}
+
+export async function sendRawKeys(target: string, keys: string): Promise<void> {
+  await execa('tmux', ['send-keys', '-t', target, keys]);
 }
 
 export async function capturePane(target: string, lines?: number): Promise<string> {
@@ -160,8 +171,12 @@ export async function listSessionPanes(session: string): Promise<Map<string, Pan
         deadStatus: deadStatus ? parseInt(deadStatus, 10) : undefined,
       };
       // Index by multiple target formats for flexible lookup
-      map.set(target, info);
-      map.set(paneId, info);
+      map.set(target, info);                          // session:window.pane
+      map.set(paneId, info);                          // %paneId
+      const dotIdx = target.lastIndexOf('.');
+      if (dotIdx !== -1) {
+        map.set(target.slice(0, dotIdx), info);       // session:window
+      }
     }
   } catch {
     // Session may not exist
