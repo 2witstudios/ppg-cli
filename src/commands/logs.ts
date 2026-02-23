@@ -2,7 +2,7 @@ import { readManifest, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
 import { NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
-import { output } from '../lib/output.js';
+import { output, outputError } from '../lib/output.js';
 
 export interface LogsOptions {
   lines?: number;
@@ -50,7 +50,7 @@ export async function logsCommand(agentId: string, options: LogsOptions): Promis
         }
       } catch {
         clearInterval(interval);
-        console.error('Pane no longer available');
+        outputError(new Error('Pane no longer available'), options.json ?? false);
         process.exit(1);
       }
     }, 1000);

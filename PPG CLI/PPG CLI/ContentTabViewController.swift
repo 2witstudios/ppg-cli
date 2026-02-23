@@ -3,11 +3,13 @@ import SwiftTerm
 
 enum TabEntry {
     case manifestAgent(AgentModel)
+    case agentGroup([AgentModel], String)  // agents sharing a tmux window, tmuxTarget
     case sessionEntry(DashboardSession.TerminalEntry)
 
     var id: String {
         switch self {
         case .manifestAgent(let agent): return agent.id
+        case .agentGroup(let agents, _): return agents.map(\.id).joined(separator: "+")
         case .sessionEntry(let entry): return entry.id
         }
     }
@@ -15,6 +17,7 @@ enum TabEntry {
     var label: String {
         switch self {
         case .manifestAgent(let agent): return "\(agent.id) — \(agent.agentType)"
+        case .agentGroup(let agents, _): return "\(agents.count) agents (split)"
         case .sessionEntry(let entry): return entry.label
         }
     }
@@ -89,6 +92,34 @@ class ContentTabViewController: NSViewController {
             segmentedControl.isHidden = false
             containerView.isHidden = false
             selectTab(at: 0)
+        }
+    }
+
+    /// Update tab metadata in-place without tearing down terminal views.
+    /// Only updates labels and agent status — does NOT destroy/recreate terminals.
+    func updateTabs(with entries: [TabEntry]) {
+        tabs = entries
+        rebuildSegmentedControl()
+
+        // Update status labels on existing TerminalPane views
+        for entry in entries {
+            switch entry {
+            case .manifestAgent(let agent):
+                if let termView = terminalViews[agent.id],
+                   let pane = termView as? TerminalPane {
+                    pane.updateStatus(agent.status)
+                }
+            case .agentGroup(let agents, _):
+                let groupId = entry.id
+                if let termView = terminalViews[groupId],
+                   let pane = termView as? TerminalPane {
+                    // Use the "worst" status from the group for the badge
+                    let status = agents.first?.status ?? .lost
+                    pane.updateStatus(status)
+                }
+            case .sessionEntry:
+                break
+            }
         }
     }
 
@@ -179,30 +210,59 @@ class ContentTabViewController: NSViewController {
         let termView: NSView
         switch tab {
         case .manifestAgent(let agent):
-            let pane = TerminalPane(agent: agent, sessionName: LaunchConfig.shared.sessionName)
+            let pane = TerminalPane(agent: agent, sessionName: ProjectState.shared.sessionName)
+            pane.startTmux()
+            termView = pane
+
+        case .agentGroup(let agents, let tmuxTarget):
+            // All agents share the same tmux window — attach to the window target to show all panes
+            let lead = agents[0]
+            let groupAgent = AgentModel(
+                id: tab.id,
+                name: lead.name,
+                agentType: lead.agentType,
+                status: lead.status,
+                tmuxTarget: tmuxTarget,
+                prompt: lead.prompt,
+                startedAt: lead.startedAt
+            )
+            let pane = TerminalPane(agent: groupAgent, sessionName: ProjectState.shared.sessionName)
             pane.startTmux()
             termView = pane
 
         case .sessionEntry(let entry):
-            let localTerm = LocalProcessTerminalView(frame: containerView.bounds)
-            // Pass nil for environment (inherit from app process), but use a login
-            // interactive shell so .zprofile/.zshrc are sourced and PATH includes
-            // user-installed tools (claude, node, etc.).
-            // The shell command sources profile scripts explicitly to ensure PATH
-            // is fully set up even when launched from a macOS app bundle.
-            let cmd = """
-            if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
-            [ -f ~/.zprofile ] && source ~/.zprofile; \
-            [ -f ~/.zshrc ] && source ~/.zshrc; \
-            cd \(shellEscape(entry.workingDirectory)) && exec \(entry.command)
-            """
-            localTerm.startProcess(
-                executable: "/bin/zsh",
-                args: ["-c", cmd],
-                environment: nil,
-                execName: "zsh"
-            )
-            termView = localTerm
+            if let tmuxTarget = entry.tmuxTarget {
+                // Tmux-backed session entry — attach to the tmux pane
+                let agentModel = AgentModel(
+                    id: entry.id,
+                    name: entry.label,
+                    agentType: entry.kind == .agent ? "claude" : "terminal",
+                    status: .running,
+                    tmuxTarget: tmuxTarget,
+                    prompt: "",
+                    startedAt: "",
+                    sessionId: entry.sessionId
+                )
+                let pane = TerminalPane(agent: agentModel, sessionName: ProjectState.shared.sessionName)
+                pane.startTmux()
+                termView = pane
+            } else {
+                // Local process fallback (terminals without tmux)
+                let localTerm = LocalProcessTerminalView(frame: containerView.bounds)
+                let cmd = """
+                if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+                [ -f ~/.zprofile ] && source ~/.zprofile; \
+                [ -f ~/.zshrc ] && source ~/.zshrc; \
+                cd \(shellEscape(entry.workingDirectory)) && exec \(entry.command)
+                """
+                localTerm.startProcess(
+                    executable: "/bin/zsh",
+                    args: ["-c", cmd],
+                    environment: nil,
+                    execName: "zsh"
+                )
+                termView = localTerm
+            }
         }
 
         termView.translatesAutoresizingMaskIntoConstraints = false

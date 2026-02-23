@@ -26,6 +26,7 @@ export interface AgentEntry {
   completedAt?: string;
   exitCode?: number;
   error?: string;
+  sessionId?: string;
 }
 
 export interface WorktreeEntry {

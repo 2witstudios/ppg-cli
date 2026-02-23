@@ -30,6 +30,7 @@ program
   .option('-b, --base <branch>', 'Base branch for the worktree')
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
   .option('-c, --count <n>', 'Number of agents to spawn', parseInt, 1)
+  .option('--split', 'Put all agents in one window as split panes')
   .option('--no-open', 'Do not open a Terminal window for the spawned agents')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
@@ -117,6 +118,82 @@ program
   .action(async (type, options) => {
     const { listCommand } = await import('./commands/list.js');
     await listCommand(type, options);
+  });
+
+program
+  .command('restart')
+  .description('Restart a failed/killed agent in the same worktree')
+  .argument('<agent-id>', 'Agent ID to restart')
+  .option('-p, --prompt <text>', 'Override the original prompt')
+  .option('-a, --agent <type>', 'Override the agent type')
+  .option('--no-open', 'Do not open a Terminal window')
+  .option('--json', 'Output as JSON')
+  .action(async (agentId, options) => {
+    const { restartCommand } = await import('./commands/restart.js');
+    await restartCommand(agentId, options);
+  });
+
+program
+  .command('diff')
+  .description('Show changes made in a worktree branch')
+  .argument('<worktree-id>', 'Worktree ID or name')
+  .option('--stat', 'Show diffstat summary')
+  .option('--name-only', 'Show only changed file names')
+  .option('--json', 'Output as JSON')
+  .action(async (worktreeId, options) => {
+    const { diffCommand } = await import('./commands/diff.js');
+    await diffCommand(worktreeId, options);
+  });
+
+program
+  .command('clean')
+  .description('Remove worktrees in terminal states (merged/cleaned/failed)')
+  .option('--all', 'Also clean failed worktrees')
+  .option('--dry-run', 'Show what would be done without doing it')
+  .option('--prune', 'Also run git worktree prune')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cleanCommand } = await import('./commands/clean.js');
+    await cleanCommand(options);
+  });
+
+program
+  .command('send')
+  .description('Send text to an agent\'s tmux pane')
+  .argument('<agent-id>', 'Agent ID')
+  .argument('<text>', 'Text to send')
+  .option('--keys', 'Send raw tmux key names (e.g., C-c, Enter)')
+  .option('--no-enter', 'Do not append Enter after the text')
+  .option('--json', 'Output as JSON')
+  .action(async (agentId, text, options) => {
+    const { sendCommand } = await import('./commands/send.js');
+    await sendCommand(agentId, text, options);
+  });
+
+program
+  .command('wait')
+  .description('Wait for agents to reach terminal state')
+  .argument('[worktree-id]', 'Worktree ID or name')
+  .option('--all', 'Wait for all agents across all worktrees')
+  .option('--timeout <seconds>', 'Timeout in seconds', parseInt)
+  .option('--interval <seconds>', 'Poll interval in seconds', parseInt)
+  .option('--json', 'Output as JSON')
+  .action(async (worktreeId, options) => {
+    const { waitCommand } = await import('./commands/wait.js');
+    await waitCommand(worktreeId, options);
+  });
+
+const worktreeCmd = program.command('worktree').description('Manage worktrees');
+
+worktreeCmd
+  .command('create')
+  .description('Create a standalone worktree without spawning agents')
+  .option('-n, --name <name>', 'Name for the worktree')
+  .option('-b, --base <branch>', 'Base branch for the worktree')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { worktreeCreateCommand } = await import('./commands/worktree.js');
+    await worktreeCreateCommand(options);
   });
 
 program

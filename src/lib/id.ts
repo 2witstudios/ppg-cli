@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { customAlphabet } from 'nanoid';
 
 const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -11,4 +12,8 @@ export function worktreeId(): string {
 
 export function agentId(): string {
   return `ag-${longId()}`;
+}
+
+export function sessionId(): string {
+  return randomUUID();
 }

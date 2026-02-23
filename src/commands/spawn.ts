@@ -7,9 +7,8 @@ import { loadTemplate, renderTemplate, type TemplateContext } from '../core/temp
 import { spawnAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
-import { worktreeId as genWorktreeId, agentId as genAgentId } from '../lib/id.js';
-import { worktreePath as getWorktreePath } from '../lib/paths.js';
-import { resultFile } from '../lib/paths.js';
+import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
+import { resultFile, manifestPath } from '../lib/paths.js';
 import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import type { WorktreeEntry, AgentEntry } from '../types/manifest.js';
@@ -24,6 +23,7 @@ export interface SpawnOptions {
   base?: string;
   worktree?: string;
   count?: number;
+  split?: boolean;
   open?: boolean;
   json?: boolean;
 }
@@ -32,9 +32,9 @@ export async function spawnCommand(options: SpawnOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
   const config = await loadConfig(projectRoot);
 
-  // Verify initialized
+  // Verify initialized (lightweight file check instead of full manifest read)
   try {
-    await readManifest(projectRoot);
+    await fs.access(manifestPath(projectRoot));
   } catch {
     throw new NotInitializedError(projectRoot);
   }
@@ -113,23 +113,30 @@ async function spawnNewWorktree(
   // Setup env
   await setupWorktreeEnv(projectRoot, wtPath, config);
 
-  // Ensure tmux session
-  const manifest = await readManifest(projectRoot);
-  await tmux.ensureSession(manifest.sessionName);
+  // Ensure tmux session (use config directly instead of re-reading manifest)
+  const sessionName = config.sessionName;
+  await tmux.ensureSession(sessionName);
 
   // Create tmux window
-  const windowTarget = await tmux.createWindow(manifest.sessionName, name, wtPath);
+  const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
 
-  // Spawn agents
+  // Spawn agents — one tmux window per agent (default), or split panes (--split)
   const agents: AgentEntry[] = [];
   for (let i = 0; i < count; i++) {
     const aId = genAgentId();
-    let target = windowTarget;
+    let target: string;
 
-    if (i > 0) {
-      // Split pane for additional agents
-      const split = await tmux.splitPane(windowTarget, 'horizontal', wtPath);
-      target = split.target;
+    if (i === 0) {
+      // First agent uses the window already created for the worktree
+      target = windowTarget;
+    } else if (options.split) {
+      // --split: additional agents share the same window as split panes
+      const direction = i % 2 === 1 ? 'horizontal' : 'vertical';
+      const pane = await tmux.splitPane(windowTarget, direction, wtPath);
+      target = pane.target;
+    } else {
+      // Default: each additional agent gets its own tmux window
+      target = await tmux.createWindow(sessionName, `${name}-${i}`, wtPath);
     }
 
     // Render template variables if present
@@ -159,6 +166,7 @@ async function spawnNewWorktree(
       tmuxTarget: target,
       projectRoot,
       branch: branchName,
+      sessionId: genSessionId(),
     });
 
     agents.push(agentEntry);
@@ -182,9 +190,9 @@ async function spawnNewWorktree(
     return m;
   });
 
-  // Auto-open Terminal window unless --no-open
+  // Auto-open Terminal window unless --no-open (fire-and-forget)
   if (options.open !== false) {
-    await openTerminalWindow(manifest.sessionName, windowTarget, name);
+    openTerminalWindow(sessionName, windowTarget, name).catch(() => {});
   }
 
   if (options.json) {
@@ -200,6 +208,7 @@ async function spawnNewWorktree(
       agents: agents.map((a) => ({
         id: a.id,
         tmuxTarget: a.tmuxTarget,
+        sessionId: a.sessionId,
       })),
     }, true);
   } else {
@@ -226,11 +235,27 @@ async function spawnIntoExistingWorktree(
 
   if (!wt) throw new WorktreeNotFoundError(worktreeRef);
 
+  // Lazily create tmux window if worktree has none (standalone worktree)
+  let windowTarget = wt.tmuxWindow;
+  if (!windowTarget) {
+    await tmux.ensureSession(manifest.sessionName);
+    windowTarget = await tmux.createWindow(manifest.sessionName, wt.name, wt.path);
+  }
+
   const agents: AgentEntry[] = [];
   for (let i = 0; i < count; i++) {
     const aId = genAgentId();
 
-    const split = await tmux.splitPane(wt.tmuxWindow, 'horizontal', wt.path);
+    let target: string;
+    if (options.split) {
+      // --split: agents share the existing window as split panes
+      const direction = i % 2 === 0 ? 'horizontal' : 'vertical';
+      const pane = await tmux.splitPane(windowTarget, direction, wt.path);
+      target = pane.target;
+    } else {
+      // Default: every agent gets its own tmux window
+      target = await tmux.createWindow(manifest.sessionName, `${wt.name}-agent-${i}`, wt.path);
+    }
 
     const ctx: TemplateContext = {
       WORKTREE_PATH: wt.path,
@@ -254,9 +279,10 @@ async function spawnIntoExistingWorktree(
       agentConfig,
       prompt: renderedPrompt,
       worktreePath: wt.path,
-      tmuxTarget: split.target,
+      tmuxTarget: target,
       projectRoot,
       branch: wt.branch,
+      sessionId: genSessionId(),
     });
 
     agents.push(agentEntry);
@@ -264,22 +290,31 @@ async function spawnIntoExistingWorktree(
 
   await updateManifest(projectRoot, (m) => {
     const mWt = m.worktrees[wt.id];
+    if (!mWt.tmuxWindow) {
+      mWt.tmuxWindow = windowTarget;
+    }
     for (const a of agents) {
       mWt.agents[a.id] = a;
     }
     return m;
   });
 
-  // Auto-open Terminal window unless --no-open
+  // Auto-open Terminal window unless --no-open (fire-and-forget)
   if (options.open !== false) {
-    await openTerminalWindow(manifest.sessionName, wt.tmuxWindow, wt.name);
+    openTerminalWindow(manifest.sessionName, windowTarget, wt.name).catch(() => {});
   }
 
   if (options.json) {
     output({
       success: true,
-      worktree: { id: wt.id, name: wt.name },
-      agents: agents.map((a) => ({ id: a.id, tmuxTarget: a.tmuxTarget })),
+      worktree: {
+        id: wt.id,
+        name: wt.name,
+        branch: wt.branch,
+        path: wt.path,
+        tmuxWindow: windowTarget,
+      },
+      agents: agents.map((a) => ({ id: a.id, tmuxTarget: a.tmuxTarget, sessionId: a.sessionId })),
     }, true);
   } else {
     success(`Added ${agents.length} agent(s) to worktree ${wt.id}`);

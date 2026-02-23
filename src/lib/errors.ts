@@ -68,3 +68,10 @@ export class AgentNotFoundError extends PgError {
     this.name = 'AgentNotFoundError';
   }
 }
+
+export class MergeFailedError extends PgError {
+  constructor(message: string) {
+    super(message, 'MERGE_FAILED');
+    this.name = 'MergeFailedError';
+  }
+}

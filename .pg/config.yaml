@@ -1,4 +1,4 @@
-sessionName: pg
+sessionName: ppg
 defaultAgent: claude
 agents:
   claude:

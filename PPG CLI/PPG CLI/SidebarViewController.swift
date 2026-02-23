@@ -52,13 +52,18 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onItemSelected: ((SidebarItem) -> Void)?
     var onAddAgent: ((String?) -> Void)?
     var onAddTerminal: ((String?) -> Void)?
+    var onAddWorktree: (() -> Void)?
     var onRenameTerminal: ((String, String) -> Void)?   // (id, newLabel)
     var onDeleteTerminal: ((String) -> Void)?            // (id)
+    var onRenameAgent: ((String, String) -> Void)?       // (agentId, newName)
+    var onKillAgent: ((String) -> Void)?                 // (agentId)
+    var onDataRefreshed: ((SidebarItem?) -> Void)?       // current selection after refresh
 
     private var refreshTimer: Timer?
     private var masterNode: SidebarNode?
     private var selectedItemId: String?
     private var suppressSelectionCallback = false
+    private var userIsSelecting = false
     private var contextClickedNode: SidebarNode?
 
     override func loadView() {
@@ -98,6 +103,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.rowSizeStyle = .medium
+        outlineView.style = .sourceList
 
         let contextMenu = NSMenu()
         contextMenu.delegate = self
@@ -141,11 +147,17 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
                 self.selectedItemId = self.currentSelectedId()
                 self.worktrees = newWorktrees
                 self.rebuildTree()
+                self.suppressSelectionCallback = true   // suppress BEFORE reloadData
                 self.outlineView.reloadData()
                 self.expandAll()
-                self.suppressSelectionCallback = true
-                self.restoreSelection()
+                if !self.userIsSelecting {
+                    self.restoreSelection()
+                }
                 self.suppressSelectionCallback = false
+
+                // Notify with current selection
+                let currentItem = self.currentSelectedItem()
+                self.onDataRefreshed?(currentItem)
             }
         }
     }
@@ -154,6 +166,12 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
         return node.item.id
+    }
+
+    private func currentSelectedItem() -> SidebarItem? {
+        let row = outlineView.selectedRow
+        guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
+        return node.item
     }
 
     private func rebuildTree() {
@@ -208,6 +226,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     @objc private func addButtonClicked(_ sender: NSButton) {
         let menu = NSMenu()
 
+        menu.addItem(withTitle: "New Worktree", action: #selector(menuNewWorktree), keyEquivalent: "")
+            .target = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "New Agent", action: #selector(menuNewAgent), keyEquivalent: "")
             .target = self
         menu.addItem(withTitle: "New Terminal", action: #selector(menuNewTerminal), keyEquivalent: "")
@@ -215,6 +236,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         let point = NSPoint(x: 0, y: sender.bounds.height)
         menu.popUp(positioning: nil, at: point, in: sender)
+    }
+
+    @objc private func menuNewWorktree() {
+        onAddWorktree?()
     }
 
     @objc private func menuNewAgent() {
@@ -296,10 +321,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: nil)!)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: "Project")!)
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
-        let name = NSTextField(labelWithString: LaunchConfig.shared.projectName.isEmpty ? "master" : LaunchConfig.shared.projectName)
+        let name = NSTextField(labelWithString: ProjectState.shared.projectName.isEmpty ? "master" : ProjectState.shared.projectName)
         name.font = .boldSystemFont(ofSize: 13)
 
         stack.addArrangedSubview(icon)
@@ -321,7 +346,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)!)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "Worktree")!)
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
         let textStack = NSStackView()
@@ -358,11 +383,14 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)!)
+        let statusDesc = "Agent \(agent.status.rawValue)"
+        let icon = NSImageView(image: NSImage(systemSymbolName: "circle.fill", accessibilityDescription: statusDesc)!)
         icon.contentTintColor = statusColor(for: agent.status)
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
-        let label = NSTextField(labelWithString: "\(agent.id) — \(agent.agentType)")
+        let displayName = agent.name.isEmpty ? agent.id : agent.name
+        let label = NSTextField(labelWithString: "\(displayName) — \(agent.agentType)")
+        cell.setAccessibilityLabel("\(displayName), \(agent.agentType), \(agent.status.rawValue)")
         label.font = .systemFont(ofSize: 12)
 
         stack.addArrangedSubview(icon)
@@ -395,7 +423,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             tintColor = .labelColor
         }
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)!)
+        let kindDesc = entry.kind == .agent ? "Agent" : "Terminal"
+        let icon = NSImageView(image: NSImage(systemSymbolName: symbolName, accessibilityDescription: kindDesc)!)
         icon.contentTintColor = tintColor
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -417,8 +446,14 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     // MARK: - Context Menu
 
     @objc private func contextRename(_ sender: Any) {
-        guard let node = contextClickedNode,
-              case .terminal(let entry) = node.item else { return }
+        guard let node = contextClickedNode else { return }
+
+        let currentLabel: String
+        switch node.item {
+        case .terminal(let entry): currentLabel = entry.label
+        case .agent(let agent): currentLabel = agent.name.isEmpty ? agent.id : agent.name
+        default: return
+        }
 
         let alert = NSAlert()
         alert.messageText = "Rename"
@@ -427,7 +462,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         alert.addButton(withTitle: "Cancel")
 
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        field.stringValue = entry.label
+        field.stringValue = currentLabel
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
 
@@ -435,45 +470,80 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let newLabel = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard !newLabel.isEmpty else { return }
 
-        onRenameTerminal?(entry.id, newLabel)
+        switch node.item {
+        case .terminal(let entry): onRenameTerminal?(entry.id, newLabel)
+        case .agent(let agent): onRenameAgent?(agent.id, newLabel)
+        default: break
+        }
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let clickedRow = outlineView.clickedRow
         guard clickedRow >= 0,
-              let node = outlineView.item(atRow: clickedRow) as? SidebarNode,
-              case .terminal = node.item else {
+              let node = outlineView.item(atRow: clickedRow) as? SidebarNode else {
             contextClickedNode = nil
             return
         }
-        contextClickedNode = node
-        menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Delete", action: #selector(contextDelete(_:)), keyEquivalent: "").target = self
+
+        switch node.item {
+        case .agent:
+            contextClickedNode = node
+            menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "Kill", action: #selector(contextDelete(_:)), keyEquivalent: "").target = self
+        case .terminal:
+            contextClickedNode = node
+            menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "Delete", action: #selector(contextDelete(_:)), keyEquivalent: "").target = self
+        default:
+            contextClickedNode = nil
+        }
     }
 
     @objc private func contextDelete(_ sender: Any) {
-        guard let node = contextClickedNode,
-              case .terminal(let entry) = node.item else { return }
+        guard let node = contextClickedNode else { return }
 
-        let alert = NSAlert()
-        alert.messageText = "Delete \"\(entry.label)\"?"
-        alert.informativeText = "This will terminate the process and remove it from the sidebar."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        switch node.item {
+        case .terminal(let entry):
+            let alert = NSAlert()
+            alert.messageText = "Delete \"\(entry.label)\"?"
+            alert.informativeText = "This will terminate the process and remove it from the sidebar."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Delete")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            onDeleteTerminal?(entry.id)
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        case .agent(let agent):
+            let displayName = agent.name.isEmpty ? agent.id : agent.name
+            let alert = NSAlert()
+            alert.messageText = "Kill agent \"\(displayName)\"?"
+            alert.informativeText = "This will send Ctrl-C and terminate the agent's tmux pane."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Kill")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            onKillAgent?(agent.id)
 
-        onDeleteTerminal?(entry.id)
+        default:
+            break
+        }
     }
 
     // MARK: - Selection
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionCallback else { return }
+        userIsSelecting = true
         let row = outlineView.selectedRow
-        guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return }
+        guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else {
+            userIsSelecting = false
+            return
+        }
         onItemSelected?(node.item)
+        // Reset after a short delay so the next timer-driven refresh can restore selection
+        DispatchQueue.main.async { [weak self] in
+            self?.userIsSelecting = false
+        }
     }
 }

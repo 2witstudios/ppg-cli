@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import { resultFile, promptFile } from '../lib/paths.js';
-import { getPaneInfo } from './tmux.js';
+import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
 import type { AgentEntry, AgentStatus } from '../types/manifest.js';
 import type { AgentConfig } from '../types/config.js';
 import { renderTemplate, type TemplateContext } from './template.js';
@@ -16,6 +16,7 @@ export interface SpawnAgentOptions {
   tmuxTarget: string;
   projectRoot: string;
   branch: string;
+  sessionId?: string;
 }
 
 export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry> {
@@ -50,7 +51,7 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
   await fs.writeFile(pFile, fullPrompt, 'utf-8');
 
   // Build and send command
-  const command = buildAgentCommand(agentConfig, pFile);
+  const command = buildAgentCommand(agentConfig, pFile, options.sessionId);
   await tmux.sendKeys(tmuxTarget, command);
 
   return {
@@ -62,19 +63,22 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
     prompt: prompt.slice(0, 500), // Truncate for manifest storage
     resultFile: resFile,
     startedAt: new Date().toISOString(),
+    ...(options.sessionId ? { sessionId: options.sessionId } : {}),
   };
 }
 
-function buildAgentCommand(agentConfig: AgentConfig, promptFilePath: string): string {
+function buildAgentCommand(agentConfig: AgentConfig, promptFilePath: string, sessionId?: string): string {
   // Unset CLAUDECODE so spawned Claude instances don't think they're nested
   const envPrefix = 'unset CLAUDECODE;';
   const { command, promptFlag } = agentConfig;
+  // Inject --session-id for Claude-based commands
+  const sessionFlag = sessionId && command.includes('claude') ? ` --session-id ${sessionId}` : '';
   if (promptFlag) {
     // Use explicit flag: command --flag "$(cat prompt-file)"
-    return `${envPrefix} ${command} ${promptFlag} "$(cat ${promptFilePath})"`;
+    return `${envPrefix} ${command}${sessionFlag} ${promptFlag} "$(cat ${promptFilePath})"`;
   }
   // Pass prompt as positional argument: command "$(cat prompt-file)"
-  return `${envPrefix} ${command} "$(cat ${promptFilePath})"`;
+  return `${envPrefix} ${command}${sessionFlag} "$(cat ${promptFilePath})"`;
 }
 
 /**
@@ -85,10 +89,13 @@ function buildAgentCommand(agentConfig: AgentConfig, promptFilePath: string): st
  * 3. Pane is dead → completed/failed based on exit code
  * 4. Current command is a shell → agent exited → completed/failed
  * 5. Otherwise → running
+ *
+ * @param paneMap Optional pre-fetched pane map from listSessionPanes() for batch queries
  */
 export async function checkAgentStatus(
   agent: AgentEntry,
   projectRoot: string,
+  paneMap?: Map<string, PaneInfo>,
 ): Promise<{ status: AgentStatus; exitCode?: number }> {
   // If already in terminal state, don't re-check
   if (['completed', 'failed', 'killed', 'lost'].includes(agent.status)) {
@@ -101,8 +108,10 @@ export async function checkAgentStatus(
     return { status: 'completed' };
   }
 
-  // 2. Check if tmux pane exists
-  const paneInfo = await getPaneInfo(agent.tmuxTarget);
+  // 2. Check if tmux pane exists (use batch map if available)
+  const paneInfo = paneMap
+    ? (paneMap.get(agent.tmuxTarget) ?? null)
+    : await getPaneInfo(agent.tmuxTarget);
   if (!paneInfo) {
     return { status: 'lost' };
   }
@@ -136,32 +145,54 @@ export async function refreshAllAgentStatuses(
   manifest: import('../types/manifest.js').Manifest,
   projectRoot: string,
 ): Promise<import('../types/manifest.js').Manifest> {
+  // Batch-fetch all pane info in a single tmux call
+  const paneMap = await listSessionPanes(manifest.sessionName);
+
+  // Collect all agents that need checking
+  const checks: Array<{ agent: AgentEntry; promise: Promise<{ status: AgentStatus; exitCode?: number }> }> = [];
   for (const wt of Object.values(manifest.worktrees)) {
     for (const agent of Object.values(wt.agents)) {
-      const { status, exitCode } = await checkAgentStatus(agent, projectRoot);
-      if (status !== agent.status) {
-        agent.status = status;
-        if (exitCode !== undefined) agent.exitCode = exitCode;
-        if (['completed', 'failed', 'lost'].includes(status) && !agent.completedAt) {
-          agent.completedAt = new Date().toISOString();
-        }
+      checks.push({
+        agent,
+        promise: checkAgentStatus(agent, projectRoot, paneMap),
+      });
+    }
+  }
+
+  // Run all status checks in parallel
+  const results = await Promise.all(checks.map((c) => c.promise));
+
+  // Apply results
+  const now = new Date().toISOString();
+  for (let i = 0; i < checks.length; i++) {
+    const { agent } = checks[i];
+    const { status, exitCode } = results[i];
+    if (status !== agent.status) {
+      agent.status = status;
+      if (exitCode !== undefined) agent.exitCode = exitCode;
+      if (['completed', 'failed', 'lost'].includes(status) && !agent.completedAt) {
+        agent.completedAt = now;
       }
     }
+  }
 
-    // Check if worktree directory still exists
-    if (wt.status === 'active') {
+  // Check worktree directories in parallel
+  const wtChecks = Object.values(manifest.worktrees)
+    .filter((wt) => wt.status === 'active')
+    .map(async (wt) => {
       const exists = await fileExists(wt.path);
       if (!exists) {
         wt.status = 'cleaned';
         for (const agent of Object.values(wt.agents)) {
           if (!['completed', 'failed', 'killed'].includes(agent.status)) {
             agent.status = 'lost';
-            if (!agent.completedAt) agent.completedAt = new Date().toISOString();
+            if (!agent.completedAt) agent.completedAt = now;
           }
         }
       }
-    }
-  }
+    });
+  await Promise.all(wtChecks);
+
   return manifest;
 }
 
@@ -170,7 +201,7 @@ export async function killAgent(agent: AgentEntry): Promise<void> {
   await tmux.sendCtrlC(agent.tmuxTarget);
 
   // Wait a moment
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Check if still alive
   const paneInfo = await getPaneInfo(agent.tmuxTarget);
@@ -178,6 +209,27 @@ export async function killAgent(agent: AgentEntry): Promise<void> {
     // Kill the pane
     await tmux.killPane(agent.tmuxTarget);
   }
+}
+
+/**
+ * Kill multiple agents in parallel: send Ctrl-C to all, wait once, then force-kill survivors.
+ */
+export async function killAgents(agents: AgentEntry[]): Promise<void> {
+  if (agents.length === 0) return;
+
+  // Send Ctrl-C to all agents in parallel
+  await Promise.all(agents.map((a) => tmux.sendCtrlC(a.tmuxTarget).catch(() => {})));
+
+  // Single wait
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  // Check and force-kill survivors in parallel
+  await Promise.all(agents.map(async (a) => {
+    const paneInfo = await getPaneInfo(a.tmuxTarget);
+    if (paneInfo && !paneInfo.isDead) {
+      await tmux.killPane(a.tmuxTarget);
+    }
+  }));
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

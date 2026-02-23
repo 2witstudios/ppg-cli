@@ -1,10 +1,9 @@
 import { execa } from 'execa';
 import { readManifest, updateManifest, getWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
-import { getRepoRoot, removeWorktree } from '../core/worktree.js';
-import { teardownWorktreeEnv } from '../core/env.js';
-import * as tmux from '../core/tmux.js';
-import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { getRepoRoot } from '../core/worktree.js';
+import { cleanupWorktree } from '../core/cleanup.js';
+import { NotInitializedError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 
 export interface MergeOptions {
@@ -76,14 +75,6 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
       });
     }
 
-    await updateManifest(projectRoot, (m) => {
-      if (m.worktrees[wt.id]) {
-        m.worktrees[wt.id].status = 'merged';
-        m.worktrees[wt.id].mergedAt = new Date().toISOString();
-      }
-      return m;
-    });
-
     success(`Merged ${wt.branch} into ${wt.baseBranch}`);
   } catch (err) {
     await updateManifest(projectRoot, (m) => {
@@ -92,41 +83,24 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
       }
       return m;
     });
-    throw new Error(`Merge failed: ${err instanceof Error ? err.message : err}`);
+    throw new MergeFailedError(
+      `Merge failed: ${err instanceof Error ? err.message : err}`,
+    );
   }
+
+  // Mark as merged
+  await updateManifest(projectRoot, (m) => {
+    if (m.worktrees[wt.id]) {
+      m.worktrees[wt.id].status = 'merged';
+      m.worktrees[wt.id].mergedAt = new Date().toISOString();
+    }
+    return m;
+  });
 
   // Cleanup
   if (options.cleanup !== false) {
     info('Cleaning up...');
-
-    // Kill tmux window
-    try {
-      await tmux.killWindow(wt.tmuxWindow);
-    } catch { /* already dead */ }
-
-    // Teardown env
-    try {
-      await teardownWorktreeEnv(wt.path);
-    } catch { /* may already be cleaned */ }
-
-    // Remove git worktree + branch
-    try {
-      await removeWorktree(projectRoot, wt.path, {
-        force: true,
-        deleteBranch: true,
-        branchName: wt.branch,
-      });
-    } catch (err) {
-      warn(`Could not fully remove worktree: ${err instanceof Error ? err.message : err}`);
-    }
-
-    await updateManifest(projectRoot, (m) => {
-      if (m.worktrees[wt.id]) {
-        m.worktrees[wt.id].status = 'cleaned';
-      }
-      return m;
-    });
-
+    await cleanupWorktree(projectRoot, wt);
     success(`Cleaned up worktree ${wt.id}`);
   }
 

@@ -41,13 +41,19 @@ class TerminalPane: NSView {
     }
 
     func startTmux() {
-        let cmd = "exec tmux attach-session -t \(sessionName) \\; select-pane -t \(agent.tmuxTarget)"
+        // With one window per agent, no zoom needed — just attach directly
+        let cmd = "exec tmux attach-session -t \(agent.tmuxTarget)"
         terminalView.startProcess(
             executable: "/bin/zsh",
             args: ["-c", cmd],
             environment: nil,
             execName: "zsh"
         )
+    }
+
+    func updateStatus(_ status: AgentStatus) {
+        label.stringValue = "\(agent.id) — \(status.rawValue)"
+        label.textColor = statusColor(for: status)
     }
 
     func terminate() {

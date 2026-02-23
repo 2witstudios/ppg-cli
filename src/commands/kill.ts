@@ -1,8 +1,7 @@
 import { readManifest, updateManifest, findAgent, getWorktree } from '../core/manifest.js';
-import { killAgent } from '../core/agent.js';
-import { getRepoRoot, removeWorktree } from '../core/worktree.js';
-import { teardownWorktreeEnv } from '../core/env.js';
-import * as tmux from '../core/tmux.js';
+import { killAgent, killAgents } from '../core/agent.js';
+import { getRepoRoot } from '../core/worktree.js';
+import { cleanupWorktree } from '../core/cleanup.js';
 import { NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { Manifest } from '../types/manifest.js';
@@ -72,15 +71,12 @@ async function killWorktreeAgents(
 
   if (!wt) throw new WorktreeNotFoundError(worktreeRef);
 
-  const killedIds: string[] = [];
+  const toKill = Object.values(wt.agents)
+    .filter((a) => ['running', 'spawning', 'waiting'].includes(a.status));
+  const killedIds = toKill.map((a) => a.id);
 
-  for (const agent of Object.values(wt.agents)) {
-    if (['running', 'spawning', 'waiting'].includes(agent.status)) {
-      info(`Killing agent ${agent.id}`);
-      await killAgent(agent);
-      killedIds.push(agent.id);
-    }
-  }
+  for (const a of toKill) info(`Killing agent ${a.id}`);
+  await killAgents(toKill);
 
   await updateManifest(projectRoot, (m) => {
     const mWt = m.worktrees[wt.id];
@@ -100,7 +96,7 @@ async function killWorktreeAgents(
   }
 
   if (options.json) {
-    output({ success: true, killed: killedIds, removed: options.remove ?? false }, true);
+    output({ success: true, killed: killedIds, removed: options.remove ? [wt.id] : [] }, true);
   } else {
     success(`Killed ${killedIds.length} agent(s) in worktree ${wt.id}`);
     if (options.remove) {
@@ -114,17 +110,19 @@ async function killAllAgents(
   options: KillOptions,
 ): Promise<void> {
   const manifest = await readManifest(projectRoot);
-  const killedIds: string[] = [];
+  const toKill: import('../types/manifest.js').AgentEntry[] = [];
 
   for (const wt of Object.values(manifest.worktrees)) {
     for (const agent of Object.values(wt.agents)) {
       if (['running', 'spawning', 'waiting'].includes(agent.status)) {
-        info(`Killing agent ${agent.id}`);
-        await killAgent(agent);
-        killedIds.push(agent.id);
+        toKill.push(agent);
       }
     }
   }
+
+  const killedIds = toKill.map((a) => a.id);
+  for (const a of toKill) info(`Killing agent ${a.id}`);
+  await killAgents(toKill);
 
   const worktreeIds = Object.keys(manifest.worktrees);
 
@@ -160,37 +158,5 @@ async function removeWorktreeCleanup(projectRoot: string, wtId: string): Promise
   const manifest = await readManifest(projectRoot);
   const wt = getWorktree(manifest, wtId);
   if (!wt) return;
-
-  // Kill tmux window
-  try {
-    await tmux.killWindow(wt.tmuxWindow);
-  } catch {
-    // Window may already be dead
-  }
-
-  // Teardown env
-  try {
-    await teardownWorktreeEnv(wt.path);
-  } catch {
-    // May already be cleaned
-  }
-
-  // Remove git worktree
-  try {
-    await removeWorktree(projectRoot, wt.path, {
-      force: true,
-      deleteBranch: true,
-      branchName: wt.branch,
-    });
-  } catch (err) {
-    warn(`Could not remove worktree: ${err instanceof Error ? err.message : err}`);
-  }
-
-  // Update manifest
-  await updateManifest(projectRoot, (m) => {
-    if (m.worktrees[wtId]) {
-      m.worktrees[wtId].status = 'cleaned';
-    }
-    return m;
-  });
+  await cleanupWorktree(projectRoot, wt);
 }

@@ -3,15 +3,17 @@ import Foundation
 class DashboardSession {
     static let shared = DashboardSession()
 
-    struct TerminalEntry {
+    struct TerminalEntry: Codable {
         let id: String
         var label: String
         let kind: Kind
         let parentWorktreeId: String?
         let workingDirectory: String
         let command: String
+        var tmuxTarget: String?
+        var sessionId: String?
 
-        enum Kind {
+        enum Kind: String, Codable {
             case agent
             case terminal
         }
@@ -21,18 +23,43 @@ class DashboardSession {
     private var terminalCounter = 0
     private var agentCounter = 0
 
+    init() {
+        loadFromDisk()
+    }
+
     @discardableResult
     func addAgent(parentWorktreeId: String?, command: String, workingDir: String) -> TerminalEntry {
         agentCounter += 1
+        let entryId = "da-\(generateId(6))"
+        let sid = UUID().uuidString.lowercased()
+
+        // Try to create a tmux window for this agent
+        let sessionName = ProjectState.shared.sessionName.isEmpty ? "ppg" : ProjectState.shared.sessionName
+        let tmuxTarget = createTmuxWindow(sessionName: sessionName, windowName: "claude-\(agentCounter)", cwd: workingDir)
+
+        if let target = tmuxTarget {
+            // Build the command with --session-id injected
+            let fullCommand: String
+            if command.contains("claude") {
+                fullCommand = "unset CLAUDECODE; \(command) --session-id \(sid)"
+            } else {
+                fullCommand = command
+            }
+            sendTmuxKeys(target: target, command: fullCommand)
+        }
+
         let entry = TerminalEntry(
-            id: "da-\(generateId(6))",
+            id: entryId,
             label: "Claude \(agentCounter)",
             kind: .agent,
             parentWorktreeId: parentWorktreeId,
             workingDirectory: workingDir,
-            command: command
+            command: command,
+            tmuxTarget: tmuxTarget,
+            sessionId: tmuxTarget != nil ? sid : nil
         )
         entries.append(entry)
+        saveToDisk()
         return entry
     }
 
@@ -45,20 +72,25 @@ class DashboardSession {
             kind: .terminal,
             parentWorktreeId: parentWorktreeId,
             workingDirectory: workingDir,
-            command: "/bin/zsh"
+            command: "/bin/zsh",
+            tmuxTarget: nil,
+            sessionId: nil
         )
         entries.append(entry)
+        saveToDisk()
         return entry
     }
 
     func rename(id: String, newLabel: String) {
         if let index = entries.firstIndex(where: { $0.id == id }) {
             entries[index].label = newLabel
+            saveToDisk()
         }
     }
 
     func remove(id: String) {
         entries.removeAll { $0.id == id }
+        saveToDisk()
     }
 
     func entriesForMaster() -> [TerminalEntry] {
@@ -77,6 +109,108 @@ class DashboardSession {
         entries.removeAll()
         terminalCounter = 0
         agentCounter = 0
+        saveToDisk()
+    }
+
+    // MARK: - Persistence
+
+    private var persistencePath: String? {
+        let root = ProjectState.shared.projectRoot
+        guard !root.isEmpty, root != "/" else { return nil }
+        let pgDir = (root as NSString).appendingPathComponent(".pg")
+        return (pgDir as NSString).appendingPathComponent("dashboard-sessions.json")
+    }
+
+    private func saveToDisk() {
+        guard let path = persistencePath else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(entries)
+            try data.write(to: URL(fileURLWithPath: path))
+        } catch {
+            // Non-fatal — entries will be lost on restart
+        }
+    }
+
+    private func loadFromDisk() {
+        guard let path = persistencePath,
+              FileManager.default.fileExists(atPath: path),
+              let data = FileManager.default.contents(atPath: path) else { return }
+        do {
+            entries = try JSONDecoder().decode([TerminalEntry].self, from: data)
+            // Restore counters
+            agentCounter = entries.filter { $0.kind == .agent }.count
+            terminalCounter = entries.filter { $0.kind == .terminal }.count
+        } catch {
+            // Corrupted file — start fresh
+            entries = []
+        }
+    }
+
+    func reloadFromDisk() {
+        entries = []
+        terminalCounter = 0
+        agentCounter = 0
+        loadFromDisk()
+    }
+
+    // MARK: - Tmux helpers
+
+    /// Run a tmux command through a login shell so Homebrew PATH is available.
+    @discardableResult
+    private func runTmux(_ args: String) -> (exitCode: Int32, stdout: String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        let cmd = """
+        if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+        [ -f ~/.zprofile ] && source ~/.zprofile; \
+        [ -f ~/.zshrc ] && source ~/.zshrc; \
+        tmux \(args)
+        """
+        task.arguments = ["-c", cmd]
+        let outPipe = Pipe()
+        task.standardOutput = outPipe
+        task.standardError = Pipe()
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return (-1, "")
+        }
+        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let stdout = String(data: outData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return (task.terminationStatus, stdout)
+    }
+
+    private func createTmuxWindow(sessionName: String, windowName: String, cwd: String) -> String? {
+        let escapedSession = shellEscape(sessionName)
+        let escapedName = shellEscape(windowName)
+        let escapedCwd = shellEscape(cwd)
+
+        // Ensure session exists
+        let hasResult = runTmux("has-session -t \(escapedSession)")
+        if hasResult.exitCode != 0 {
+            let createResult = runTmux("new-session -d -s \(escapedSession) -x 220 -y 50")
+            guard createResult.exitCode == 0 else { return nil }
+        }
+
+        // Create window
+        let result = runTmux("new-window -t \(escapedSession) -n \(escapedName) -c \(escapedCwd) -P -F '#{window_index}'")
+        guard result.exitCode == 0, !result.stdout.isEmpty else { return nil }
+        return "\(sessionName):\(result.stdout)"
+    }
+
+    func killTmuxWindow(target: String) {
+        runTmux("kill-window -t \(shellEscape(target))")
+    }
+
+    private func sendTmuxKeys(target: String, command: String) {
+        runTmux("send-keys -t \(shellEscape(target)) -l \(shellEscape(command + "\n"))")
+    }
+
+    private func shellEscape(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private func generateId(_ length: Int) -> String {

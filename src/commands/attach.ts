@@ -1,9 +1,11 @@
-import { readManifest, getWorktree, findAgent } from '../core/manifest.js';
+import { readManifest, getWorktree, findAgent, updateManifest } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
+import { getPaneInfo } from '../core/tmux.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { NotInitializedError } from '../lib/errors.js';
-import { info } from '../lib/output.js';
+import { info, success } from '../lib/output.js';
+import type { AgentEntry } from '../types/manifest.js';
 
 export async function attachCommand(target: string): Promise<void> {
   const projectRoot = await getRepoRoot();
@@ -18,17 +20,24 @@ export async function attachCommand(target: string): Promise<void> {
   // Try to resolve target as worktree ID, worktree name, or agent ID
   let tmuxTarget: string | undefined;
   let sessionName = manifest.sessionName;
+  let agent: AgentEntry | undefined;
+  let worktreeId: string | undefined;
 
   // Check worktree ID
   const wt = getWorktree(manifest, target)
     ?? Object.values(manifest.worktrees).find((w) => w.name === target);
 
   if (wt) {
+    if (!wt.tmuxWindow) {
+      throw new Error('Worktree has no tmux window. Spawn agents first with: ppg spawn --worktree ' + wt.id + ' --prompt "your task"');
+    }
     tmuxTarget = wt.tmuxWindow;
   } else {
     // Check agent ID
     const found = findAgent(manifest, target);
     if (found) {
+      agent = found.agent;
+      worktreeId = found.worktree.id;
       tmuxTarget = found.agent.tmuxTarget;
     }
   }
@@ -37,15 +46,40 @@ export async function attachCommand(target: string): Promise<void> {
     throw new Error(`Could not resolve target: ${target}. Try a worktree ID, name, or agent ID.`);
   }
 
+  // Check if the pane is dead and agent has a sessionId — auto-resume
+  if (agent?.sessionId) {
+    const paneInfo = await getPaneInfo(tmuxTarget);
+    if (!paneInfo || paneInfo.isDead) {
+      info(`Pane is dead. Resuming session ${agent.sessionId}...`);
+      await tmux.ensureSession(sessionName);
+
+      // Find the worktree path for cwd
+      const resumeWt = worktreeId ? manifest.worktrees[worktreeId] : undefined;
+      const cwd = resumeWt?.path ?? projectRoot;
+      const windowName = resumeWt?.name ?? agent.name ?? target;
+
+      const newTarget = await tmux.createWindow(sessionName, windowName, cwd);
+      await tmux.sendKeys(newTarget, `unset CLAUDECODE; claude --resume ${agent.sessionId}`);
+
+      // Update manifest with new tmux target
+      await updateManifest(projectRoot, (m) => {
+        if (worktreeId && m.worktrees[worktreeId]?.agents[agent!.id]) {
+          m.worktrees[worktreeId].agents[agent!.id].tmuxTarget = newTarget;
+          m.worktrees[worktreeId].agents[agent!.id].status = 'running';
+        }
+        return m;
+      });
+
+      tmuxTarget = newTarget;
+      success(`Resumed agent ${agent.id} in ${newTarget}`);
+    }
+  }
+
   const insideTmux = await tmux.isInsideTmux();
 
   if (insideTmux) {
-    // Switch to the window/pane within current tmux session
-    if (wt) {
-      await tmux.selectWindow(tmuxTarget);
-    } else {
-      await tmux.selectPane(tmuxTarget);
-    }
+    // Agent targets are now window targets (e.g. "ppg:3"), so use selectWindow for both
+    await tmux.selectWindow(tmuxTarget);
     info(`Switched to ${tmuxTarget}`);
   } else {
     // Open a new Terminal.app window attached to the target

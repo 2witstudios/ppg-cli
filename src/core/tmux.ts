@@ -57,9 +57,8 @@ export async function splitPane(
 }
 
 export async function sendKeys(target: string, command: string): Promise<void> {
-  // Send the command text literally, then press Enter separately
-  await execa('tmux', ['send-keys', '-t', target, '-l', command]);
-  await execa('tmux', ['send-keys', '-t', target, 'Enter']);
+  // Send command text with trailing newline in a single call
+  await execa('tmux', ['send-keys', '-t', target, '-l', command + '\n']);
 }
 
 export async function capturePane(target: string, lines?: number): Promise<string> {
@@ -136,6 +135,38 @@ export async function getPaneInfo(target: string): Promise<PaneInfo | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * List all panes in a session with a single tmux call.
+ * Returns a map keyed by pane target (session:window.pane format).
+ */
+export async function listSessionPanes(session: string): Promise<Map<string, PaneInfo>> {
+  const map = new Map<string, PaneInfo>();
+  try {
+    const result = await execa('tmux', [
+      'list-panes',
+      '-s',
+      '-t', session,
+      '-F', '#{session_name}:#{window_index}.#{pane_index}|#{pane_id}|#{pane_pid}|#{pane_current_command}|#{pane_dead}|#{pane_dead_status}',
+    ]);
+    for (const line of result.stdout.trim().split('\n').filter(Boolean)) {
+      const [target, paneId, panePid, currentCommand, dead, deadStatus] = line.split('|');
+      const info: PaneInfo = {
+        paneId,
+        panePid,
+        currentCommand,
+        isDead: dead === '1',
+        deadStatus: deadStatus ? parseInt(deadStatus, 10) : undefined,
+      };
+      // Index by multiple target formats for flexible lookup
+      map.set(target, info);
+      map.set(paneId, info);
+    }
+  } catch {
+    // Session may not exist
+  }
+  return map;
 }
 
 export async function selectPane(target: string): Promise<void> {

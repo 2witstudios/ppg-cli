@@ -36,6 +36,7 @@ nonisolated struct AgentEntryModel: Codable, Sendable {
     let completedAt: String?
     let exitCode: Int?
     let error: String?
+    let sessionId: String?
 }
 
 // MARK: - Enums
@@ -80,8 +81,9 @@ nonisolated class AgentModel: @unchecked Sendable {
     let tmuxTarget: String
     let prompt: String
     let startedAt: String
+    let sessionId: String?
 
-    init(id: String, name: String, agentType: String, status: AgentStatus, tmuxTarget: String, prompt: String, startedAt: String) {
+    init(id: String, name: String, agentType: String, status: AgentStatus, tmuxTarget: String, prompt: String, startedAt: String, sessionId: String? = nil) {
         self.id = id
         self.name = name
         self.agentType = agentType
@@ -89,6 +91,7 @@ nonisolated class AgentModel: @unchecked Sendable {
         self.tmuxTarget = tmuxTarget
         self.prompt = prompt
         self.startedAt = startedAt
+        self.sessionId = sessionId
     }
 
     convenience init(from entry: AgentEntryModel) {
@@ -99,7 +102,8 @@ nonisolated class AgentModel: @unchecked Sendable {
             status: AgentStatus(rawValue: entry.status) ?? .lost,
             tmuxTarget: entry.tmuxTarget,
             prompt: entry.prompt,
-            startedAt: entry.startedAt
+            startedAt: entry.startedAt,
+            sessionId: entry.sessionId
         )
     }
 }
@@ -157,5 +161,85 @@ nonisolated struct LaunchConfig: Sendable {
         }
 
         return LaunchConfig(manifestPath: manifestPath, sessionName: sessionName, projectName: projectName, projectRoot: projectRoot, agentCommand: agentCommand)
+    }
+}
+
+// MARK: - ProjectState
+
+extension Notification.Name {
+    static let projectDidChange = Notification.Name("PPGProjectDidChange")
+}
+
+nonisolated class ProjectState: @unchecked Sendable {
+    nonisolated(unsafe) static let shared = ProjectState()
+
+    private(set) var projectRoot: String = ""
+    private(set) var manifestPath: String = ""
+    private(set) var sessionName: String = ""
+    private(set) var projectName: String = ""
+    private(set) var agentCommand: String = "claude --dangerously-skip-permissions"
+
+    var isConfigured: Bool {
+        !projectRoot.isEmpty && projectRoot != "/"
+    }
+
+    func loadFromLaunchConfig(_ config: LaunchConfig) {
+        projectRoot = config.projectRoot
+        manifestPath = config.manifestPath
+        sessionName = config.sessionName
+        projectName = config.projectName
+        agentCommand = config.agentCommand
+    }
+
+    func switchProject(root: String) {
+        projectRoot = root
+        projectName = URL(fileURLWithPath: root).lastPathComponent
+
+        let pgDir = (root as NSString).appendingPathComponent(".pg")
+        manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
+
+        // Try to read sessionName from manifest
+        if let data = FileManager.default.contents(atPath: manifestPath),
+           let manifest = try? JSONDecoder().decode(ManifestModel.self, from: data) {
+            sessionName = manifest.sessionName
+        } else {
+            sessionName = "ppg"
+        }
+
+        RecentProjects.shared.add(root)
+
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .projectDidChange, object: nil)
+        }
+    }
+}
+
+// MARK: - RecentProjects
+
+nonisolated class RecentProjects: @unchecked Sendable {
+    nonisolated(unsafe) static let shared = RecentProjects()
+
+    private let key = "PPGRecentProjects"
+    private let maxCount = 10
+
+    var projects: [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    func add(_ path: String) {
+        var list = projects
+        list.removeAll { $0 == path }
+        list.insert(path, at: 0)
+        if list.count > maxCount {
+            list = Array(list.prefix(maxCount))
+        }
+        UserDefaults.standard.set(list, forKey: key)
+    }
+
+    func isValidProject(_ path: String) -> Bool {
+        let manifestPath = (path as NSString)
+            .appendingPathComponent(".pg")
+            .appending("/manifest.json")
+        return FileManager.default.fileExists(atPath: manifestPath)
     }
 }
