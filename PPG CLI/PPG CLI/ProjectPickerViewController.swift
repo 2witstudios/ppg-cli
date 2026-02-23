@@ -19,7 +19,7 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
 
         // Title
         let titleLabel = NSTextField(labelWithString: "Select a Project")
-        titleLabel.font = .boldSystemFont(ofSize: 20)
+        titleLabel.font = .systemFont(ofSize: 24, weight: .semibold)
         titleLabel.alignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(titleLabel)
@@ -38,7 +38,7 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
         tableView.addTableColumn(column)
         tableView.dataSource = self
         tableView.delegate = self
-        tableView.rowHeight = 44
+        tableView.rowHeight = 50
         tableView.doubleAction = #selector(tableDoubleClicked(_:))
         tableView.target = self
 
@@ -50,11 +50,11 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
         // Buttons
         openButton.target = self
         openButton.action = #selector(openOtherClicked(_:))
-        openButton.bezelStyle = .rounded
+        openButton.bezelStyle = .glass
         openButton.translatesAutoresizingMaskIntoConstraints = false
 
         let openSelectedButton = NSButton(title: "Open", target: self, action: #selector(openSelectedClicked(_:)))
-        openSelectedButton.bezelStyle = .rounded
+        openSelectedButton.bezelStyle = .glass
         openSelectedButton.keyEquivalent = "\r"
         openSelectedButton.translatesAutoresizingMaskIntoConstraints = false
 

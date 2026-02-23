@@ -80,10 +80,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         headerStack.translatesAutoresizingMaskIntoConstraints = false
 
         let headerLabel = NSTextField(labelWithString: "Project")
-        headerLabel.font = .boldSystemFont(ofSize: 12)
-        headerLabel.textColor = .secondaryLabelColor
+        headerLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        headerLabel.textColor = .tertiaryLabelColor
 
-        addButton.bezelStyle = .accessoryBarAction
+        addButton.bezelStyle = .glass
         addButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
         addButton.target = self
         addButton.action = #selector(addButtonClicked(_:))
@@ -115,14 +115,14 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         view.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            headerStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            headerStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            headerStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            headerStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            headerStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            headerStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             headerStack.heightAnchor.constraint(equalToConstant: 24),
 
             scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 4),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 

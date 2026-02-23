@@ -9,12 +9,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
+        window.titlebarAppearsTransparent = true
         window.setFrameAutosaveName("PPGMainWindow")
         window.center()
+
+        // Glass toolbar chrome strip
+        let toolbar = NSToolbar(identifier: "MainToolbar")
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
 
         projectChangeObserver = NotificationCenter.default.addObserver(
             forName: .projectDidChange,

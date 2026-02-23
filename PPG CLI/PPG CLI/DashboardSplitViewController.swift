@@ -13,6 +13,7 @@ class DashboardSplitViewController: NSSplitViewController {
         addSplitViewItem(sidebarItem)
 
         let contentItem = NSSplitViewItem(viewController: content)
+        contentItem.automaticallyAdjustsSafeAreaInsets = true
         addSplitViewItem(contentItem)
 
         sidebar.onItemSelected = { [weak self] item in

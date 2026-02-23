@@ -19,30 +19,34 @@ class TerminalPane: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func setupUI() {
-        label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+        label.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         label.textColor = statusColor(for: agent.status)
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
 
+        terminalView.wantsLayer = true
+        terminalView.layer?.cornerRadius = 8
+        terminalView.layer?.cornerCurve = .continuous
+        terminalView.layer?.masksToBounds = true
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(terminalView)
 
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: topAnchor),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 2),
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             label.trailingAnchor.constraint(equalTo: trailingAnchor),
-            label.heightAnchor.constraint(equalToConstant: 22),
+            label.heightAnchor.constraint(equalToConstant: 20),
 
-            terminalView.topAnchor.constraint(equalTo: label.bottomAnchor),
-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            terminalView.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
+            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            terminalView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
     }
 
     func startTmux() {
-        // With one window per agent, no zoom needed — just attach directly
-        let cmd = "exec tmux attach-session -t \(agent.tmuxTarget)"
+        // Hide the tmux status bar in the embedded terminal, then attach
+        let cmd = "tmux set-option -t \(agent.tmuxTarget) status off 2>/dev/null; exec tmux attach-session -t \(agent.tmuxTarget)"
         terminalView.startProcess(
             executable: "/bin/zsh",
             args: ["-c", cmd],

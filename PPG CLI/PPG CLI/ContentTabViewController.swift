@@ -38,10 +38,11 @@ class ContentTabViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        segmentedControl.segmentStyle = .texturedSquare
+        segmentedControl.segmentStyle = .automatic
         segmentedControl.target = self
         segmentedControl.action = #selector(tabClicked(_:))
         segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        segmentedControl.borderShape = .capsule
         segmentedControl.isHidden = true
         view.addSubview(segmentedControl)
 
@@ -55,14 +56,14 @@ class ContentTabViewController: NSViewController {
         view.addSubview(placeholderLabel)
 
         NSLayoutConstraint.activate([
-            segmentedControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
-            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            segmentedControl.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -8),
+            segmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
+            segmentedControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            segmentedControl.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             segmentedControl.heightAnchor.constraint(equalToConstant: 28),
 
             containerView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 4),
-            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            containerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             placeholderLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -268,10 +269,10 @@ class ContentTabViewController: NSViewController {
         termView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(termView)
         NSLayoutConstraint.activate([
-            termView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            termView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            termView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
+            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+            termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
+            termView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
         ])
         terminalViews[tab.id] = termView
         return termView

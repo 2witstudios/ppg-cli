@@ -194,6 +194,9 @@ class DashboardSession {
             let createResult = runTmux("new-session -d -s \(escapedSession) -x 220 -y 50")
             guard createResult.exitCode == 0 else { return nil }
         }
+        // Enable mouse scrolling and set generous scrollback buffer
+        runTmux("set-option -t \(escapedSession) mouse on")
+        runTmux("set-option -t \(escapedSession) history-limit 50000")
 
         // Create window
         let result = runTmux("new-window -t \(escapedSession) -n \(escapedName) -c \(escapedCwd) -P -F '#{window_index}'")
