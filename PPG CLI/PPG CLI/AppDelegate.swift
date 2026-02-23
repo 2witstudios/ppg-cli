@@ -7,15 +7,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
 
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 100, y: 100, width: 1400, height: 900)
+
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
+            contentRect: screenFrame,
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.titlebarAppearsTransparent = true
-        window.setFrameAutosaveName("PPGMainWindow")
-        window.center()
+        window.isRestorable = false
 
         // Glass toolbar chrome strip
         let toolbar = NSToolbar(identifier: "MainToolbar")
@@ -33,21 +34,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if ProjectState.shared.isConfigured {
             showDashboard()
+        } else if let lastProject = RecentProjects.shared.lastOpened,
+                  RecentProjects.shared.isValidProject(lastProject) {
+            ProjectState.shared.switchProject(root: lastProject)
+            showDashboard()
         } else {
             showProjectPicker()
         }
 
+        window.setFrame(screenFrame, display: true)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     private func showDashboard() {
+        let frame = window.frame
         window.title = "ppg — \(ProjectState.shared.projectName)"
         DashboardSession.shared.reloadFromDisk()
         window.contentViewController = DashboardSplitViewController()
+        window.setFrame(frame, display: true)
     }
 
     private func showProjectPicker() {
+        let frame = window.frame
         window.title = "ppg — Select Project"
         let picker = ProjectPickerViewController()
         picker.onProjectSelected = { [weak self] root in
@@ -55,6 +64,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.showDashboard()
         }
         window.contentViewController = picker
+        window.setFrame(frame, display: true)
     }
 
     private func onProjectChanged() {
@@ -179,6 +189,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        return false
     }
 
     deinit {

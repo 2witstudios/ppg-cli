@@ -171,7 +171,7 @@ extension Notification.Name {
 }
 
 nonisolated class ProjectState: @unchecked Sendable {
-    nonisolated(unsafe) static let shared = ProjectState()
+    static let shared = ProjectState()
 
     private(set) var projectRoot: String = ""
     private(set) var manifestPath: String = ""
@@ -217,13 +217,18 @@ nonisolated class ProjectState: @unchecked Sendable {
 // MARK: - RecentProjects
 
 nonisolated class RecentProjects: @unchecked Sendable {
-    nonisolated(unsafe) static let shared = RecentProjects()
+    static let shared = RecentProjects()
 
     private let key = "PPGRecentProjects"
+    private let lastOpenedKey = "PPGLastOpenedProject"
     private let maxCount = 10
 
     var projects: [String] {
         UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    var lastOpened: String? {
+        UserDefaults.standard.string(forKey: lastOpenedKey)
     }
 
     func add(_ path: String) {
@@ -234,6 +239,7 @@ nonisolated class RecentProjects: @unchecked Sendable {
             list = Array(list.prefix(maxCount))
         }
         UserDefaults.standard.set(list, forKey: key)
+        UserDefaults.standard.set(path, forKey: lastOpenedKey)
     }
 
     func isValidProject(_ path: String) -> Bool {
