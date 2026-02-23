@@ -1,0 +1,41 @@
+sessionName: pg
+defaultAgent: claude
+agents:
+  claude:
+    name: claude
+    command: claude
+    promptFlag: -p
+    interactive: true
+    resultInstructions: >-
+      When you have completed the task, write a summary of what you did and any
+      important notes
+
+      to the result file at: {{RESULT_FILE}}
+
+      Use this exact format:
+
+
+      # Result: {{AGENT_ID}}
+
+
+      ## Summary
+
+      <what you accomplished>
+
+
+      ## Changes
+
+      <list of files changed>
+
+
+      ## Notes
+
+      <any important observations>
+worktreeBase: .worktrees
+templateDir: .pg/templates
+resultDir: .pg/results
+logDir: .pg/logs
+envFiles:
+  - .env
+  - .env.local
+symlinkNodeModules: true

@@ -1,0 +1,86 @@
+import fs from 'node:fs/promises';
+import { manifestPath } from '../lib/paths.js';
+import { getLockfile, getWriteFileAtomic } from '../lib/cjs-compat.js';
+import { ManifestLockError } from '../lib/errors.js';
+import type { Manifest, WorktreeEntry, AgentEntry } from '../types/manifest.js';
+
+export function createEmptyManifest(projectRoot: string, sessionName: string): Manifest {
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    projectRoot,
+    sessionName,
+    worktrees: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export async function readManifest(projectRoot: string): Promise<Manifest> {
+  const mPath = manifestPath(projectRoot);
+  const raw = await fs.readFile(mPath, 'utf-8');
+  return JSON.parse(raw) as Manifest;
+}
+
+export async function writeManifest(projectRoot: string, manifest: Manifest): Promise<void> {
+  const writeFileAtomic = await getWriteFileAtomic();
+  const mPath = manifestPath(projectRoot);
+  manifest.updatedAt = new Date().toISOString();
+  await writeFileAtomic(mPath, JSON.stringify(manifest, null, 2) + '\n');
+}
+
+export async function updateManifest(
+  projectRoot: string,
+  updater: (manifest: Manifest) => Manifest | Promise<Manifest>,
+): Promise<Manifest> {
+  const lockfile = await getLockfile();
+  const mPath = manifestPath(projectRoot);
+  let release: (() => Promise<void>) | undefined;
+
+  try {
+    release = await lockfile.lock(mPath, {
+      stale: 10_000,
+      retries: {
+        retries: 5,
+        minTimeout: 100,
+        maxTimeout: 1000,
+      },
+    });
+  } catch {
+    throw new ManifestLockError();
+  }
+
+  try {
+    const manifest = await readManifest(projectRoot);
+    const updated = await updater(manifest);
+    await writeManifest(projectRoot, updated);
+    return updated;
+  } finally {
+    if (release) {
+      await release();
+    }
+  }
+}
+
+export function getWorktree(manifest: Manifest, id: string): WorktreeEntry | undefined {
+  return manifest.worktrees[id];
+}
+
+export function findWorktreeByName(manifest: Manifest, name: string): WorktreeEntry | undefined {
+  return Object.values(manifest.worktrees).find(
+    (wt) => wt.name === name || wt.branch === name,
+  );
+}
+
+export function findAgent(
+  manifest: Manifest,
+  agentId: string,
+): { worktree: WorktreeEntry; agent: AgentEntry } | undefined {
+  for (const wt of Object.values(manifest.worktrees)) {
+    const agent = wt.agents[agentId];
+    if (agent) {
+      return { worktree: wt, agent };
+    }
+  }
+  return undefined;
+}

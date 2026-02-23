@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.worktrees/
+
+# Point Guard
+.pg/results/
+.pg/logs/
+.pg/manifest.json
+.pg/prompts/
