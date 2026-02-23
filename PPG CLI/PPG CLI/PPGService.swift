@@ -3,12 +3,16 @@ import Foundation
 nonisolated class PPGService: @unchecked Sendable {
     static let shared = PPGService()
 
-    var manifestPath: String { ProjectState.shared.manifestPath }
-
-    func readManifest() -> ManifestModel? {
-        guard !manifestPath.isEmpty else { return nil }
-        guard let data = FileManager.default.contents(atPath: manifestPath) else { return nil }
+    /// Read manifest from the given path. Thread-safe: does not access shared mutable state.
+    func readManifest(at path: String) -> ManifestModel? {
+        guard !path.isEmpty else { return nil }
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
         return try? JSONDecoder().decode(ManifestModel.self, from: data)
+    }
+
+    /// Convenience: read manifest from ProjectState. Only call from main thread.
+    func readManifest() -> ManifestModel? {
+        readManifest(at: ProjectState.shared.manifestPath)
     }
 
     struct CommandResult {
@@ -24,7 +28,7 @@ nonisolated class PPGService: @unchecked Sendable {
         if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
         [ -f ~/.zprofile ] && source ~/.zprofile; \
         [ -f ~/.zshrc ] && source ~/.zshrc; \
-        cd '\(projectRoot.replacingOccurrences(of: "'", with: "'\\''"))' && ppg \(args)
+        cd \(shellEscape(projectRoot)) && ppg \(args)
         """
         task.arguments = ["-c", cmd]
 
@@ -49,8 +53,14 @@ nonisolated class PPGService: @unchecked Sendable {
         )
     }
 
+    /// Convenience: refresh using ProjectState. Only call from main thread.
     func refreshStatus() -> [WorktreeModel] {
-        guard let manifest = readManifest() else { return [] }
+        refreshStatus(manifestPath: ProjectState.shared.manifestPath)
+    }
+
+    /// Refresh status using the given manifest path. Thread-safe.
+    func refreshStatus(manifestPath: String) -> [WorktreeModel] {
+        guard let manifest = readManifest(at: manifestPath) else { return [] }
 
         return manifest.worktrees.values
             .filter { $0.status != "cleaned" && $0.status != "merged" }

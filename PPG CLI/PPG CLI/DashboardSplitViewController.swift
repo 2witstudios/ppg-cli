@@ -78,7 +78,7 @@ class DashboardSplitViewController: NSSplitViewController {
             return manifestTabs + dashTabs
 
         case .agent(let ag):
-            if let wt = sidebar.worktrees.first(where: { $0.agents.contains(where: { $0.id == ag.id }) }) {
+            if let wt = sidebar.worktrees.first(where: { $0.agents.contains(where: { a in a.id == ag.id }) }) {
                 let manifestTabs = groupedAgentTabs(wt.agents)
                 let dashTabs = DashboardSession.shared.entriesForWorktree(wt.id).map { TabEntry.sessionEntry($0) }
                 return manifestTabs + dashTabs
@@ -207,8 +207,7 @@ class DashboardSplitViewController: NSSplitViewController {
         guard !projectRoot.isEmpty else { return }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let escapedName = name.replacingOccurrences(of: "'", with: "'\\''")
-            let result = PPGService.shared.runPPGCommand("worktree create --name '\(escapedName)' --json", projectRoot: projectRoot)
+            let result = PPGService.shared.runPPGCommand("worktree create --name \(shellEscape(name)) --json", projectRoot: projectRoot)
 
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -261,7 +260,7 @@ class DashboardSplitViewController: NSSplitViewController {
 
         // Use ppg kill to properly terminate the agent
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = PPGService.shared.runPPGCommand("kill --agent \(agentId) --json", projectRoot: projectRoot)
+            let result = PPGService.shared.runPPGCommand("kill --agent \(shellEscape(agentId)) --json", projectRoot: projectRoot)
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if result.exitCode != 0 {

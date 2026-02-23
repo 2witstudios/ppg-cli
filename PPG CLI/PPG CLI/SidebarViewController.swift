@@ -140,8 +140,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     }
 
     func refresh() {
+        // Capture shared state on main thread before dispatching to background
+        let manifestPath = ProjectState.shared.manifestPath
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let newWorktrees = PPGService.shared.refreshStatus()
+            let newWorktrees = PPGService.shared.refreshStatus(manifestPath: manifestPath)
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.selectedItemId = self.currentSelectedId()

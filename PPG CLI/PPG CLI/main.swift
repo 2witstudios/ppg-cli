@@ -6,5 +6,7 @@ ProjectState.shared.loadFromLaunchConfig(config)
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
-app.delegate = delegate
+MainActor.assumeIsolated {
+    app.delegate = delegate
+}
 app.run()

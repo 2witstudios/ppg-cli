@@ -288,9 +288,7 @@ class ContentTabViewController: NSViewController {
         }
     }
 
-    private func shellEscape(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
-    }
+    // shellEscape moved to ShellUtils.swift
 
     @objc private func tabClicked(_ sender: NSSegmentedControl) {
         selectTab(at: sender.selectedSegment)

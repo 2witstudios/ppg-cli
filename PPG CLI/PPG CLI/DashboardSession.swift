@@ -212,9 +212,7 @@ class DashboardSession {
         runTmux("send-keys -t \(shellEscape(target)) -l \(shellEscape(command + "\n"))")
     }
 
-    private func shellEscape(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
-    }
+    // shellEscape moved to ShellUtils.swift
 
     private func generateId(_ length: Int) -> String {
         let chars = "abcdefghijklmnopqrstuvwxyz0123456789"

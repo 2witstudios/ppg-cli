@@ -46,7 +46,8 @@ class TerminalPane: NSView {
 
     func startTmux() {
         // Hide the tmux status bar in the embedded terminal, then attach
-        let cmd = "tmux set-option -t \(agent.tmuxTarget) status off 2>/dev/null; exec tmux attach-session -t \(agent.tmuxTarget)"
+        let escaped = shellEscape(agent.tmuxTarget)
+        let cmd = "tmux set-option -t \(escaped) status off 2>/dev/null; exec tmux attach-session -t \(escaped)"
         terminalView.startProcess(
             executable: "/bin/zsh",
             args: ["-c", cmd],
