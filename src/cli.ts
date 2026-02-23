@@ -119,6 +119,15 @@ program
     await listCommand(type, options);
   });
 
+program
+  .command('ui')
+  .alias('dashboard')
+  .description('Open the native dashboard')
+  .action(async () => {
+    const { uiCommand } = await import('./commands/ui.js');
+    await uiCommand();
+  });
+
 // Error handling
 program.exitOverride();
 
