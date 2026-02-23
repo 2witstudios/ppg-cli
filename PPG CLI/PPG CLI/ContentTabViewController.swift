@@ -249,7 +249,7 @@ class ContentTabViewController: NSViewController {
                 termView = pane
             } else {
                 // Local process fallback (terminals without tmux)
-                let localTerm = LocalProcessTerminalView(frame: containerView.bounds)
+                let localTerm = ScrollableTerminalView(frame: containerView.bounds)
                 let cmd = """
                 if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
                 [ -f ~/.zprofile ] && source ~/.zprofile; \
@@ -281,6 +281,8 @@ class ContentTabViewController: NSViewController {
     private func terminateTerminal(_ view: NSView) {
         if let pane = view as? TerminalPane {
             pane.terminate()
+        } else if let scrollTerm = view as? ScrollableTerminalView {
+            scrollTerm.process?.terminate()
         } else if let localTerm = view as? LocalProcessTerminalView {
             localTerm.process?.terminate()
         }

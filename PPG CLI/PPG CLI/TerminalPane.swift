@@ -5,13 +5,13 @@ class TerminalPane: NSView {
     let agent: AgentModel
     let sessionName: String
     let label: NSTextField
-    let terminalView: LocalProcessTerminalView
+    let terminalView: ScrollableTerminalView
 
     init(agent: AgentModel, sessionName: String) {
         self.agent = agent
         self.sessionName = sessionName
         self.label = NSTextField(labelWithString: "\(agent.id) — \(agent.status.rawValue)")
-        self.terminalView = LocalProcessTerminalView(frame: .zero)
+        self.terminalView = ScrollableTerminalView(frame: .zero)
         super.init(frame: .zero)
         setupUI()
     }
