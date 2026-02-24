@@ -164,6 +164,8 @@ class PaneGridController: NSViewController {
     private(set) var cellViews: [String: PaneCellView] = [:]
     /// Caches: re-usable NSSplitViews keyed by a structural path
     private var splitViews: [String: NSSplitView] = [:]
+    /// Local event monitor for tracking focus via mouse clicks inside terminal views
+    private var mouseMonitor: Any?
 
     /// Callbacks
     var onNewAgent: (() -> Void)?
@@ -200,6 +202,36 @@ class PaneGridController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         rebuild()
+        installMouseMonitor()
+    }
+
+    deinit {
+        if let monitor = mouseMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    private func installMouseMonitor() {
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            self?.handleMouseDown(event)
+            return event
+        }
+    }
+
+    private func handleMouseDown(_ event: NSEvent) {
+        guard let window = view.window, event.window === window else { return }
+        let locationInView = view.convert(event.locationInWindow, from: nil)
+        guard view.bounds.contains(locationInView) else { return }
+
+        for (leafId, cell) in cellViews {
+            let locationInCell = cell.convert(event.locationInWindow, from: nil)
+            if cell.bounds.contains(locationInCell) {
+                if leafId != focusedLeafId {
+                    setFocus(leafId)
+                }
+                return
+            }
+        }
     }
 
     // MARK: - Public API
@@ -343,8 +375,8 @@ class PaneGridController: NSViewController {
         guard root.findLeaf(id: leafId) != nil else { return }
         let oldFocused = focusedLeafId
         focusedLeafId = leafId
-        cellViews[oldFocused]?.updateFocusBorder(focused: false)
-        cellViews[leafId]?.updateFocusBorder(focused: true)
+        cellViews[oldFocused]?.updateFocusIndicator(focused: false)
+        cellViews[leafId]?.updateFocusIndicator(focused: true)
         // Make terminal first responder
         cellViews[leafId]?.makeTerminalFirstResponder()
     }
@@ -415,7 +447,7 @@ class PaneGridController: NSViewController {
 
         // Update focus borders
         for (id, cell) in cellViews {
-            cell.updateFocusBorder(focused: id == focusedLeafId)
+            cell.updateFocusIndicator(focused: id == focusedLeafId)
         }
     }
 
@@ -526,9 +558,9 @@ class PaneCellView: NSView {
     var onSplitVertical: (() -> Void)?
     var onClose: (() -> Void)?
 
-    private let focusBorderLayer = CALayer()
-    private static let focusBorderWidth: CGFloat = 2
-    private static let focusBorderColor = NSColor.controlAccentColor
+    private let focusBarLayer = CALayer()
+    private static let focusBarHeight: CGFloat = 2
+    private static let focusBarColor = NSColor.controlAccentColor
 
     private var hoverOverlay: PaneHoverOverlay?
     private var trackingArea: NSTrackingArea?
@@ -541,12 +573,11 @@ class PaneCellView: NSView {
         layer?.backgroundColor = terminalBackground.cgColor
         translatesAutoresizingMaskIntoConstraints = false
 
-        // Focus border layer — zPosition keeps it above terminal subviews
-        focusBorderLayer.borderWidth = 0
-        focusBorderLayer.borderColor = Self.focusBorderColor.cgColor
-        focusBorderLayer.cornerRadius = 2
-        focusBorderLayer.zPosition = 1000
-        layer?.addSublayer(focusBorderLayer)
+        // Focus indicator — thin accent bar at top edge
+        focusBarLayer.backgroundColor = Self.focusBarColor.cgColor
+        focusBarLayer.isHidden = true
+        focusBarLayer.zPosition = 1000
+        layer?.addSublayer(focusBarLayer)
     }
 
     required init?(coder: NSCoder) {
@@ -555,7 +586,7 @@ class PaneCellView: NSView {
 
     override func layout() {
         super.layout()
-        focusBorderLayer.frame = bounds
+        focusBarLayer.frame = CGRect(x: 0, y: bounds.height - Self.focusBarHeight, width: bounds.width, height: Self.focusBarHeight)
         hoverOverlay?.updatePosition(in: bounds)
     }
 
@@ -618,8 +649,29 @@ class PaneCellView: NSView {
         super.mouseDown(with: event)
     }
 
-    func updateFocusBorder(focused: Bool) {
-        focusBorderLayer.borderWidth = focused ? Self.focusBorderWidth : 0
+    func updateFocusIndicator(focused: Bool) {
+        if focused {
+            focusBarLayer.isHidden = false
+            focusBarLayer.opacity = 0
+            let anim = CABasicAnimation(keyPath: "opacity")
+            anim.fromValue = 0
+            anim.toValue = 1
+            anim.duration = 0.15
+            focusBarLayer.add(anim, forKey: "fadeIn")
+            focusBarLayer.opacity = 1
+        } else {
+            let anim = CABasicAnimation(keyPath: "opacity")
+            anim.fromValue = 1
+            anim.toValue = 0
+            anim.duration = 0.15
+            focusBarLayer.add(anim, forKey: "fadeOut")
+            focusBarLayer.opacity = 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                if self?.focusBarLayer.opacity == 0 {
+                    self?.focusBarLayer.isHidden = true
+                }
+            }
+        }
     }
 
     func makeTerminalFirstResponder() {
