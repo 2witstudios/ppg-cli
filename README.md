@@ -1,5 +1,9 @@
 # ppg — Pure Point Guard
 
+[![CI](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/ppg-cli.svg)](https://www.npmjs.com/package/ppg-cli)
+[![license](https://img.shields.io/npm/l/ppg-cli.svg)](https://github.com/2witstudios/ppg-cli/blob/main/LICENSE)
+
 Local orchestration runtime for parallel CLI coding agents.
 
 ppg spawns multiple AI coding agents in isolated git worktrees, each in its own tmux pane, and gives you a single control plane to monitor, aggregate, and merge their work.
@@ -83,6 +87,11 @@ your-project/
 
 Initialize ppg in the current git repository. Creates `.pg/` directory with default config and a sample template.
 
+```bash
+ppg init
+ppg init --json
+```
+
 ### `ppg spawn`
 
 Spawn a new worktree with agent(s), or add agents to an existing worktree.
@@ -99,6 +108,9 @@ ppg spawn --name add-tests --template test-writer --var SCOPE=auth --var STYLE=u
 
 # Multiple agents in one worktree
 ppg spawn --name big-task --prompt "Implement feature X" --count 2
+
+# Split panes in one window
+ppg spawn --name big-task --prompt "Implement feature X" --count 2 --split
 
 # Add agent to existing worktree
 ppg spawn --worktree wt-abc123 --prompt "Review the changes"
@@ -121,6 +133,7 @@ ppg spawn --name hotfix --prompt "Fix critical bug" --base release/v2
 | `-b, --base <branch>` | Base branch for the worktree |
 | `-w, --worktree <id>` | Add agent to existing worktree instead of creating new |
 | `-c, --count <n>` | Number of agents to spawn (default: 1) |
+| `--split` | Put all agents in one window as split panes |
 | `--no-open` | Don't open a Terminal window |
 | `--json` | JSON output |
 
@@ -189,9 +202,74 @@ ppg merge wt-abc123 --no-cleanup  # Keep worktree after merge
 ppg merge wt-abc123 --force       # Merge even if agents aren't done
 ```
 
+### `ppg diff`
+
+Show changes made in a worktree branch relative to its base.
+
+```bash
+ppg diff wt-abc123                 # Full diff
+ppg diff wt-abc123 --stat          # Diffstat summary
+ppg diff wt-abc123 --name-only     # Changed file names only
+```
+
+### `ppg restart`
+
+Restart a failed or killed agent in the same worktree.
+
+```bash
+ppg restart ag-xxxxxxxx                        # Restart with original prompt
+ppg restart ag-xxxxxxxx --prompt "Try again"   # Override the prompt
+ppg restart ag-xxxxxxxx --agent codex          # Override the agent type
+```
+
+### `ppg send`
+
+Send text or keystrokes to an agent's tmux pane.
+
+```bash
+ppg send ag-xxxxxxxx "yes"          # Send text + Enter
+ppg send ag-xxxxxxxx "y" --no-enter # Send text without Enter
+ppg send ag-xxxxxxxx "C-c" --keys   # Send raw tmux key names
+```
+
+### `ppg wait`
+
+Wait for agents to reach a terminal state (completed, failed, killed, lost).
+
+```bash
+ppg wait wt-abc123                    # Wait for all agents in worktree
+ppg wait --all                        # Wait for all agents everywhere
+ppg wait --all --timeout 300          # Timeout after 5 minutes
+ppg wait --all --interval 10          # Poll every 10 seconds
+```
+
+### `ppg clean`
+
+Remove worktrees in terminal states (merged, cleaned, failed).
+
+```bash
+ppg clean                    # Clean merged/cleaned worktrees
+ppg clean --all              # Also clean failed worktrees
+ppg clean --dry-run          # Preview what would be cleaned
+ppg clean --prune            # Also run git worktree prune
+```
+
+### `ppg worktree create`
+
+Create a standalone worktree without spawning any agents.
+
+```bash
+ppg worktree create --name my-branch
+ppg worktree create --name my-branch --base develop
+```
+
 ### `ppg list templates`
 
-List available prompt templates.
+List available prompt templates from `.pg/templates/`.
+
+### `ppg ui`
+
+Open the native macOS dashboard app (alias: `ppg dashboard`).
 
 ## Configuration
 
@@ -284,13 +362,13 @@ Write comprehensive tests for the {{SCOPE}} module.
 ppg spawn --name auth-tests --template test-writer --var SCOPE=auth --var FRAMEWORK=vitest
 ```
 
-## Agent Status Lifecycle
+## Agent Lifecycle
 
 ```
-spawning → running → completed
-                   → failed
-                   → killed (via ppg kill)
-                   → lost (tmux pane died unexpectedly)
+spawning → running → completed   (result file written)
+                   → failed      (non-zero exit or shell prompt visible)
+                   → killed      (via ppg kill)
+                   → lost        (tmux pane died unexpectedly)
 ```
 
 Status is determined by checking (in order):
@@ -303,8 +381,52 @@ Status is determined by checking (in order):
 
 ## Conductor Mode
 
-ppg is designed to be driven by a meta-agent (a "conductor"). See `CONDUCTOR.md` for instructions you can give to a Claude Code session to orchestrate parallel work using ppg. The conductor plans tasks, spawns agents, polls status, collects results, and merges branches — all programmatically via `--json` output.
+ppg is designed to be driven programmatically by a meta-agent (a "conductor"). All orchestration commands (`spawn`, `status`, `kill`, `wait`, `aggregate`, `merge`) support `--json` for machine-readable output.
+
+**Conductor workflow:**
+
+```bash
+# 1. Plan — break the task into independent units
+# 2. Spawn agents
+ppg spawn --name task-1 --prompt "Do X" --json
+ppg spawn --name task-2 --prompt "Do Y" --json
+
+# 3. Poll for completion
+ppg status --json   # check for status: "completed" or "failed"
+
+# 4. Wait for all agents
+ppg wait --all --json
+
+# 5. Aggregate results
+ppg aggregate --all --json
+
+# 6. Merge completed work
+ppg merge wt-xxxxxx --json
+```
+
+Key principles:
+- Always use `--json` for machine-readable output
+- Poll status every 5 seconds or use `ppg wait`
+- One concern per worktree for clean merges
+- Use `ppg aggregate` to collect and review results before merging
+
+## Architecture
+
+```
+src/
+├── cli.ts              # Entry point — registers commands with Commander.js
+├── commands/           # Command implementations
+├── core/               # Domain logic (manifest, agent, worktree, tmux, terminal, config)
+├── lib/                # Utilities (paths, errors, id, output, shell)
+└── types/              # Type definitions
+```
+
+Built with TypeScript (strict, ES2022, ESM-only), Commander.js for CLI framework, and tmux + git worktrees as foundational abstractions. See [CONTRIBUTING.md](CONTRIBUTING.md) for development details.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and code conventions.
 
 ## License
 
-MIT
+[MIT](LICENSE)

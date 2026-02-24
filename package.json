@@ -7,7 +7,8 @@
     "ppg": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsup",
@@ -16,14 +17,29 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
+  "author": "2witstudios",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2witstudios/ppg-cli.git"
+  },
+  "homepage": "https://github.com/2witstudios/ppg-cli#readme",
+  "bugs": {
+    "url": "https://github.com/2witstudios/ppg-cli/issues"
+  },
   "keywords": [
     "cli",
     "agent",
+    "ai",
     "orchestration",
     "tmux",
     "worktree",
     "parallel",
-    "claude"
+    "claude",
+    "codex",
+    "coding-agent",
+    "git-worktree",
+    "automation",
+    "conductor"
   ],
   "license": "MIT",
   "dependencies": {
