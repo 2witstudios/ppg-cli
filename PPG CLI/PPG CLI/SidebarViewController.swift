@@ -294,14 +294,15 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private func startRefreshTimer() {
         refresh()
         syncManifestWatchers()
-        // Safety poll every 10s in case FSEvents misses a write
-        safetyTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
+        // Safety poll every 5s in case FSEvents misses a write
+        safetyTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.refresh()
             self?.syncManifestWatchers()
         }
     }
 
     /// Ensure we have a file watcher for every open project's manifest, and remove stale ones.
+    /// Also retries any watchers that failed to open their file (e.g. manifest didn't exist yet).
     private func syncManifestWatchers() {
         let currentRoots = Set(OpenProjects.shared.projects.map(\.projectRoot))
         let watchedRoots = Set(manifestWatchers.keys)
@@ -320,6 +321,11 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
                 self?.scheduleDebounceRefresh()
             }
             manifestWatchers[root] = watcher
+        }
+
+        // Retry watchers that failed to open (manifest didn't exist at creation time)
+        for (_, watcher) in manifestWatchers where !watcher.isWatching {
+            watcher.retry()
         }
     }
 
@@ -1017,11 +1023,15 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
 /// Watches a single file for .write events using GCD's DispatchSource (FSEvents under the hood).
 /// Calls `onChange` on the main queue whenever the file is modified.
+/// All state mutations must happen on the main thread.
 private class ManifestWatcher {
     private var source: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
     private let path: String
     private let onChange: () -> Void
+
+    /// Whether the watcher has an active file descriptor and dispatch source.
+    var isWatching: Bool { source != nil }
 
     init(path: String, onChange: @escaping () -> Void) {
         self.path = path
@@ -1029,8 +1039,16 @@ private class ManifestWatcher {
         startWatching()
     }
 
+    /// Re-attempt watching if the file didn't exist at creation time.
+    func retry() {
+        guard source == nil else { return }
+        startWatching()
+    }
+
     private func startWatching() {
-        // Open a file descriptor for monitoring (read-only, no follow on symlinks)
+        // Tear down any existing watcher to prevent fd leak
+        if source != nil { stopSource() }
+
         fileDescriptor = open(path, O_EVTONLY)
         guard fileDescriptor >= 0 else { return }
 
@@ -1044,14 +1062,10 @@ private class ManifestWatcher {
             guard let self = self else { return }
             let flags = source.data
             if flags.contains(.delete) || flags.contains(.rename) {
-                // File was replaced (atomic write) — re-open the watcher
-                self.stopSource()
-                // Small delay to let the new file settle
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                // File was replaced (atomic write) — re-open on main thread
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     self?.startWatching()
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onChange()
-                    }
+                    self?.onChange()
                 }
             } else {
                 DispatchQueue.main.async { [weak self] in
