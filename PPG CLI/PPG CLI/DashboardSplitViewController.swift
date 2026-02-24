@@ -321,23 +321,52 @@ class DashboardSplitViewController: NSSplitViewController {
         return collectLeafEntryIds(from: children[0]) + collectLeafEntryIds(from: children[1])
     }
 
+    /// Persist the current grid layout to the dashboard session on disk.
+    private func persistGridLayout() {
+        guard let grid = content.paneGrid, let ownerId = content.activeGridOwnerId else { return }
+        let layout = grid.root.toLayoutNode()
+        if let ctx = projectContextForGridOwner(ownerId) {
+            ctx.dashboardSession.saveGridLayout(ownerEntryId: ownerId, layout: layout)
+        }
+    }
+
+    /// Find the project context that owns an entry by ID.
+    private func projectContextForGridOwner(_ entryId: String) -> ProjectContext? {
+        for projectNode in sidebar.projectNodes {
+            guard case .project(let ctx) = projectNode.item else { continue }
+            // Check dashboard session entries
+            if ctx.dashboardSession.entry(byId: entryId) != nil { return ctx }
+            // Check manifest agents
+            let worktrees = sidebar.worktrees(for: ctx)
+            for wt in worktrees {
+                if wt.agents.contains(where: { $0.id == entryId }) { return ctx }
+            }
+            // Check if this entry has grid children in this project
+            if !ctx.dashboardSession.entriesForGrid(ownerEntryId: entryId).isEmpty { return ctx }
+        }
+        return sidebar.selectedProjectContext()
+    }
+
     // MARK: - Pane Grid Actions
 
     func splitPaneBelow() {
         guard content.currentEntryId != nil || content.isGridMode else { return }
         wireGridCallbacks()
         content.splitPaneBelow()
+        persistGridLayout()
     }
 
     func splitPaneRight() {
         guard content.currentEntryId != nil || content.isGridMode else { return }
         wireGridCallbacks()
         content.splitPaneRight()
+        persistGridLayout()
     }
 
     func closeFocusedPane() {
         guard content.isGridMode else { return }
         _ = content.closeFocusedPane()
+        persistGridLayout()
     }
 
     func movePaneFocus(direction: SplitDirection, forward: Bool) {
@@ -378,6 +407,7 @@ class DashboardSplitViewController: NSSplitViewController {
             guard let self = self, let grid = self.content.paneGrid else { return }
             grid.setFocus(leafId)
             grid.splitFocusedPane(direction: direction)
+            self.persistGridLayout()
         }
 
         grid.onClosePane = { [weak self] leafId in
@@ -387,6 +417,7 @@ class DashboardSplitViewController: NSSplitViewController {
                 self.content.exitGridMode()
             } else {
                 _ = grid.closeFocusedPane()
+                self.persistGridLayout()
             }
         }
     }
@@ -404,6 +435,7 @@ class DashboardSplitViewController: NSSplitViewController {
         // Mark as grid-owned so it persists but doesn't appear in the sidebar.
         project.dashboardSession.setGridOwner(entryId: entry.id, gridOwnerEntryId: gridOwnerId)
         content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
+        persistGridLayout()
     }
 
     /// Add terminal and fill the focused grid pane.
@@ -417,6 +449,7 @@ class DashboardSplitViewController: NSSplitViewController {
         // Mark as grid-owned so it persists but doesn't appear in the sidebar.
         project.dashboardSession.setGridOwner(entryId: entry.id, gridOwnerEntryId: gridOwnerId)
         content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
+        persistGridLayout()
     }
 
     // MARK: - Home Dashboard
