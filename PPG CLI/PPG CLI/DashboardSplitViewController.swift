@@ -76,6 +76,15 @@ class DashboardSplitViewController: NSSplitViewController {
             guard let delegate = NSApp.delegate as? AppDelegate else { return }
             delegate.openProject()
         }
+
+        sidebar.onDashboardClicked = { [weak self] in
+            self?.showHomeDashboard()
+        }
+
+        // Auto-show dashboard on launch
+        DispatchQueue.main.async { [weak self] in
+            self?.showHomeDashboard()
+        }
     }
 
     private func showSettings() {
@@ -180,6 +189,14 @@ class DashboardSplitViewController: NSSplitViewController {
         content.removeEntry(byId: entryId)
     }
 
+    // MARK: - Home Dashboard
+
+    func showHomeDashboard() {
+        let projects = OpenProjects.shared.projects
+        content.showHomeDashboard(projects: projects, worktreesByProject: sidebar.projectWorktrees)
+        view.window?.title = "ppg"
+    }
+
     // MARK: - Selection & Refresh
 
     private func handleSelection(_ item: SidebarItem) {
@@ -225,9 +242,7 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     private func currentBranch(at path: String) -> String {
-        let result = PPGService.shared.runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], cwd: path)
-        let branch = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return branch.isEmpty ? "main" : branch
+        PPGService.shared.currentBranch(at: path)
     }
 
     private func updateWindowTitle(for item: SidebarItem) {
@@ -246,6 +261,15 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     private func handleRefresh(_ currentItem: SidebarItem?) {
+        // If the home dashboard is visible, refresh it
+        if content.isShowingHomeDashboard {
+            let projects = OpenProjects.shared.projects
+            content.refreshHomeDashboard(projects: projects, worktreesByProject: sidebar.projectWorktrees)
+            let validIds = collectAllTerminalIds()
+            content.clearStaleViews(validIds: validIds)
+            return
+        }
+
         guard let item = currentItem else { return }
 
         // If a project or worktree is selected and its detail view is showing, refresh the diff

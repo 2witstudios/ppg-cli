@@ -70,8 +70,11 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onDataRefreshed: ((SidebarItem?) -> Void)?
     var onSettingsClicked: (() -> Void)?
     var onAddProject: (() -> Void)?
+    var onDashboardClicked: (() -> Void)?
 
     private var refreshTimer: Timer?
+    private(set) var isDashboardSelected = false
+    private var dashboardButton: NSButton!
     var projectNodes: [SidebarNode] = []
     private var selectedItemId: String?
     private var suppressSelectionCallback = false
@@ -106,6 +109,44 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         outlineView.backgroundColor = .clear
         view.addSubview(scrollView)
+
+        // Dashboard button bar
+        let dashboardBar = NSView()
+        dashboardBar.translatesAutoresizingMaskIntoConstraints = false
+
+        dashboardButton = NSButton()
+        dashboardButton.bezelStyle = .accessoryBarAction
+        dashboardButton.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Dashboard")
+        dashboardButton.title = "Dashboard"
+        dashboardButton.imagePosition = .imageLeading
+        dashboardButton.font = .systemFont(ofSize: 12)
+        dashboardButton.isBordered = false
+        dashboardButton.contentTintColor = terminalForeground
+        dashboardButton.target = self
+        dashboardButton.action = #selector(dashboardButtonClicked)
+        dashboardButton.translatesAutoresizingMaskIntoConstraints = false
+        dashboardBar.addSubview(dashboardButton)
+
+        let dashSeparator = NSBox()
+        dashSeparator.boxType = .separator
+        dashSeparator.translatesAutoresizingMaskIntoConstraints = false
+        dashboardBar.addSubview(dashSeparator)
+
+        view.addSubview(dashboardBar)
+
+        NSLayoutConstraint.activate([
+            dashboardBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            dashboardBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            dashboardBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            dashboardBar.heightAnchor.constraint(equalToConstant: 30),
+
+            dashboardButton.leadingAnchor.constraint(equalTo: dashboardBar.leadingAnchor, constant: 8),
+            dashboardButton.centerYAnchor.constraint(equalTo: dashboardBar.centerYAnchor),
+
+            dashSeparator.bottomAnchor.constraint(equalTo: dashboardBar.bottomAnchor),
+            dashSeparator.leadingAnchor.constraint(equalTo: dashboardBar.leadingAnchor),
+            dashSeparator.trailingAnchor.constraint(equalTo: dashboardBar.trailingAnchor),
+        ])
 
         // Footer bar
         let footerBar = NSView()
@@ -149,7 +190,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         view.addSubview(footerBar)
 
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: dashboardBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: footerBar.topAnchor),
@@ -174,6 +215,13 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         ])
 
         startRefreshTimer()
+    }
+
+    @objc private func dashboardButtonClicked() {
+        outlineView.deselectAll(nil)
+        isDashboardSelected = true
+        dashboardButton.contentTintColor = .controlAccentColor
+        onDashboardClicked?()
     }
 
     @objc private func settingsButtonClicked() {
@@ -794,6 +842,12 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionCallback else { return }
         userIsSelecting = true
+
+        if isDashboardSelected {
+            isDashboardSelected = false
+            dashboardButton.contentTintColor = terminalForeground
+        }
+
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else {
             userIsSelecting = false

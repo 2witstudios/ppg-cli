@@ -136,6 +136,13 @@ nonisolated class PPGService: @unchecked Sendable {
         )
     }
 
+    /// Get the current branch name for a repository.
+    func currentBranch(at path: String) -> String {
+        let result = runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], cwd: path)
+        let branch = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return branch.isEmpty ? "main" : branch
+    }
+
     /// Check if a directory is a git repository.
     func isGitRepo(_ path: String) -> Bool {
         let pgDir = (path as NSString).appendingPathComponent(".git")
