@@ -15,10 +15,10 @@ final class DashboardSplitViewControllerTests: XCTestCase {
         XCTAssertTrue(vc.splitViewItems[0].viewController is SidebarViewController)
     }
 
-    func testRightItemIsContentTabVC() {
+    func testRightItemIsContentVC() {
         let vc = DashboardSplitViewController()
         vc.loadViewIfNeeded()
-        XCTAssertTrue(vc.splitViewItems[1].viewController is ContentTabViewController)
+        XCTAssertTrue(vc.splitViewItems[1].viewController is ContentViewController)
     }
 
     func testSidebarMinimumThickness() {

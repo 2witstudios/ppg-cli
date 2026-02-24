@@ -2,110 +2,101 @@ import XCTest
 @testable import PPG_CLI
 
 @MainActor
-final class ContentTabViewControllerTests: XCTestCase {
+final class ContentViewControllerTests: XCTestCase {
     private func makeAgent(id: String = "ag-1") -> AgentModel {
         AgentModel(id: id, name: "claude", agentType: "claude", status: .running, tmuxTarget: "s:1", prompt: "x", startedAt: "t")
     }
 
     func testPlaceholderVisibleInitially() {
-        let vc = ContentTabViewController()
+        let vc = ContentViewController()
         vc.loadViewIfNeeded()
         XCTAssertFalse(vc.placeholderLabel.isHidden)
-        XCTAssertTrue(vc.segmentedControl.isHidden)
+        XCTAssertNil(vc.currentEntry)
     }
 
-    func testShowTabsWithEmptyArrayShowsPlaceholder() {
-        let vc = ContentTabViewController()
+    func testShowEntryNilShowsPlaceholder() {
+        let vc = ContentViewController()
         vc.loadViewIfNeeded()
-        vc.showTabs(for: [])
+        vc.showEntry(nil)
         XCTAssertFalse(vc.placeholderLabel.isHidden)
-        XCTAssertTrue(vc.segmentedControl.isHidden)
-        XCTAssertEqual(vc.selectedIndex, -1)
+        XCTAssertNil(vc.currentEntry)
     }
 
-    func testShowTabsWithEntriesHidesPlaceholder() {
-        let vc = ContentTabViewController()
+    func testShowEntryHidesPlaceholder() {
+        let vc = ContentViewController()
         vc.loadViewIfNeeded()
-        let session = DashboardSession()
+        let session = DashboardSession(projectRoot: "/tmp/test")
         let entry = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        vc.showTabs(for: [.sessionEntry(entry)])
+        vc.showEntry(.sessionEntry(entry, sessionName: "test"))
         XCTAssertTrue(vc.placeholderLabel.isHidden)
-        XCTAssertFalse(vc.segmentedControl.isHidden)
-        XCTAssertEqual(vc.tabs.count, 1)
-        XCTAssertEqual(vc.selectedIndex, 0)
+        XCTAssertNotNil(vc.currentEntry)
+        XCTAssertEqual(vc.currentEntryId, entry.id)
     }
 
-    func testSegmentedControlMatchesTabCount() {
-        let vc = ContentTabViewController()
+    func testShowSameEntryIsNoOp() {
+        let vc = ContentViewController()
         vc.loadViewIfNeeded()
-        let session = DashboardSession()
-        let e1 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        let e2 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        vc.showTabs(for: [.sessionEntry(e1), .sessionEntry(e2)])
-        XCTAssertEqual(vc.segmentedControl.segmentCount, 2)
+        let session = DashboardSession(projectRoot: "/tmp/test")
+        let entry = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
+        vc.showEntry(.sessionEntry(entry, sessionName: "test"))
+        let firstEntryId = vc.currentEntryId
+        // Show same entry again — should be a no-op
+        vc.showEntry(.sessionEntry(entry, sessionName: "test"))
+        XCTAssertEqual(vc.currentEntryId, firstEntryId)
     }
 
-    func testAddTabAppends() {
-        let vc = ContentTabViewController()
+    func testRemoveEntryShowsPlaceholder() {
+        let vc = ContentViewController()
         vc.loadViewIfNeeded()
-        let session = DashboardSession()
-        let e1 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        vc.showTabs(for: [.sessionEntry(e1)])
-        XCTAssertEqual(vc.tabs.count, 1)
+        let session = DashboardSession(projectRoot: "/tmp/test")
+        let entry = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
+        vc.showEntry(.sessionEntry(entry, sessionName: "test"))
+        XCTAssertTrue(vc.placeholderLabel.isHidden)
 
-        let e2 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        vc.addTab(.sessionEntry(e2))
-        XCTAssertEqual(vc.tabs.count, 2)
-        XCTAssertEqual(vc.selectedIndex, 1) // selects the new tab
-    }
-
-    func testRemoveTabUpdatesState() {
-        let vc = ContentTabViewController()
-        vc.loadViewIfNeeded()
-        let session = DashboardSession()
-        let e1 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        let e2 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        vc.showTabs(for: [.sessionEntry(e1), .sessionEntry(e2)])
-        XCTAssertEqual(vc.tabs.count, 2)
-
-        vc.removeTab(at: 0)
-        XCTAssertEqual(vc.tabs.count, 1)
-        XCTAssertEqual(vc.selectedIndex, 0)
-    }
-
-    func testRemoveLastTabShowsPlaceholder() {
-        let vc = ContentTabViewController()
-        vc.loadViewIfNeeded()
-        let session = DashboardSession()
-        let e1 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        vc.showTabs(for: [.sessionEntry(e1)])
-        vc.removeTab(at: 0)
-        XCTAssertEqual(vc.tabs.count, 0)
+        vc.removeEntry(byId: entry.id)
         XCTAssertFalse(vc.placeholderLabel.isHidden)
-        XCTAssertEqual(vc.selectedIndex, -1)
+        XCTAssertNil(vc.currentEntry)
     }
 
-    func testSelectTabMatchingId() {
-        let vc = ContentTabViewController()
+    func testRemoveNonCurrentEntryKeepsCurrent() {
+        let vc = ContentViewController()
         vc.loadViewIfNeeded()
-        let session = DashboardSession()
+        let session = DashboardSession(projectRoot: "/tmp/test")
         let e1 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
         let e2 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        vc.showTabs(for: [.sessionEntry(e1), .sessionEntry(e2)])
-        vc.selectTab(matchingId: e2.id)
-        XCTAssertEqual(vc.selectedIndex, 1)
+        vc.showEntry(.sessionEntry(e1, sessionName: "test"))
+        // Show e1, then cache e2 by showing it, then go back to e1
+        vc.showEntry(.sessionEntry(e2, sessionName: "test"))
+        // Force a different entry to be current
+        // Actually, just remove e1 (which is not current since e2 is shown)
+        vc.removeEntry(byId: e1.id)
+        // e2 should still be current
+        XCTAssertEqual(vc.currentEntryId, e2.id)
+        XCTAssertTrue(vc.placeholderLabel.isHidden)
     }
 
     func testTabEntryLabels() {
         let agent = makeAgent(id: "ag-test")
-        let agentTab = TabEntry.manifestAgent(agent)
+        let agentTab = TabEntry.manifestAgent(agent, sessionName: "s")
         XCTAssertEqual(agentTab.label, "ag-test — claude")
         XCTAssertEqual(agentTab.id, "ag-test")
 
-        let session = DashboardSession()
+        let session = DashboardSession(projectRoot: "/tmp/test")
         let entry = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
-        let sessionTab = TabEntry.sessionEntry(entry)
+        let sessionTab = TabEntry.sessionEntry(entry, sessionName: "s")
         XCTAssertEqual(sessionTab.label, entry.label)
         XCTAssertEqual(sessionTab.id, entry.id)
+    }
+
+    func testClearStaleViews() {
+        let vc = ContentViewController()
+        vc.loadViewIfNeeded()
+        let session = DashboardSession(projectRoot: "/tmp/test")
+        let e1 = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
+        vc.showEntry(.sessionEntry(e1, sessionName: "test"))
+
+        // Clear with empty valid set — should remove cached view
+        vc.clearStaleViews(validIds: [])
+        XCTAssertNil(vc.currentEntry)
     }
 }

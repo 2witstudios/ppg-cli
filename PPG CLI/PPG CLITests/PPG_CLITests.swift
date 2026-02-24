@@ -76,20 +76,20 @@ final class AgentModelTests: XCTestCase {
         let entry = AgentEntryModel(
             id: "ag-1", name: "c", agentType: "claude", status: "running",
             tmuxTarget: "s:1", prompt: "x", resultFile: "/r", startedAt: "t",
-            completedAt: nil, exitCode: nil, error: nil
+            completedAt: nil, exitCode: nil, error: nil, sessionId: nil
         )
         let model = AgentModel(from: entry)
-        XCTAssertEqual(model.status, .running)
+        XCTAssertEqual(model.status, AgentStatus.running)
     }
 
     func testUnknownStatusMapsToLost() {
         let entry = AgentEntryModel(
             id: "ag-1", name: "c", agentType: "claude", status: "unknown_status",
             tmuxTarget: "s:1", prompt: "x", resultFile: "/r", startedAt: "t",
-            completedAt: nil, exitCode: nil, error: nil
+            completedAt: nil, exitCode: nil, error: nil, sessionId: nil
         )
         let model = AgentModel(from: entry)
-        XCTAssertEqual(model.status, .lost)
+        XCTAssertEqual(model.status, AgentStatus.lost)
     }
 }
 

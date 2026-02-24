@@ -88,7 +88,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        outlineView.backgroundColor = .clear
         view.addSubview(scrollView)
 
         NSLayoutConstraint.activate([

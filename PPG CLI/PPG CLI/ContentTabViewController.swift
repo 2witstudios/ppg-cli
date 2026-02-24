@@ -31,13 +31,13 @@ enum TabEntry {
     }
 }
 
-class ContentTabViewController: NSViewController {
-    let segmentedControl = NSSegmentedControl()
+class ContentViewController: NSViewController {
     let placeholderLabel = NSTextField(labelWithString: "Select an item from the sidebar")
     private let containerView = NSView()
-    private(set) var tabs: [TabEntry] = []
+    private(set) var currentEntry: TabEntry?
     private var terminalViews: [String: NSView] = [:]
-    private(set) var selectedIndex: Int = -1
+
+    var currentEntryId: String? { currentEntry?.id }
 
     override func loadView() {
         view = NSView()
@@ -46,13 +46,8 @@ class ContentTabViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        segmentedControl.segmentStyle = .automatic
-        segmentedControl.target = self
-        segmentedControl.action = #selector(tabClicked(_:))
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        segmentedControl.borderShape = .capsule
-        segmentedControl.isHidden = true
-        view.addSubview(segmentedControl)
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7).cgColor
 
         containerView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(containerView)
@@ -64,12 +59,7 @@ class ContentTabViewController: NSViewController {
         view.addSubview(placeholderLabel)
 
         NSLayoutConstraint.activate([
-            segmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
-            segmentedControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
-            segmentedControl.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
-            segmentedControl.heightAnchor.constraint(equalToConstant: 28),
-
-            containerView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 4),
+            containerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             containerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -79,132 +69,78 @@ class ContentTabViewController: NSViewController {
         ])
     }
 
-    func showTabs(for entries: [TabEntry]) {
-        let newIds = Set(entries.map(\.id))
-        for (id, termView) in terminalViews where !newIds.contains(id) {
-            terminateTerminal(termView)
-            termView.removeFromSuperview()
-            terminalViews.removeValue(forKey: id)
-        }
-
-        tabs = entries
-        rebuildSegmentedControl()
-
-        if tabs.isEmpty {
-            placeholderLabel.isHidden = false
-            segmentedControl.isHidden = true
-            containerView.isHidden = true
-            selectedIndex = -1
-        } else {
-            placeholderLabel.isHidden = true
-            segmentedControl.isHidden = false
-            containerView.isHidden = false
-            selectTab(at: 0)
-        }
-    }
-
-    func updateTabs(with entries: [TabEntry]) {
-        tabs = entries
-        rebuildSegmentedControl()
-
-        for entry in entries {
-            switch entry {
-            case .manifestAgent(let agent, _):
-                if let termView = terminalViews[agent.id],
-                   let pane = termView as? TerminalPane {
-                    pane.updateStatus(agent.status)
-                }
-            case .agentGroup(let agents, _, _):
-                let groupId = entry.id
-                if let termView = terminalViews[groupId],
-                   let pane = termView as? TerminalPane {
-                    let status = agents.first?.status ?? .lost
-                    pane.updateStatus(status)
-                }
-            case .sessionEntry:
-                break
+    func showEntry(_ entry: TabEntry?) {
+        guard let entry = entry else {
+            // Show placeholder
+            for (_, termView) in terminalViews {
+                termView.isHidden = true
             }
+            currentEntry = nil
+            placeholderLabel.isHidden = false
+            containerView.isHidden = true
+            return
         }
-    }
 
-    func selectTab(at index: Int) {
-        guard index >= 0, index < tabs.count else { return }
-        selectedIndex = index
-        segmentedControl.selectedSegment = index
+        // Same entry already showing — no-op
+        if let current = currentEntry, current.id == entry.id {
+            return
+        }
+
+        currentEntry = entry
+        placeholderLabel.isHidden = true
+        containerView.isHidden = false
 
         for (_, termView) in terminalViews {
             termView.isHidden = true
         }
 
-        let tab = tabs[index]
-        let termView = terminalView(for: tab)
+        let termView = terminalView(for: entry)
         termView.isHidden = false
     }
 
-    func selectTab(matchingId id: String) {
-        if let index = tabs.firstIndex(where: { $0.id == id }) {
-            selectTab(at: index)
+    func updateCurrentEntry(_ entry: TabEntry) {
+        guard let current = currentEntry, current.id == entry.id else { return }
+        currentEntry = entry
+        switch entry {
+        case .manifestAgent(let agent, _):
+            if let pane = terminalViews[agent.id] as? TerminalPane {
+                pane.updateStatus(agent.status)
+            }
+        case .agentGroup(let agents, _, _):
+            if let pane = terminalViews[entry.id] as? TerminalPane {
+                let status = agents.first?.status ?? .lost
+                pane.updateStatus(status)
+            }
+        case .sessionEntry:
+            break
         }
     }
 
-    func addTab(_ entry: TabEntry) {
-        tabs.append(entry)
-        rebuildSegmentedControl()
-        selectTab(at: tabs.count - 1)
-        placeholderLabel.isHidden = true
-        segmentedControl.isHidden = false
-        containerView.isHidden = false
-    }
-
-    func currentTabIds() -> [String] {
-        tabs.map(\.id)
-    }
-
-    func updateTabLabel(id: String, newLabel: String, session: DashboardSession) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        if let updated = session.entry(byId: id) {
-            let sessionName = tabs[index].sessionName
-            tabs[index] = .sessionEntry(updated, sessionName: sessionName)
-        }
-        segmentedControl.setLabel(newLabel, forSegment: index)
-    }
-
-    func removeTab(byId id: String) {
-        if let index = tabs.firstIndex(where: { $0.id == id }) {
-            removeTab(at: index)
-        }
-    }
-
-    func removeTab(at index: Int) {
-        guard index >= 0, index < tabs.count else { return }
-        let tab = tabs[index]
-        if let termView = terminalViews[tab.id] {
+    func removeEntry(byId id: String) {
+        if let termView = terminalViews[id] {
             terminateTerminal(termView)
             termView.removeFromSuperview()
-            terminalViews.removeValue(forKey: tab.id)
+            terminalViews.removeValue(forKey: id)
         }
-        tabs.remove(at: index)
-        rebuildSegmentedControl()
-
-        if tabs.isEmpty {
+        if currentEntry?.id == id {
+            currentEntry = nil
             placeholderLabel.isHidden = false
-            segmentedControl.isHidden = true
             containerView.isHidden = true
-            selectedIndex = -1
-        } else {
-            selectTab(at: min(index, tabs.count - 1))
+        }
+    }
+
+    func clearStaleViews(validIds: Set<String>) {
+        let staleIds = terminalViews.keys.filter { !validIds.contains($0) }
+        for id in staleIds {
+            if let termView = terminalViews[id] {
+                terminateTerminal(termView)
+                termView.removeFromSuperview()
+                terminalViews.removeValue(forKey: id)
+            }
         }
     }
 
     // MARK: - Private
-
-    private func rebuildSegmentedControl() {
-        segmentedControl.segmentCount = tabs.count
-        for (i, tab) in tabs.enumerated() {
-            segmentedControl.setLabel(tab.label, forSegment: i)
-            segmentedControl.setWidth(0, forSegment: i)
-        }
-    }
 
     private func terminalView(for tab: TabEntry) -> NSView {
         if let existing = terminalViews[tab.id] {
@@ -270,10 +206,10 @@ class ContentTabViewController: NSViewController {
         termView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(termView)
         NSLayoutConstraint.activate([
-            termView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
-            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-            termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
-            termView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
+            termView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            termView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
         ])
         terminalViews[tab.id] = termView
         return termView
@@ -287,9 +223,5 @@ class ContentTabViewController: NSViewController {
         } else if let localTerm = view as? LocalProcessTerminalView {
             localTerm.process?.terminate()
         }
-    }
-
-    @objc private func tabClicked(_ sender: NSSegmentedControl) {
-        selectTab(at: sender.selectedSegment)
     }
 }

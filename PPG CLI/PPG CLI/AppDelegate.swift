@@ -15,6 +15,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7)
+        window.isOpaque = false
         window.isRestorable = false
 
         let toolbar = NSToolbar(identifier: "MainToolbar")
@@ -130,7 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         viewMenu.addItem(.separator())
 
-        let closeItem = NSMenuItem(title: "Close Tab", action: #selector(closeCurrentTab), keyEquivalent: "w")
+        let closeItem = NSMenuItem(title: "Close", action: #selector(closeCurrentEntry), keyEquivalent: "w")
         closeItem.target = self
         viewMenu.addItem(closeItem)
 
@@ -149,12 +151,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         splitVC.sidebar.selectProject(at: sender.tag - 1)
     }
 
-    @objc private func closeCurrentTab() {
+    @objc private func closeCurrentEntry() {
         guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
-        let idx = splitVC.content.selectedIndex
-        if idx >= 0 {
-            splitVC.content.removeTab(at: idx)
-        }
+        splitVC.closeCurrentEntry()
     }
 
     @objc private func refreshSidebar() {

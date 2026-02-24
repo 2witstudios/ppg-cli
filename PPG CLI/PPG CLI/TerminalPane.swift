@@ -19,14 +19,18 @@ class TerminalPane: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func setupUI() {
+        wantsLayer = true
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.7
+        layer?.shadowRadius = 40
+        layer?.shadowOffset = .zero
+
         label.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         label.textColor = statusColor(for: agent.status)
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
 
         terminalView.wantsLayer = true
-        terminalView.layer?.cornerRadius = 8
-        terminalView.layer?.cornerCurve = .continuous
         terminalView.layer?.masksToBounds = true
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(terminalView)
@@ -38,9 +42,9 @@ class TerminalPane: NSView {
             label.heightAnchor.constraint(equalToConstant: 20),
 
             terminalView.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            terminalView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 

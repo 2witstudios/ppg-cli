@@ -2,7 +2,7 @@ import AppKit
 
 class DashboardSplitViewController: NSSplitViewController {
     let sidebar = SidebarViewController()
-    let content = ContentTabViewController()
+    let content = ContentViewController()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,7 +39,6 @@ class DashboardSplitViewController: NSSplitViewController {
         sidebar.onRenameTerminal = { [weak self] project, id, newLabel in
             guard let self = self else { return }
             project.dashboardSession.rename(id: id, newLabel: newLabel)
-            self.content.updateTabLabel(id: id, newLabel: newLabel, session: project.dashboardSession)
             self.sidebar.refresh()
         }
 
@@ -49,7 +48,7 @@ class DashboardSplitViewController: NSSplitViewController {
                let tmuxTarget = entry.tmuxTarget {
                 project.dashboardSession.killTmuxWindow(target: tmuxTarget)
             }
-            self.content.removeTab(byId: id)
+            self.content.removeEntry(byId: id)
             project.dashboardSession.remove(id: id)
             self.sidebar.refresh()
         }
@@ -65,97 +64,125 @@ class DashboardSplitViewController: NSSplitViewController {
         }
     }
 
-    /// Compute the tabs for a given sidebar item.
-    private func computeTabs(for item: SidebarItem) -> [TabEntry] {
-        guard let ctx = sidebar.projectContext(for: item) else { return [] }
-        let session = ctx.dashboardSession
+    // MARK: - Single Entry Conversion
+
+    /// Convert a sidebar item to a single TabEntry, or nil for container items.
+    private func tabEntry(for item: SidebarItem) -> TabEntry? {
+        guard let ctx = sidebar.projectContext(for: item) else { return nil }
         let sessionName = ctx.sessionName
 
         switch item {
-        case .project:
-            return session.entriesForMaster().map { TabEntry.sessionEntry($0, sessionName: sessionName) }
-
-        case .worktree(let wt):
-            let manifestTabs = groupedAgentTabs(wt.agents, sessionName: sessionName)
-            let dashTabs = session.entriesForWorktree(wt.id).map { TabEntry.sessionEntry($0, sessionName: sessionName) }
-            return manifestTabs + dashTabs
+        case .project, .worktree:
+            return nil
 
         case .agent(let ag):
+            // Check if this agent shares a tmux window with others
             let worktrees = sidebar.worktrees(for: ctx)
             if let wt = worktrees.first(where: { $0.agents.contains(where: { a in a.id == ag.id }) }) {
-                let manifestTabs = groupedAgentTabs(wt.agents, sessionName: sessionName)
-                let dashTabs = session.entriesForWorktree(wt.id).map { TabEntry.sessionEntry($0, sessionName: sessionName) }
-                return manifestTabs + dashTabs
+                let target = ag.tmuxTarget
+                let windowKey: String
+                if let dotIndex = target.lastIndex(of: ".") {
+                    windowKey = String(target[target.startIndex..<dotIndex])
+                } else {
+                    windowKey = target
+                }
+                let sharing = wt.agents.filter { a in
+                    let t = a.tmuxTarget
+                    if let d = t.lastIndex(of: ".") {
+                        return String(t[t.startIndex..<d]) == windowKey
+                    }
+                    return t == windowKey
+                }
+                if sharing.count > 1 {
+                    return .agentGroup(sharing, windowKey, sessionName: sessionName)
+                }
             }
-            return [.manifestAgent(ag, sessionName: sessionName)]
+            return .manifestAgent(ag, sessionName: sessionName)
 
         case .terminal(let entry):
-            let worktrees = sidebar.worktrees(for: ctx)
-            if let worktreeId = entry.parentWorktreeId,
-               let wt = worktrees.first(where: { $0.id == worktreeId }) {
-                let manifestTabs = groupedAgentTabs(wt.agents, sessionName: sessionName)
-                let dashTabs = session.entriesForWorktree(worktreeId).map { TabEntry.sessionEntry($0, sessionName: sessionName) }
-                return manifestTabs + dashTabs
-            }
-            return session.entriesForMaster().map { TabEntry.sessionEntry($0, sessionName: sessionName) }
+            return .sessionEntry(entry, sessionName: sessionName)
         }
     }
 
-    private func groupedAgentTabs(_ agents: [AgentModel], sessionName: String) -> [TabEntry] {
-        let grouped = Dictionary(grouping: agents) { agent -> String in
-            let target = agent.tmuxTarget
-            if let dotIndex = target.lastIndex(of: ".") {
-                return String(target[target.startIndex..<dotIndex])
+    /// Collect all terminal/agent IDs across the sidebar tree for cache cleanup.
+    private func collectAllTerminalIds() -> Set<String> {
+        var ids = Set<String>()
+        for projectNode in sidebar.projectNodes {
+            guard case .project(let ctx) = projectNode.item else { continue }
+            let worktrees = sidebar.worktrees(for: ctx)
+            for wt in worktrees {
+                for agent in wt.agents {
+                    ids.insert(agent.id)
+                }
+                for entry in ctx.dashboardSession.entriesForWorktree(wt.id) {
+                    ids.insert(entry.id)
+                }
             }
-            return target
-        }
-        let sortedKeys = grouped.keys.sorted { k1, k2 in
-            let firstId1 = grouped[k1]!.first!.id
-            let firstId2 = grouped[k2]!.first!.id
-            let i1 = agents.firstIndex(where: { $0.id == firstId1 }) ?? 0
-            let i2 = agents.firstIndex(where: { $0.id == firstId2 }) ?? 0
-            return i1 < i2
-        }
-        return sortedKeys.compactMap { key -> TabEntry? in
-            guard let group = grouped[key] else { return nil }
-            if group.count == 1 {
-                return .manifestAgent(group[0], sessionName: sessionName)
-            } else {
-                return .agentGroup(group, key, sessionName: sessionName)
+            for entry in ctx.dashboardSession.entriesForMaster() {
+                ids.insert(entry.id)
             }
         }
+        return ids
+    }
+
+    /// Cmd+W handler: close/kill the currently displayed entry.
+    func closeCurrentEntry() {
+        guard let entryId = content.currentEntryId else { return }
+
+        // Try to find which project owns this entry
+        for projectNode in sidebar.projectNodes {
+            guard case .project(let ctx) = projectNode.item else { continue }
+
+            // Check dashboard session entries
+            if let entry = ctx.dashboardSession.entry(byId: entryId) {
+                if let tmuxTarget = entry.tmuxTarget {
+                    ctx.dashboardSession.killTmuxWindow(target: tmuxTarget)
+                }
+                content.removeEntry(byId: entryId)
+                ctx.dashboardSession.remove(id: entryId)
+                sidebar.refresh()
+                return
+            }
+
+            // Check manifest agents
+            let worktrees = sidebar.worktrees(for: ctx)
+            for wt in worktrees {
+                if wt.agents.contains(where: { $0.id == entryId }) {
+                    killManifestAgent(project: ctx, agentId: entryId)
+                    return
+                }
+            }
+        }
+
+        // Fallback: just remove the view
+        content.removeEntry(byId: entryId)
+    }
+
+    // MARK: - Selection & Refresh
+
+    private func handleSelection(_ item: SidebarItem) {
+        content.showEntry(tabEntry(for: item))
     }
 
     private func handleRefresh(_ currentItem: SidebarItem?) {
         guard let item = currentItem else { return }
-        let newTabs = computeTabs(for: item)
-        let newIds = newTabs.map(\.id)
-        if content.currentTabIds() == newIds {
-            content.updateTabs(with: newTabs)
-        } else {
-            content.showTabs(for: newTabs)
+        let entry = tabEntry(for: item)
+
+        if let entry = entry, let currentId = content.currentEntryId, entry.id == currentId {
+            // Same entry — just update status
+            content.updateCurrentEntry(entry)
+        } else if entry != nil {
+            // Different entry or entry appeared — re-show
+            content.showEntry(entry)
         }
+        // else entry is nil (container) — leave content as-is
+
+        // Clean stale cached views
+        let validIds = collectAllTerminalIds()
+        content.clearStaleViews(validIds: validIds)
     }
 
-    private func handleSelection(_ item: SidebarItem) {
-        let newTabs = computeTabs(for: item)
-        showTabsIfChanged(newTabs)
-
-        switch item {
-        case .agent(let ag):
-            content.selectTab(matchingId: ag.id)
-        case .terminal(let entry):
-            content.selectTab(matchingId: entry.id)
-        case .project, .worktree:
-            break
-        }
-    }
-
-    private func showTabsIfChanged(_ newTabs: [TabEntry]) {
-        let newIds = newTabs.map(\.id)
-        if content.currentTabIds() == newIds { return }
-        content.showTabs(for: newTabs)
-    }
+    // MARK: - Add Agent / Terminal / Worktree
 
     private func addAgent(project: ProjectContext, parentWorktreeId: String?) {
         let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
@@ -165,7 +192,7 @@ class DashboardSplitViewController: NSSplitViewController {
             command: project.agentCommand,
             workingDir: workingDir
         )
-        content.addTab(.sessionEntry(entry, sessionName: project.sessionName))
+        content.showEntry(.sessionEntry(entry, sessionName: project.sessionName))
         sidebar.refresh()
     }
 
@@ -175,7 +202,7 @@ class DashboardSplitViewController: NSSplitViewController {
             parentWorktreeId: parentWorktreeId,
             workingDir: workingDir
         )
-        content.addTab(.sessionEntry(entry, sessionName: project.sessionName))
+        content.showEntry(.sessionEntry(entry, sessionName: project.sessionName))
         sidebar.refresh()
     }
 
@@ -257,7 +284,7 @@ class DashboardSplitViewController: NSSplitViewController {
                     alert.alertStyle = .warning
                     alert.runModal()
                 }
-                self.content.removeTab(byId: agentId)
+                self.content.removeEntry(byId: agentId)
                 self.sidebar.refresh()
             }
         }
