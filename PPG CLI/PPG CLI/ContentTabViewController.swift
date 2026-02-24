@@ -189,7 +189,12 @@ class ContentViewController: NSViewController {
             return self.terminalView(for: entry)
         }
         grid.terminalTerminator = { [weak self] view in
-            self?.terminateTerminal(view)
+            guard let self = self else { return }
+            self.terminateTerminal(view)
+            // Remove cached terminal view so re-selecting this entry creates a fresh one
+            if let id = self.terminalViews.first(where: { $0.value === view })?.key {
+                self.terminalViews.removeValue(forKey: id)
+            }
         }
         paneGrid = grid
         return grid

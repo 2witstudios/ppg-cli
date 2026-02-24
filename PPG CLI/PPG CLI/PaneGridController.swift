@@ -262,8 +262,20 @@ class PaneGridController: NSViewController {
             let inFirst = firstIds.contains(leafId)
             let inSecond = secondIds.contains(leafId)
 
+            // Recurse into the child containing the focused leaf first,
+            // so nested same-axis splits resolve to the nearest neighbor.
+            if inFirst {
+                if let result = findAdjacentLeaf(from: leafId, in: first, direction: direction, forward: forward) {
+                    return result
+                }
+            } else if inSecond {
+                if let result = findAdjacentLeaf(from: leafId, in: second, direction: direction, forward: forward) {
+                    return result
+                }
+            }
+
+            // If no deeper match, check whether this split matches the navigation axis
             if dir == direction {
-                // This split matches the navigation axis
                 if inFirst && forward {
                     // Move from first child to nearest leaf in second child
                     return second.allLeafIds().first
@@ -273,12 +285,6 @@ class PaneGridController: NSViewController {
                 }
             }
 
-            // Recurse into the child containing the focused leaf
-            if inFirst {
-                return findAdjacentLeaf(from: leafId, in: first, direction: direction, forward: forward)
-            } else if inSecond {
-                return findAdjacentLeaf(from: leafId, in: second, direction: direction, forward: forward)
-            }
             return nil
         }
     }
