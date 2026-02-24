@@ -13,7 +13,7 @@ You are a conductor — a meta-agent that drives ppg programmatically to orchest
 Before doing anything, verify the environment:
 
 1. **Git repo** — Run `git rev-parse --show-toplevel`. If it fails, tell the user this must be run inside a git repo.
-2. **ppg installed** — Run `ppg --version`. If it fails, tell the user to install ppg (`npm i -g ppg-cli`).
+2. **ppg installed** — Run `ppg --version`. If it fails, tell the user to install ppg (`npm i -g pure-point-guard`).
 3. **tmux available** — Run `tmux -V`. If it fails, tell the user to install tmux (`brew install tmux`).
 4. **ppg initialized** — Run `ppg status --json`. If it errors with `NOT_INITIALIZED`, run `ppg init --json` automatically and confirm it succeeded.
 

@@ -1,8 +1,8 @@
 # ppg — Pure Point Guard
 
 [![CI](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/ppg-cli.svg)](https://www.npmjs.com/package/ppg-cli)
-[![license](https://img.shields.io/npm/l/ppg-cli.svg)](https://github.com/2witstudios/ppg-cli/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/pure-point-guard.svg)](https://www.npmjs.com/package/pure-point-guard)
+[![license](https://img.shields.io/npm/l/pure-point-guard.svg)](https://github.com/2witstudios/ppg-cli/blob/main/LICENSE)
 
 Local orchestration runtime for parallel CLI coding agents.
 
@@ -26,7 +26,7 @@ It works with any CLI agent (Claude Code, Codex, custom scripts) and is designed
 ### CLI
 
 ```bash
-npm install -g ppg-cli
+npm install -g pure-point-guard
 ```
 
 ### Claude Code Integration

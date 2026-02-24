@@ -1,5 +1,5 @@
 {
-  "name": "ppg-cli",
+  "name": "pure-point-guard",
   "version": "0.1.0",
   "type": "module",
   "description": "Pure Point Guard — local orchestration runtime for parallel CLI coding agents",
