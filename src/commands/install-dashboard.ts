@@ -1,5 +1,6 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, cp, rm, readFile } from 'node:fs/promises';
+import { mkdir, cp, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -8,15 +9,14 @@ import { execa } from 'execa';
 import { output, info, success } from '../lib/output.js';
 import { PgError } from '../lib/errors.js';
 
+const require = createRequire(import.meta.url);
+
 const REPO = '2witstudios/ppg-cli';
 const ASSET_NAME = 'PPG-CLI-Dashboard.dmg';
 const APP_NAME = 'PPG CLI.app';
 
-async function getVersion(): Promise<string> {
-  // Find package.json relative to this module — works in both dev (src/) and built (dist/)
-  const pkgPath = new URL('../../package.json', import.meta.url);
-  const raw = await readFile(pkgPath, 'utf-8');
-  const pkg = JSON.parse(raw) as { version: string };
+function getVersion(): string {
+  const pkg = require('../package.json') as { version: string };
   return pkg.version;
 }
 
@@ -27,7 +27,7 @@ export async function installDashboardCommand(options: {
   const { dir, json } = options;
 
   try {
-    const version = await getVersion();
+    const version = getVersion();
     const tag = `v${version}`;
     const url = `https://github.com/${REPO}/releases/download/${tag}/${ASSET_NAME}`;
 

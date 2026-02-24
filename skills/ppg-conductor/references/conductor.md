@@ -76,6 +76,13 @@ Returns:
 
 **Stop polling when:** all tracked agents are in terminal states.
 
+**Alternative — `ppg wait`:**
+Instead of manual polling, you can block until all agents finish:
+```bash
+ppg wait --all --json --timeout 600
+```
+This blocks until all agents reach a terminal state or the timeout is hit. Use manual polling (above) when you need progress updates; use `ppg wait` when you just need to block.
+
 ## Phase 3: Aggregate
 
 Collect results from completed agents.

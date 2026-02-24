@@ -1,13 +1,17 @@
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { PgError } from './lib/errors.js';
 import { outputError } from './lib/output.js';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json') as { version: string };
 
 const program = new Command();
 
 program
   .name('ppg')
   .description('Pure Point Guard — local orchestration runtime for parallel CLI coding agents')
-  .version('0.1.0');
+  .version(pkg.version);
 
 program
   .command('init')

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
 import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, manifestPath } from '../lib/paths.js';
 import { NotGitRepoError, TmuxNotFoundError } from '../lib/errors.js';
@@ -137,17 +138,22 @@ async function registerClaudePlugin(): Promise<boolean> {
     const skillsDir = path.join(home, '.claude', 'skills');
 
     // Find this package's skills directory
-    const pkgRoot = new URL('../../', import.meta.url);
-    const srcSkillsDir = new URL('skills/', pkgRoot).pathname;
-
-    // Verify source skills exist
+    // Works from both dist/cli.js (../skills/) and src/commands/init.ts (../../skills/)
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    let srcSkillsDir = path.resolve(__dirname, '..', 'skills');
     try {
       await fs.access(srcSkillsDir);
     } catch {
-      return false;
+      srcSkillsDir = path.resolve(__dirname, '..', '..', 'skills');
+      try {
+        await fs.access(srcSkillsDir);
+      } catch {
+        return false;
+      }
     }
 
     // Copy skills to ~/.claude/skills/
+    await fs.mkdir(skillsDir, { recursive: true });
     const skillFolders = ['ppg', 'ppg-conductor'];
     let copied = false;
 
