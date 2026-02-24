@@ -116,9 +116,24 @@ program
   });
 
 program
+  .command('swarm')
+  .description('Run a swarm template — spawn multiple agents from a predefined workflow')
+  .argument('<template>', 'Swarm template name from .pg/swarms/')
+  .option('-w, --worktree <ref>', 'Target an existing worktree by ID, name, or branch')
+  .option('--var <key=value...>', 'Template variables', collectVars, [])
+  .option('-n, --name <name>', 'Override worktree name')
+  .option('-b, --base <branch>', 'Base branch for new worktree(s)')
+  .option('--no-open', 'Do not open Terminal windows')
+  .option('--json', 'Output as JSON')
+  .action(async (template, options) => {
+    const { swarmCommand } = await import('./commands/swarm.js');
+    await swarmCommand(template, options);
+  });
+
+program
   .command('list')
-  .description('List available templates')
-  .argument('<type>', 'What to list: templates')
+  .description('List available templates or swarms')
+  .argument('<type>', 'What to list: templates, swarms')
   .option('--json', 'Output as JSON')
   .action(async (type, options) => {
     const { listCommand } = await import('./commands/list.js');

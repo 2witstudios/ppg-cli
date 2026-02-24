@@ -195,6 +195,63 @@ ppg merge <wt-id> --force --json                   # Merge even if agents aren't
 
 Cleanup sequence: kill tmux window, teardown env, `git worktree remove --force`, `git branch -D ppg/<name>`, set manifest status `cleaned`.
 
+## ppg swarm
+
+Run a predefined swarm template — spawns multiple agents from `.pg/swarms/` with prompts from `.pg/prompts/`.
+
+```bash
+# Run a swarm template (creates new worktree, spawns all agents)
+ppg swarm code-review --var CONTEXT="Review the auth module" --json --no-open
+
+# Run a swarm against an existing worktree (e.g., review a PR's worktree)
+ppg swarm code-review --worktree wt-abc123 --var CONTEXT="Review PR #42" --json --no-open
+
+# Override worktree name
+ppg swarm code-review --name "auth-review" --var CONTEXT="Review auth changes" --json --no-open
+
+# Target by worktree name
+ppg swarm code-review --worktree feature-auth --var CONTEXT="Review auth feature" --json --no-open
+```
+
+**Options:**
+| Flag | Description |
+|------|-------------|
+| `-w, --worktree <ref>` | Target existing worktree by ID, name, or branch |
+| `--var <KEY=value>` | Template variable (repeatable) |
+| `-n, --name <name>` | Override worktree name (default: swarm name) |
+| `-b, --base <branch>` | Base branch for new worktree(s) |
+| `--no-open` | Suppress Terminal.app windows |
+| `--json` | JSON output |
+
+**JSON output (shared strategy):**
+```json
+{
+  "success": true,
+  "swarm": "code-review",
+  "strategy": "shared",
+  "worktree": { "id": "wt-abc123", "name": "code-review", "branch": "ppg/code-review", "path": "/path/.worktrees/wt-abc123", "tmuxWindow": "ppg-repo:1" },
+  "agents": [
+    { "id": "ag-xyz12345", "tmuxTarget": "ppg-repo:1" },
+    { "id": "ag-abc67890", "tmuxTarget": "ppg-repo:2" }
+  ]
+}
+```
+
+**Errors:** `NOT_INITIALIZED`, `INVALID_ARGS` (missing template or prompt file), `WORKTREE_NOT_FOUND`
+
+## ppg list swarms
+
+List available swarm templates.
+
+```bash
+ppg list swarms --json
+```
+
+**JSON output:**
+```json
+{ "swarms": [{ "name": "code-review", "description": "Multi-perspective code review", "strategy": "shared", "agents": 3 }] }
+```
+
 ## ppg logs
 
 View an agent's tmux pane output.

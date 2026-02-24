@@ -34,6 +34,10 @@ export function promptsDir(projectRoot: string): string {
   return path.join(pgDir(projectRoot), 'prompts');
 }
 
+export function swarmsDir(projectRoot: string): string {
+  return path.join(pgDir(projectRoot), 'swarms');
+}
+
 export function promptFile(projectRoot: string, agentId: string): string {
   return path.join(promptsDir(projectRoot), `${agentId}.md`);
 }
