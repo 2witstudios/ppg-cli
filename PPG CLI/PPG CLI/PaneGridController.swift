@@ -666,10 +666,9 @@ class PaneCellView: NSView {
         termView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(termView)
 
-        let leadingPadding: CGFloat = (termView is TerminalPane) ? 0 : 8
         NSLayoutConstraint.activate([
             termView.topAnchor.constraint(equalTo: topAnchor),
-            termView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leadingPadding),
+            termView.leadingAnchor.constraint(equalTo: leadingAnchor),
             termView.trailingAnchor.constraint(equalTo: trailingAnchor),
             termView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
