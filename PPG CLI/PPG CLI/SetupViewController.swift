@@ -16,7 +16,7 @@ class SetupViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.wantsLayer = true
-        view.layer?.backgroundColor = chromeBackground.cgColor
+        view.layer?.backgroundColor = terminalBackground.cgColor
 
         let card = NSView()
         card.translatesAutoresizingMaskIntoConstraints = false
@@ -50,7 +50,7 @@ class SetupViewController: NSViewController {
         // Status rows
         ppgStatus = StatusRow(
             title: "ppg CLI",
-            installHint: "npm install -g ppg-cli"
+            installHint: "npm install -g pure-point-guard"
         )
         ppgStatus.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(ppgStatus)
@@ -116,6 +116,20 @@ class SetupViewController: NSViewController {
         ])
 
         runChecks()
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        // Make window fully opaque so setup text is readable
+        view.window?.isOpaque = true
+        view.window?.backgroundColor = terminalBackground
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        // Restore transparency for other screens
+        view.window?.isOpaque = false
+        view.window?.backgroundColor = chromeBackground
     }
 
     private func runChecks() {
