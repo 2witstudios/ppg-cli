@@ -381,7 +381,7 @@ Status is determined by checking (in order):
 
 ## Conductor Mode
 
-ppg is designed to be driven programmatically by a meta-agent (a "conductor"). Every command supports `--json` for machine-readable output.
+ppg is designed to be driven programmatically by a meta-agent (a "conductor"). All orchestration commands (`spawn`, `status`, `kill`, `wait`, `aggregate`, `merge`) support `--json` for machine-readable output.
 
 **Conductor workflow:**
 
