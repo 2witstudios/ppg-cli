@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.net/xml-namespaces/sparkle">
+  <channel>
+    <title>PPG CLI Dashboard</title>
+    <link>https://2witstudios.github.io/ppg-cli/appcast.xml</link>
+    <description>PPG CLI Dashboard updates</description>
+    <language>en</language>
+  </channel>
+</rss>
