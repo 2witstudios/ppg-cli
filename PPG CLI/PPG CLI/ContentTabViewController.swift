@@ -2,23 +2,31 @@ import AppKit
 import SwiftTerm
 
 enum TabEntry {
-    case manifestAgent(AgentModel)
-    case agentGroup([AgentModel], String)  // agents sharing a tmux window, tmuxTarget
-    case sessionEntry(DashboardSession.TerminalEntry)
+    case manifestAgent(AgentModel, sessionName: String)
+    case agentGroup([AgentModel], String, sessionName: String)  // agents sharing a tmux window, tmuxTarget, sessionName
+    case sessionEntry(DashboardSession.TerminalEntry, sessionName: String)
 
     var id: String {
         switch self {
-        case .manifestAgent(let agent): return agent.id
-        case .agentGroup(let agents, _): return agents.map(\.id).joined(separator: "+")
-        case .sessionEntry(let entry): return entry.id
+        case .manifestAgent(let agent, _): return agent.id
+        case .agentGroup(let agents, _, _): return agents.map(\.id).joined(separator: "+")
+        case .sessionEntry(let entry, _): return entry.id
         }
     }
 
     var label: String {
         switch self {
-        case .manifestAgent(let agent): return "\(agent.id) — \(agent.agentType)"
-        case .agentGroup(let agents, _): return "\(agents.count) agents (split)"
-        case .sessionEntry(let entry): return entry.label
+        case .manifestAgent(let agent, _): return "\(agent.id) — \(agent.agentType)"
+        case .agentGroup(let agents, _, _): return "\(agents.count) agents (split)"
+        case .sessionEntry(let entry, _): return entry.label
+        }
+    }
+
+    var sessionName: String {
+        switch self {
+        case .manifestAgent(_, let name): return name
+        case .agentGroup(_, _, let name): return name
+        case .sessionEntry(_, let name): return name
         }
     }
 }
@@ -72,7 +80,6 @@ class ContentTabViewController: NSViewController {
     }
 
     func showTabs(for entries: [TabEntry]) {
-        // Tear down old terminals that aren't in the new set
         let newIds = Set(entries.map(\.id))
         for (id, termView) in terminalViews where !newIds.contains(id) {
             terminateTerminal(termView)
@@ -96,25 +103,21 @@ class ContentTabViewController: NSViewController {
         }
     }
 
-    /// Update tab metadata in-place without tearing down terminal views.
-    /// Only updates labels and agent status — does NOT destroy/recreate terminals.
     func updateTabs(with entries: [TabEntry]) {
         tabs = entries
         rebuildSegmentedControl()
 
-        // Update status labels on existing TerminalPane views
         for entry in entries {
             switch entry {
-            case .manifestAgent(let agent):
+            case .manifestAgent(let agent, _):
                 if let termView = terminalViews[agent.id],
                    let pane = termView as? TerminalPane {
                     pane.updateStatus(agent.status)
                 }
-            case .agentGroup(let agents, _):
+            case .agentGroup(let agents, _, _):
                 let groupId = entry.id
                 if let termView = terminalViews[groupId],
                    let pane = termView as? TerminalPane {
-                    // Use the "worst" status from the group for the badge
                     let status = agents.first?.status ?? .lost
                     pane.updateStatus(status)
                 }
@@ -129,7 +132,6 @@ class ContentTabViewController: NSViewController {
         selectedIndex = index
         segmentedControl.selectedSegment = index
 
-        // Hide all terminal views
         for (_, termView) in terminalViews {
             termView.isHidden = true
         }
@@ -158,10 +160,11 @@ class ContentTabViewController: NSViewController {
         tabs.map(\.id)
     }
 
-    func updateTabLabel(id: String, newLabel: String) {
+    func updateTabLabel(id: String, newLabel: String, session: DashboardSession) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        if let updated = DashboardSession.shared.entry(byId: id) {
-            tabs[index] = .sessionEntry(updated)
+        if let updated = session.entry(byId: id) {
+            let sessionName = tabs[index].sessionName
+            tabs[index] = .sessionEntry(updated, sessionName: sessionName)
         }
         segmentedControl.setLabel(newLabel, forSegment: index)
     }
@@ -199,7 +202,7 @@ class ContentTabViewController: NSViewController {
         segmentedControl.segmentCount = tabs.count
         for (i, tab) in tabs.enumerated() {
             segmentedControl.setLabel(tab.label, forSegment: i)
-            segmentedControl.setWidth(0, forSegment: i) // auto-size
+            segmentedControl.setWidth(0, forSegment: i)
         }
     }
 
@@ -208,15 +211,15 @@ class ContentTabViewController: NSViewController {
             return existing
         }
 
+        let sessionName = tab.sessionName
         let termView: NSView
         switch tab {
-        case .manifestAgent(let agent):
-            let pane = TerminalPane(agent: agent, sessionName: ProjectState.shared.sessionName)
+        case .manifestAgent(let agent, _):
+            let pane = TerminalPane(agent: agent, sessionName: sessionName)
             pane.startTmux()
             termView = pane
 
-        case .agentGroup(let agents, let tmuxTarget):
-            // All agents share the same tmux window — attach to the window target to show all panes
+        case .agentGroup(let agents, let tmuxTarget, _):
             let lead = agents[0]
             let groupAgent = AgentModel(
                 id: tab.id,
@@ -227,13 +230,12 @@ class ContentTabViewController: NSViewController {
                 prompt: lead.prompt,
                 startedAt: lead.startedAt
             )
-            let pane = TerminalPane(agent: groupAgent, sessionName: ProjectState.shared.sessionName)
+            let pane = TerminalPane(agent: groupAgent, sessionName: sessionName)
             pane.startTmux()
             termView = pane
 
-        case .sessionEntry(let entry):
+        case .sessionEntry(let entry, _):
             if let tmuxTarget = entry.tmuxTarget {
-                // Tmux-backed session entry — attach to the tmux pane
                 let agentModel = AgentModel(
                     id: entry.id,
                     name: entry.label,
@@ -244,11 +246,10 @@ class ContentTabViewController: NSViewController {
                     startedAt: "",
                     sessionId: entry.sessionId
                 )
-                let pane = TerminalPane(agent: agentModel, sessionName: ProjectState.shared.sessionName)
+                let pane = TerminalPane(agent: agentModel, sessionName: sessionName)
                 pane.startTmux()
                 termView = pane
             } else {
-                // Local process fallback (terminals without tmux)
                 let localTerm = ScrollableTerminalView(frame: containerView.bounds)
                 let cmd = """
                 if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
@@ -287,8 +288,6 @@ class ContentTabViewController: NSViewController {
             localTerm.process?.terminate()
         }
     }
-
-    // shellEscape moved to ShellUtils.swift
 
     @objc private func tabClicked(_ sender: NSSegmentedControl) {
         selectTab(at: sender.selectedSegment)

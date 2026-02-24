@@ -20,99 +20,95 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.handleSelection(item)
         }
 
-        sidebar.onAddAgent = { [weak self] worktreeId in
-            self?.addAgent(parentWorktreeId: worktreeId)
+        sidebar.onAddAgent = { [weak self] project, worktreeId in
+            self?.addAgent(project: project, parentWorktreeId: worktreeId)
         }
 
-        sidebar.onAddTerminal = { [weak self] worktreeId in
-            self?.addTerminal(parentWorktreeId: worktreeId)
+        sidebar.onAddTerminal = { [weak self] project, worktreeId in
+            self?.addTerminal(project: project, parentWorktreeId: worktreeId)
         }
 
-        sidebar.onAddWorktree = { [weak self] in
-            self?.createWorktree()
+        sidebar.onAddWorktree = { [weak self] project in
+            self?.createWorktree(project: project)
         }
 
         sidebar.onDataRefreshed = { [weak self] currentItem in
             self?.handleRefresh(currentItem)
         }
 
-        sidebar.onRenameTerminal = { [weak self] id, newLabel in
+        sidebar.onRenameTerminal = { [weak self] project, id, newLabel in
             guard let self = self else { return }
-            DashboardSession.shared.rename(id: id, newLabel: newLabel)
-            self.content.updateTabLabel(id: id, newLabel: newLabel)
+            project.dashboardSession.rename(id: id, newLabel: newLabel)
+            self.content.updateTabLabel(id: id, newLabel: newLabel, session: project.dashboardSession)
             self.sidebar.refresh()
         }
 
-        sidebar.onDeleteTerminal = { [weak self] id in
+        sidebar.onDeleteTerminal = { [weak self] project, id in
             guard let self = self else { return }
-            // Kill the tmux window if this is a tmux-backed entry
-            if let entry = DashboardSession.shared.entry(byId: id),
+            if let entry = project.dashboardSession.entry(byId: id),
                let tmuxTarget = entry.tmuxTarget {
-                DashboardSession.shared.killTmuxWindow(target: tmuxTarget)
+                project.dashboardSession.killTmuxWindow(target: tmuxTarget)
             }
             self.content.removeTab(byId: id)
-            DashboardSession.shared.remove(id: id)
+            project.dashboardSession.remove(id: id)
             self.sidebar.refresh()
         }
 
-        sidebar.onRenameAgent = { [weak self] agentId, newName in
+        sidebar.onRenameAgent = { [weak self] project, agentId, newName in
             guard let self = self else { return }
-            self.renameManifestAgent(agentId: agentId, newName: newName)
+            self.renameManifestAgent(project: project, agentId: agentId, newName: newName)
         }
 
-        sidebar.onKillAgent = { [weak self] agentId in
+        sidebar.onKillAgent = { [weak self] project, agentId in
             guard let self = self else { return }
-            self.killManifestAgent(agentId: agentId)
+            self.killManifestAgent(project: project, agentId: agentId)
         }
     }
 
     /// Compute the tabs for a given sidebar item.
     private func computeTabs(for item: SidebarItem) -> [TabEntry] {
+        guard let ctx = sidebar.projectContext(for: item) else { return [] }
+        let session = ctx.dashboardSession
+        let sessionName = ctx.sessionName
+
         switch item {
-        case .master:
-            return DashboardSession.shared.entriesForMaster().map { TabEntry.sessionEntry($0) }
+        case .project:
+            return session.entriesForMaster().map { TabEntry.sessionEntry($0, sessionName: sessionName) }
 
         case .worktree(let wt):
-            let manifestTabs = groupedAgentTabs(wt.agents)
-            let dashTabs = DashboardSession.shared.entriesForWorktree(wt.id).map { TabEntry.sessionEntry($0) }
+            let manifestTabs = groupedAgentTabs(wt.agents, sessionName: sessionName)
+            let dashTabs = session.entriesForWorktree(wt.id).map { TabEntry.sessionEntry($0, sessionName: sessionName) }
             return manifestTabs + dashTabs
 
         case .agent(let ag):
-            if let wt = sidebar.worktrees.first(where: { $0.agents.contains(where: { a in a.id == ag.id }) }) {
-                let manifestTabs = groupedAgentTabs(wt.agents)
-                let dashTabs = DashboardSession.shared.entriesForWorktree(wt.id).map { TabEntry.sessionEntry($0) }
+            let worktrees = sidebar.worktrees(for: ctx)
+            if let wt = worktrees.first(where: { $0.agents.contains(where: { a in a.id == ag.id }) }) {
+                let manifestTabs = groupedAgentTabs(wt.agents, sessionName: sessionName)
+                let dashTabs = session.entriesForWorktree(wt.id).map { TabEntry.sessionEntry($0, sessionName: sessionName) }
                 return manifestTabs + dashTabs
             }
-            return [.manifestAgent(ag)]
+            return [.manifestAgent(ag, sessionName: sessionName)]
 
         case .terminal(let entry):
+            let worktrees = sidebar.worktrees(for: ctx)
             if let worktreeId = entry.parentWorktreeId,
-               let wt = sidebar.worktrees.first(where: { $0.id == worktreeId }) {
-                let manifestTabs = groupedAgentTabs(wt.agents)
-                let dashTabs = DashboardSession.shared.entriesForWorktree(worktreeId).map { TabEntry.sessionEntry($0) }
+               let wt = worktrees.first(where: { $0.id == worktreeId }) {
+                let manifestTabs = groupedAgentTabs(wt.agents, sessionName: sessionName)
+                let dashTabs = session.entriesForWorktree(worktreeId).map { TabEntry.sessionEntry($0, sessionName: sessionName) }
                 return manifestTabs + dashTabs
             }
-            return DashboardSession.shared.entriesForMaster().map { TabEntry.sessionEntry($0) }
+            return session.entriesForMaster().map { TabEntry.sessionEntry($0, sessionName: sessionName) }
         }
     }
 
-    /// Group agents by their tmux window target. Agents sharing the same window
-    /// (split panes) produce a single `.agentGroup` tab; unique windows produce
-    /// individual `.manifestAgent` tabs.
-    private func groupedAgentTabs(_ agents: [AgentModel]) -> [TabEntry] {
-        // Extract the window portion from the tmux target.
-        // Window targets: "ppg:3" → "ppg:3"; pane IDs: "%42" → group by pane parent unknown,
-        // so we use the full target string as-is for grouping.
+    private func groupedAgentTabs(_ agents: [AgentModel], sessionName: String) -> [TabEntry] {
         let grouped = Dictionary(grouping: agents) { agent -> String in
             let target = agent.tmuxTarget
-            // If target contains "." it's "session:window.pane" — strip the pane suffix
             if let dotIndex = target.lastIndex(of: ".") {
                 return String(target[target.startIndex..<dotIndex])
             }
-            // Pane ID like "%42" — can't determine parent window, use as-is
             return target
         }
-        // Sort groups by first agent's order in the original array for stability
         let sortedKeys = grouped.keys.sorted { k1, k2 in
             let firstId1 = grouped[k1]!.first!.id
             let firstId2 = grouped[k2]!.first!.id
@@ -123,23 +119,20 @@ class DashboardSplitViewController: NSSplitViewController {
         return sortedKeys.compactMap { key -> TabEntry? in
             guard let group = grouped[key] else { return nil }
             if group.count == 1 {
-                return .manifestAgent(group[0])
+                return .manifestAgent(group[0], sessionName: sessionName)
             } else {
-                return .agentGroup(group, key)
+                return .agentGroup(group, key, sessionName: sessionName)
             }
         }
     }
 
-    /// Called after every sidebar data refresh. Updates tab metadata without tearing down terminals.
     private func handleRefresh(_ currentItem: SidebarItem?) {
         guard let item = currentItem else { return }
         let newTabs = computeTabs(for: item)
         let newIds = newTabs.map(\.id)
         if content.currentTabIds() == newIds {
-            // Same tabs — just update metadata in-place (status labels, etc.)
             content.updateTabs(with: newTabs)
         } else {
-            // Tab set changed — full rebuild
             content.showTabs(for: newTabs)
         }
     }
@@ -148,46 +141,45 @@ class DashboardSplitViewController: NSSplitViewController {
         let newTabs = computeTabs(for: item)
         showTabsIfChanged(newTabs)
 
-        // For specific items, select the matching tab
         switch item {
         case .agent(let ag):
             content.selectTab(matchingId: ag.id)
         case .terminal(let entry):
             content.selectTab(matchingId: entry.id)
-        case .master, .worktree:
+        case .project, .worktree:
             break
         }
     }
 
-    /// Only rebuild tabs if the set of tab IDs has changed, preserving current tab selection.
     private func showTabsIfChanged(_ newTabs: [TabEntry]) {
         let newIds = newTabs.map(\.id)
         if content.currentTabIds() == newIds { return }
         content.showTabs(for: newTabs)
     }
 
-    private func addAgent(parentWorktreeId: String?) {
-        let workingDir = workingDirectory(for: parentWorktreeId)
-        let entry = DashboardSession.shared.addAgent(
+    private func addAgent(project: ProjectContext, parentWorktreeId: String?) {
+        let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
+        let entry = project.dashboardSession.addAgent(
+            sessionName: project.sessionName,
             parentWorktreeId: parentWorktreeId,
-            command: ProjectState.shared.agentCommand,
+            command: project.agentCommand,
             workingDir: workingDir
         )
-        content.addTab(.sessionEntry(entry))
+        content.addTab(.sessionEntry(entry, sessionName: project.sessionName))
         sidebar.refresh()
     }
 
-    private func addTerminal(parentWorktreeId: String?) {
-        let workingDir = workingDirectory(for: parentWorktreeId)
-        let entry = DashboardSession.shared.addTerminal(
+    private func addTerminal(project: ProjectContext, parentWorktreeId: String?) {
+        let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
+        let entry = project.dashboardSession.addTerminal(
             parentWorktreeId: parentWorktreeId,
             workingDir: workingDir
         )
-        content.addTab(.sessionEntry(entry))
+        content.addTab(.sessionEntry(entry, sessionName: project.sessionName))
         sidebar.refresh()
     }
 
-    private func createWorktree() {
+    private func createWorktree(project: ProjectContext) {
         let alert = NSAlert()
         alert.messageText = "New Worktree"
         alert.informativeText = "Enter a name for the worktree:"
@@ -203,7 +195,7 @@ class DashboardSplitViewController: NSSplitViewController {
         let name = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
 
-        let projectRoot = ProjectState.shared.projectRoot
+        let projectRoot = project.projectRoot
         guard !projectRoot.isEmpty else { return }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -224,12 +216,8 @@ class DashboardSplitViewController: NSSplitViewController {
         }
     }
 
-    private func renameManifestAgent(agentId: String, newName: String) {
-        let projectRoot = ProjectState.shared.projectRoot
-        guard !projectRoot.isEmpty else { return }
-
-        // Update the manifest JSON directly
-        let manifestPath = ProjectState.shared.manifestPath
+    private func renameManifestAgent(project: ProjectContext, agentId: String, newName: String) {
+        let manifestPath = project.manifestPath
         guard let data = FileManager.default.contents(atPath: manifestPath),
               var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               var worktrees = json["worktrees"] as? [String: Any] else { return }
@@ -254,11 +242,10 @@ class DashboardSplitViewController: NSSplitViewController {
         sidebar.refresh()
     }
 
-    private func killManifestAgent(agentId: String) {
-        let projectRoot = ProjectState.shared.projectRoot
+    private func killManifestAgent(project: ProjectContext, agentId: String) {
+        let projectRoot = project.projectRoot
         guard !projectRoot.isEmpty else { return }
 
-        // Use ppg kill to properly terminate the agent
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = PPGService.shared.runPPGCommand("kill --agent \(shellEscape(agentId)) --json", projectRoot: projectRoot)
             DispatchQueue.main.async {
@@ -270,23 +257,75 @@ class DashboardSplitViewController: NSSplitViewController {
                     alert.alertStyle = .warning
                     alert.runModal()
                 }
-                // Remove the tab and refresh regardless (status will update from manifest)
                 self.content.removeTab(byId: agentId)
                 self.sidebar.refresh()
             }
         }
     }
 
-    private func workingDirectory(for worktreeId: String?) -> String {
-        if let wtId = worktreeId,
-           let wt = sidebar.worktrees.first(where: { $0.id == wtId }) {
-            return wt.path
+    private func workingDirectory(project: ProjectContext, worktreeId: String?) -> String {
+        if let wtId = worktreeId {
+            let worktrees = sidebar.worktrees(for: project)
+            if let wt = worktrees.first(where: { $0.id == wtId }) {
+                return wt.path
+            }
         }
-        let root = ProjectState.shared.projectRoot
+        let root = project.projectRoot
         if !root.isEmpty, root != "/" { return root }
-        if let manifest = PPGService.shared.readManifest(), !manifest.projectRoot.isEmpty {
-            return manifest.projectRoot
-        }
         return FileManager.default.homeDirectoryForCurrentUser.path
+    }
+
+    /// Show creation menu scoped to current sidebar selection's project.
+    func showCreationMenu() {
+        guard let ctx = sidebar.selectedProjectContext() else { return }
+        let worktreeId = sidebar.selectedWorktreeId()
+
+        let menu = NSMenu()
+
+        let worktreeItem = NSMenuItem(title: "New Worktree", action: nil, keyEquivalent: "")
+        worktreeItem.target = self
+        menu.addItem(worktreeItem)
+        menu.addItem(.separator())
+
+        let agentItem = NSMenuItem(title: "New Agent", action: nil, keyEquivalent: "")
+        agentItem.target = self
+        menu.addItem(agentItem)
+
+        let termItem = NSMenuItem(title: "New Terminal", action: nil, keyEquivalent: "")
+        termItem.target = self
+        menu.addItem(termItem)
+
+        // Use action blocks via menu item targets
+        worktreeItem.action = #selector(creationMenuWorktree(_:))
+        worktreeItem.representedObject = ctx
+        agentItem.action = #selector(creationMenuAgent(_:))
+        agentItem.representedObject = [ctx, worktreeId as Any] as [Any]
+        termItem.action = #selector(creationMenuTerminal(_:))
+        termItem.representedObject = [ctx, worktreeId as Any] as [Any]
+
+        // Pop up near the center of the window
+        if let window = view.window {
+            let point = NSPoint(x: window.frame.width / 2, y: window.frame.height / 2)
+            menu.popUp(positioning: nil, at: view.convert(point, from: nil), in: view)
+        }
+    }
+
+    @objc private func creationMenuWorktree(_ sender: NSMenuItem) {
+        guard let ctx = sender.representedObject as? ProjectContext else { return }
+        createWorktree(project: ctx)
+    }
+
+    @objc private func creationMenuAgent(_ sender: NSMenuItem) {
+        guard let arr = sender.representedObject as? [Any],
+              let ctx = arr.first as? ProjectContext else { return }
+        let worktreeId = arr.count > 1 ? arr[1] as? String : nil
+        addAgent(project: ctx, parentWorktreeId: worktreeId)
+    }
+
+    @objc private func creationMenuTerminal(_ sender: NSMenuItem) {
+        guard let arr = sender.representedObject as? [Any],
+              let ctx = arr.first as? ProjectContext else { return }
+        let worktreeId = arr.count > 1 ? arr[1] as? String : nil
+        addTerminal(project: ctx, parentWorktreeId: worktreeId)
     }
 }

@@ -14,14 +14,14 @@ func statusColor(for status: AgentStatus) -> NSColor {
 // MARK: - Sidebar Item
 
 enum SidebarItem {
-    case master
+    case project(ProjectContext)
     case worktree(WorktreeModel)
     case agent(AgentModel)
     case terminal(DashboardSession.TerminalEntry)
 
     var id: String {
         switch self {
-        case .master: return "__master__"
+        case .project(let ctx): return "project-\(ctx.projectRoot.hashValue)"
         case .worktree(let wt): return wt.id
         case .agent(let ag): return ag.id
         case .terminal(let te): return te.id
@@ -44,23 +44,21 @@ class SidebarNode {
 class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     let scrollView = NSScrollView()
     let outlineView = NSOutlineView()
-    let addButton = NSButton()
 
-    var worktrees: [WorktreeModel] = []
-    var dashboardSession: DashboardSession = .shared
+    var projectWorktrees: [String: [WorktreeModel]] = [:]
 
     var onItemSelected: ((SidebarItem) -> Void)?
-    var onAddAgent: ((String?) -> Void)?
-    var onAddTerminal: ((String?) -> Void)?
-    var onAddWorktree: (() -> Void)?
-    var onRenameTerminal: ((String, String) -> Void)?   // (id, newLabel)
-    var onDeleteTerminal: ((String) -> Void)?            // (id)
-    var onRenameAgent: ((String, String) -> Void)?       // (agentId, newName)
-    var onKillAgent: ((String) -> Void)?                 // (agentId)
-    var onDataRefreshed: ((SidebarItem?) -> Void)?       // current selection after refresh
+    var onAddAgent: ((ProjectContext, String?) -> Void)?
+    var onAddTerminal: ((ProjectContext, String?) -> Void)?
+    var onAddWorktree: ((ProjectContext) -> Void)?
+    var onRenameTerminal: ((ProjectContext, String, String) -> Void)?   // (project, id, newLabel)
+    var onDeleteTerminal: ((ProjectContext, String) -> Void)?            // (project, id)
+    var onRenameAgent: ((ProjectContext, String, String) -> Void)?       // (project, agentId, newName)
+    var onKillAgent: ((ProjectContext, String) -> Void)?                 // (project, agentId)
+    var onDataRefreshed: ((SidebarItem?) -> Void)?
 
     private var refreshTimer: Timer?
-    private var masterNode: SidebarNode?
+    var projectNodes: [SidebarNode] = []
     private var selectedItemId: String?
     private var suppressSelectionCallback = false
     private var userIsSelecting = false
@@ -73,28 +71,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        // Header with + button
-        let headerStack = NSStackView()
-        headerStack.orientation = .horizontal
-        headerStack.spacing = 4
-        headerStack.translatesAutoresizingMaskIntoConstraints = false
-
-        let headerLabel = NSTextField(labelWithString: "Project")
-        headerLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        headerLabel.textColor = .tertiaryLabelColor
-
-        addButton.bezelStyle = .glass
-        addButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
-        addButton.target = self
-        addButton.action = #selector(addButtonClicked(_:))
-        addButton.setContentHuggingPriority(.required, for: .horizontal)
-
-        headerStack.addArrangedSubview(headerLabel)
-        headerStack.addArrangedSubview(NSView()) // spacer
-        headerStack.addArrangedSubview(addButton)
-        view.addSubview(headerStack)
-
-        // Outline view
+        // Outline view — pinned directly to top safe area (no header bar)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
         column.title = ""
         outlineView.addTableColumn(column)
@@ -115,12 +92,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         view.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            headerStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            headerStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
-            headerStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
-            headerStack.heightAnchor.constraint(equalToConstant: 24),
-
-            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 4),
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -132,7 +104,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     // MARK: - Refresh
 
     private func startRefreshTimer() {
-        // Initial refresh
         refresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -140,16 +111,27 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     }
 
     func refresh() {
-        // Capture shared state on main thread before dispatching to background
-        let manifestPath = ProjectState.shared.manifestPath
+        let openProjects = OpenProjects.shared.projects
+
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let newWorktrees = PPGService.shared.refreshStatus(manifestPath: manifestPath)
+            var results: [String: [WorktreeModel]] = [:]
+            let group = DispatchGroup()
+
+            for ctx in openProjects {
+                group.enter()
+                let worktrees = PPGService.shared.refreshStatus(manifestPath: ctx.manifestPath)
+                results[ctx.projectRoot] = worktrees
+                group.leave()
+            }
+
+            group.wait()
+
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.selectedItemId = self.currentSelectedId()
-                self.worktrees = newWorktrees
+                self.projectWorktrees = results
                 self.rebuildTree()
-                self.suppressSelectionCallback = true   // suppress BEFORE reloadData
+                self.suppressSelectionCallback = true
                 self.outlineView.reloadData()
                 self.expandAll()
                 if !self.userIsSelecting {
@@ -157,7 +139,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
                 }
                 self.suppressSelectionCallback = false
 
-                // Notify with current selection
                 let currentItem = self.currentSelectedItem()
                 self.onDataRefreshed?(currentItem)
             }
@@ -177,35 +158,39 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     }
 
     private func rebuildTree() {
-        let master = SidebarNode(.master)
+        projectNodes = []
 
-        // Master-level dashboard entries (agents + terminals)
-        for entry in dashboardSession.entriesForMaster() {
-            master.children.append(SidebarNode(.terminal(entry)))
-        }
+        for ctx in OpenProjects.shared.projects {
+            let projectNode = SidebarNode(.project(ctx))
 
-        // Worktrees from manifest
-        for wt in worktrees {
-            let wtNode = SidebarNode(.worktree(wt))
-            // Manifest agents
-            for agent in wt.agents {
-                wtNode.children.append(SidebarNode(.agent(agent)))
+            // Master-level dashboard entries (agents + terminals without a parent worktree)
+            for entry in ctx.dashboardSession.entriesForMaster() {
+                projectNode.children.append(SidebarNode(.terminal(entry)))
             }
-            // Dashboard entries for this worktree
-            for entry in dashboardSession.entriesForWorktree(wt.id) {
-                wtNode.children.append(SidebarNode(.terminal(entry)))
-            }
-            master.children.append(wtNode)
-        }
 
-        masterNode = master
+            // Worktrees from manifest
+            let worktrees = projectWorktrees[ctx.projectRoot] ?? []
+            for wt in worktrees {
+                let wtNode = SidebarNode(.worktree(wt))
+                for agent in wt.agents {
+                    wtNode.children.append(SidebarNode(.agent(agent)))
+                }
+                for entry in ctx.dashboardSession.entriesForWorktree(wt.id) {
+                    wtNode.children.append(SidebarNode(.terminal(entry)))
+                }
+                projectNode.children.append(wtNode)
+            }
+
+            projectNodes.append(projectNode)
+        }
     }
 
     private func expandAll() {
-        guard let master = masterNode else { return }
-        outlineView.expandItem(master)
-        for child in master.children {
-            outlineView.expandItem(child)
+        for projectNode in projectNodes {
+            outlineView.expandItem(projectNode)
+            for child in projectNode.children {
+                outlineView.expandItem(child)
+            }
         }
     }
 
@@ -223,58 +208,142 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         refreshTimer?.invalidate()
     }
 
-    // MARK: - + Button
+    // MARK: - Project Helpers
 
-    @objc private func addButtonClicked(_ sender: NSButton) {
-        let menu = NSMenu()
-
-        menu.addItem(withTitle: "New Worktree", action: #selector(menuNewWorktree), keyEquivalent: "")
-            .target = self
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "New Agent", action: #selector(menuNewAgent), keyEquivalent: "")
-            .target = self
-        menu.addItem(withTitle: "New Terminal", action: #selector(menuNewTerminal), keyEquivalent: "")
-            .target = self
-
-        let point = NSPoint(x: 0, y: sender.bounds.height)
-        menu.popUp(positioning: nil, at: point, in: sender)
+    /// Walk the tree to find which ProjectContext a sidebar item belongs to.
+    func projectContext(for item: SidebarItem) -> ProjectContext? {
+        switch item {
+        case .project(let ctx):
+            return ctx
+        case .worktree(let wt):
+            for node in projectNodes {
+                if case .project(let ctx) = node.item {
+                    let worktrees = projectWorktrees[ctx.projectRoot] ?? []
+                    if worktrees.contains(where: { $0.id == wt.id }) {
+                        return ctx
+                    }
+                }
+            }
+            return nil
+        case .agent(let ag):
+            for node in projectNodes {
+                if case .project(let ctx) = node.item {
+                    let worktrees = projectWorktrees[ctx.projectRoot] ?? []
+                    for w in worktrees {
+                        if w.agents.contains(where: { $0.id == ag.id }) {
+                            return ctx
+                        }
+                    }
+                }
+            }
+            return nil
+        case .terminal(let entry):
+            for node in projectNodes {
+                if case .project(let ctx) = node.item {
+                    if ctx.dashboardSession.entry(byId: entry.id) != nil {
+                        return ctx
+                    }
+                }
+            }
+            return nil
+        }
     }
 
-    @objc private func menuNewWorktree() {
-        onAddWorktree?()
+    /// Worktrees for a given project context.
+    func worktrees(for ctx: ProjectContext) -> [WorktreeModel] {
+        projectWorktrees[ctx.projectRoot] ?? []
     }
 
-    @objc private func menuNewAgent() {
-        let worktreeId = selectedWorktreeId()
-        onAddAgent?(worktreeId)
-    }
-
-    @objc private func menuNewTerminal() {
-        let worktreeId = selectedWorktreeId()
-        onAddTerminal?(worktreeId)
+    /// Programmatically select the Nth project node.
+    func selectProject(at index: Int) {
+        guard index >= 0, index < projectNodes.count else { return }
+        let targetNode = projectNodes[index]
+        for row in 0..<outlineView.numberOfRows {
+            if let node = outlineView.item(atRow: row) as? SidebarNode, node === targetNode {
+                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                onItemSelected?(node.item)
+                return
+            }
+        }
     }
 
     func selectedWorktreeId() -> String? {
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
         switch node.item {
-        case .master: return nil
+        case .project: return nil
         case .worktree(let wt): return wt.id
         case .agent(let ag):
-            // Find parent worktree
-            for wt in worktrees where wt.agents.contains(where: { $0.id == ag.id }) {
-                return wt.id
+            // Find parent worktree across all projects
+            for (_, worktrees) in projectWorktrees {
+                for wt in worktrees where wt.agents.contains(where: { $0.id == ag.id }) {
+                    return wt.id
+                }
             }
             return nil
         case .terminal(let entry): return entry.parentWorktreeId
         }
     }
 
+    /// Resolve the ProjectContext for the current sidebar selection.
+    func selectedProjectContext() -> ProjectContext? {
+        guard let item = currentSelectedItem() else {
+            return OpenProjects.shared.projects.first
+        }
+        return projectContext(for: item)
+    }
+
+    // MARK: - Per-Project + Button
+
+    @objc private func projectAddButtonClicked(_ sender: NSButton) {
+        let projectIndex = sender.tag
+        guard let ctx = OpenProjects.shared.project(at: projectIndex) else { return }
+
+        let menu = NSMenu()
+
+        let worktreeItem = NSMenuItem(title: "New Worktree", action: #selector(menuNewWorktreeForProject(_:)), keyEquivalent: "")
+        worktreeItem.target = self
+        worktreeItem.representedObject = ctx
+        menu.addItem(worktreeItem)
+
+        menu.addItem(.separator())
+
+        let agentItem = NSMenuItem(title: "New Agent", action: #selector(menuNewAgentForProject(_:)), keyEquivalent: "")
+        agentItem.target = self
+        agentItem.representedObject = ctx
+        menu.addItem(agentItem)
+
+        let termItem = NSMenuItem(title: "New Terminal", action: #selector(menuNewTerminalForProject(_:)), keyEquivalent: "")
+        termItem.target = self
+        termItem.representedObject = ctx
+        menu.addItem(termItem)
+
+        let point = NSPoint(x: 0, y: sender.bounds.height)
+        menu.popUp(positioning: nil, at: point, in: sender)
+    }
+
+    @objc private func menuNewWorktreeForProject(_ sender: NSMenuItem) {
+        guard let ctx = sender.representedObject as? ProjectContext else { return }
+        onAddWorktree?(ctx)
+    }
+
+    @objc private func menuNewAgentForProject(_ sender: NSMenuItem) {
+        guard let ctx = sender.representedObject as? ProjectContext else { return }
+        let worktreeId = selectedWorktreeId()
+        onAddAgent?(ctx, worktreeId)
+    }
+
+    @objc private func menuNewTerminalForProject(_ sender: NSMenuItem) {
+        guard let ctx = sender.representedObject as? ProjectContext else { return }
+        let worktreeId = selectedWorktreeId()
+        onAddTerminal?(ctx, worktreeId)
+    }
+
     // MARK: - NSOutlineViewDataSource
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         if item == nil {
-            return masterNode != nil ? 1 : 0
+            return projectNodes.count
         }
         if let node = item as? SidebarNode {
             return node.children.count
@@ -284,7 +353,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         if item == nil {
-            return masterNode!
+            return projectNodes[index]
         }
         if let node = item as? SidebarNode {
             return node.children[index]
@@ -295,7 +364,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         guard let node = item as? SidebarNode else { return false }
         switch node.item {
-        case .master, .worktree: return true
+        case .project, .worktree: return true
         case .agent, .terminal: return false
         }
     }
@@ -305,8 +374,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? SidebarNode else { return nil }
         switch node.item {
-        case .master:
-            return makeMasterCell()
+        case .project(let ctx):
+            return makeProjectCell(ctx)
         case .worktree(let wt):
             return makeWorktreeCell(wt)
         case .agent(let ag):
@@ -316,7 +385,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         }
     }
 
-    private func makeMasterCell() -> NSView {
+    private func makeProjectCell(_ ctx: ProjectContext) -> NSView {
         let cell = NSTableCellView()
         let stack = NSStackView()
         stack.orientation = .horizontal
@@ -326,11 +395,22 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let icon = NSImageView(image: NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: "Project")!)
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
-        let name = NSTextField(labelWithString: ProjectState.shared.projectName.isEmpty ? "master" : ProjectState.shared.projectName)
+        let name = NSTextField(labelWithString: ctx.projectName.isEmpty ? "master" : ctx.projectName)
         name.font = .boldSystemFont(ofSize: 13)
+
+        // Inline "+" button
+        let addBtn = NSButton()
+        addBtn.bezelStyle = .glass
+        addBtn.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
+        addBtn.target = self
+        addBtn.action = #selector(projectAddButtonClicked(_:))
+        addBtn.tag = OpenProjects.shared.indexOf(root: ctx.projectRoot) ?? 0
+        addBtn.setContentHuggingPriority(.required, for: .horizontal)
 
         stack.addArrangedSubview(icon)
         stack.addArrangedSubview(name)
+        stack.addArrangedSubview(NSView()) // spacer
+        stack.addArrangedSubview(addBtn)
 
         cell.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -472,9 +552,11 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let newLabel = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard !newLabel.isEmpty else { return }
 
+        guard let ctx = projectContext(for: node.item) else { return }
+
         switch node.item {
-        case .terminal(let entry): onRenameTerminal?(entry.id, newLabel)
-        case .agent(let agent): onRenameAgent?(agent.id, newLabel)
+        case .terminal(let entry): onRenameTerminal?(ctx, entry.id, newLabel)
+        case .agent(let agent): onRenameAgent?(ctx, agent.id, newLabel)
         default: break
         }
     }
@@ -489,6 +571,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         }
 
         switch node.item {
+        case .project:
+            contextClickedNode = node
+            menu.addItem(withTitle: "Close Project", action: #selector(contextCloseProject(_:)), keyEquivalent: "").target = self
         case .agent:
             contextClickedNode = node
             menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
@@ -502,8 +587,15 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         }
     }
 
+    @objc private func contextCloseProject(_ sender: Any) {
+        guard let node = contextClickedNode, case .project(let ctx) = node.item else { return }
+        OpenProjects.shared.remove(root: ctx.projectRoot)
+        refresh()
+    }
+
     @objc private func contextDelete(_ sender: Any) {
         guard let node = contextClickedNode else { return }
+        guard let ctx = projectContext(for: node.item) else { return }
 
         switch node.item {
         case .terminal(let entry):
@@ -514,7 +606,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             alert.addButton(withTitle: "Delete")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            onDeleteTerminal?(entry.id)
+            onDeleteTerminal?(ctx, entry.id)
 
         case .agent(let agent):
             let displayName = agent.name.isEmpty ? agent.id : agent.name
@@ -525,7 +617,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             alert.addButton(withTitle: "Kill")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            onKillAgent?(agent.id)
+            onKillAgent?(ctx, agent.id)
 
         default:
             break
@@ -543,7 +635,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             return
         }
         onItemSelected?(node.item)
-        // Reset after a short delay so the next timer-driven refresh can restore selection
         DispatchQueue.main.async { [weak self] in
             self?.userIsSelecting = false
         }

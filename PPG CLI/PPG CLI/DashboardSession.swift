@@ -1,8 +1,6 @@
 import Foundation
 
 class DashboardSession {
-    static let shared = DashboardSession()
-
     struct TerminalEntry: Codable {
         let id: String
         var label: String
@@ -19,26 +17,26 @@ class DashboardSession {
         }
     }
 
+    let projectRoot: String
     private(set) var entries: [TerminalEntry] = []
     private var terminalCounter = 0
     private var agentCounter = 0
 
-    init() {
+    init(projectRoot: String) {
+        self.projectRoot = projectRoot
         loadFromDisk()
     }
 
     @discardableResult
-    func addAgent(parentWorktreeId: String?, command: String, workingDir: String) -> TerminalEntry {
+    func addAgent(sessionName: String, parentWorktreeId: String?, command: String, workingDir: String) -> TerminalEntry {
         agentCounter += 1
         let entryId = "da-\(generateId(6))"
         let sid = UUID().uuidString.lowercased()
 
-        // Try to create a tmux window for this agent
-        let sessionName = ProjectState.shared.sessionName.isEmpty ? "ppg" : ProjectState.shared.sessionName
-        let tmuxTarget = createTmuxWindow(sessionName: sessionName, windowName: "claude-\(agentCounter)", cwd: workingDir)
+        let effectiveSession = sessionName.isEmpty ? "ppg" : sessionName
+        let tmuxTarget = createTmuxWindow(sessionName: effectiveSession, windowName: "claude-\(agentCounter)", cwd: workingDir)
 
         if let target = tmuxTarget {
-            // Build the command with --session-id injected
             let fullCommand: String
             if command.contains("claude") {
                 fullCommand = "unset CLAUDECODE; \(command) --session-id \(sid)"
@@ -115,9 +113,8 @@ class DashboardSession {
     // MARK: - Persistence
 
     private var persistencePath: String? {
-        let root = ProjectState.shared.projectRoot
-        guard !root.isEmpty, root != "/" else { return nil }
-        let pgDir = (root as NSString).appendingPathComponent(".pg")
+        guard !projectRoot.isEmpty, projectRoot != "/" else { return nil }
+        let pgDir = (projectRoot as NSString).appendingPathComponent(".pg")
         return (pgDir as NSString).appendingPathComponent("dashboard-sessions.json")
     }
 
@@ -139,11 +136,9 @@ class DashboardSession {
               let data = FileManager.default.contents(atPath: path) else { return }
         do {
             entries = try JSONDecoder().decode([TerminalEntry].self, from: data)
-            // Restore counters
             agentCounter = entries.filter { $0.kind == .agent }.count
             terminalCounter = entries.filter { $0.kind == .terminal }.count
         } catch {
-            // Corrupted file — start fresh
             entries = []
         }
     }
@@ -157,7 +152,6 @@ class DashboardSession {
 
     // MARK: - Tmux helpers
 
-    /// Run a tmux command through a login shell so Homebrew PATH is available.
     @discardableResult
     private func runTmux(_ args: String) -> (exitCode: Int32, stdout: String) {
         let task = Process()
@@ -188,17 +182,14 @@ class DashboardSession {
         let escapedName = shellEscape(windowName)
         let escapedCwd = shellEscape(cwd)
 
-        // Ensure session exists
         let hasResult = runTmux("has-session -t \(escapedSession)")
         if hasResult.exitCode != 0 {
             let createResult = runTmux("new-session -d -s \(escapedSession) -x 220 -y 50")
             guard createResult.exitCode == 0 else { return nil }
         }
-        // Enable mouse scrolling and set generous scrollback buffer
         runTmux("set-option -t \(escapedSession) mouse on")
         runTmux("set-option -t \(escapedSession) history-limit 50000")
 
-        // Create window
         let result = runTmux("new-window -t \(escapedSession) -n \(escapedName) -c \(escapedCwd) -P -F '#{window_index}'")
         guard result.exitCode == 0, !result.stdout.isEmpty else { return nil }
         return "\(sessionName):\(result.stdout)"
@@ -211,8 +202,6 @@ class DashboardSession {
     private func sendTmuxKeys(target: String, command: String) {
         runTmux("send-keys -t \(shellEscape(target)) -l \(shellEscape(command + "\n"))")
     }
-
-    // shellEscape moved to ShellUtils.swift
 
     private func generateId(_ length: Int) -> String {
         let chars = "abcdefghijklmnopqrstuvwxyz0123456789"

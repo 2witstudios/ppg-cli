@@ -2,7 +2,6 @@ import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
-    private var projectChangeObserver: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
@@ -18,25 +17,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarAppearsTransparent = true
         window.isRestorable = false
 
-        // Glass toolbar chrome strip
         let toolbar = NSToolbar(identifier: "MainToolbar")
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
         window.toolbarStyle = .unified
 
-        projectChangeObserver = NotificationCenter.default.addObserver(
-            forName: .projectDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.onProjectChanged()
-        }
-
-        if ProjectState.shared.isConfigured {
+        // Launch flow: restore persisted open projects, or fall back to last opened, or show picker
+        if !OpenProjects.shared.projects.isEmpty {
             showDashboard()
         } else if let lastProject = RecentProjects.shared.lastOpened,
                   RecentProjects.shared.isValidProject(lastProject) {
-            ProjectState.shared.switchProject(root: lastProject)
+            OpenProjects.shared.add(root: lastProject)
             showDashboard()
         } else {
             showProjectPicker()
@@ -49,8 +40,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showDashboard() {
         let frame = window.frame
-        window.title = "ppg — \(ProjectState.shared.projectName)"
-        DashboardSession.shared.reloadFromDisk()
+        let activeProject = OpenProjects.shared.projects.first
+        window.title = activeProject.map { "ppg — \($0.projectName)" } ?? "ppg"
         window.contentViewController = DashboardSplitViewController()
         window.setFrame(frame, display: true)
     }
@@ -60,15 +51,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "ppg — Select Project"
         let picker = ProjectPickerViewController()
         picker.onProjectSelected = { [weak self] root in
-            ProjectState.shared.switchProject(root: root)
+            OpenProjects.shared.add(root: root)
+            RecentProjects.shared.add(root)
             self?.showDashboard()
         }
         window.contentViewController = picker
         window.setFrame(frame, display: true)
-    }
-
-    private func onProjectChanged() {
-        showDashboard()
     }
 
     private func setupMainMenu() {
@@ -84,10 +72,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // File menu
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
+
+        // Cmd+N — New... (creation menu)
+        let newItem = NSMenuItem(title: "New...", action: #selector(showCreationMenu(_:)), keyEquivalent: "n")
+        newItem.target = self
+        fileMenu.addItem(newItem)
+
+        fileMenu.addItem(.separator())
+
+        // Cmd+O — Open/Add Project
         fileMenu.addItem(withTitle: "Open Project...", action: #selector(openProjectAction(_:)), keyEquivalent: "o")
             .target = self
 
-        // Recent Projects submenu
+        // Recent Projects submenu (no Cmd+1-9 shortcuts here — those are for project switching)
         let recentItem = NSMenuItem(title: "Recent Projects", action: nil, keyEquivalent: "")
         let recentMenu = NSMenu(title: "Recent Projects")
         let recentProjects = RecentProjects.shared.projects.filter { RecentProjects.shared.isValidProject($0) }
@@ -96,9 +93,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             emptyItem.isEnabled = false
             recentMenu.addItem(emptyItem)
         } else {
-            for (index, project) in recentProjects.enumerated() {
+            for project in recentProjects {
                 let name = URL(fileURLWithPath: project).lastPathComponent
-                let item = NSMenuItem(title: name, action: #selector(openRecentProject(_:)), keyEquivalent: index < 9 ? "\(index + 1)" : "")
+                let item = NSMenuItem(title: name, action: #selector(openRecentProject(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = project
                 recentMenu.addItem(item)
@@ -123,28 +120,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // View menu
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
+
+        // Cmd+1-9 — switch to project 1-9
         for i in 1...9 {
-            let tabItem = NSMenuItem(title: "Tab \(i)", action: #selector(switchToTab(_:)), keyEquivalent: "\(i)")
-            tabItem.target = self
-            tabItem.tag = i
-            viewMenu.addItem(tabItem)
+            let projectItem = NSMenuItem(title: "Project \(i)", action: #selector(switchToProject(_:)), keyEquivalent: "\(i)")
+            projectItem.target = self
+            projectItem.tag = i
+            viewMenu.addItem(projectItem)
         }
         viewMenu.addItem(.separator())
+
         let closeItem = NSMenuItem(title: "Close Tab", action: #selector(closeCurrentTab), keyEquivalent: "w")
         closeItem.target = self
         viewMenu.addItem(closeItem)
+
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshSidebar), keyEquivalent: "r")
         refreshItem.target = self
         viewMenu.addItem(refreshItem)
+
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
         NSApp.mainMenu = mainMenu
     }
 
-    @objc private func switchToTab(_ sender: NSMenuItem) {
+    @objc private func switchToProject(_ sender: NSMenuItem) {
         guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
-        splitVC.content.selectTab(at: sender.tag - 1)
+        splitVC.sidebar.selectProject(at: sender.tag - 1)
     }
 
     @objc private func closeCurrentTab() {
@@ -158,6 +160,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshSidebar() {
         guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
         splitVC.sidebar.refresh()
+    }
+
+    @objc private func showCreationMenu(_ sender: Any) {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.showCreationMenu()
     }
 
     @objc private func openProjectAction(_ sender: Any) {
@@ -179,12 +186,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        ProjectState.shared.switchProject(root: path)
+        OpenProjects.shared.add(root: path)
+
+        // If we're on the project picker, switch to dashboard; otherwise just refresh sidebar
+        if window?.contentViewController is ProjectPickerViewController {
+            showDashboard()
+        } else if let splitVC = window?.contentViewController as? DashboardSplitViewController {
+            splitVC.sidebar.refresh()
+            // Update window title to show active project
+            if let active = OpenProjects.shared.projects.first {
+                window.title = "ppg — \(active.projectName)"
+            }
+        }
     }
 
     @objc private func openRecentProject(_ sender: NSMenuItem) {
         guard let path = sender.representedObject as? String else { return }
-        ProjectState.shared.switchProject(root: path)
+        OpenProjects.shared.add(root: path)
+
+        if window?.contentViewController is ProjectPickerViewController {
+            showDashboard()
+        } else if let splitVC = window?.contentViewController as? DashboardSplitViewController {
+            splitVC.sidebar.refresh()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -193,11 +217,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         return false
-    }
-
-    deinit {
-        if let observer = projectChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 }

@@ -249,3 +249,87 @@ nonisolated class RecentProjects: @unchecked Sendable {
         return FileManager.default.fileExists(atPath: manifestPath)
     }
 }
+
+// MARK: - ProjectContext
+
+class ProjectContext {
+    let projectRoot: String
+    let projectName: String
+    let manifestPath: String
+    var sessionName: String
+    var agentCommand: String
+    let dashboardSession: DashboardSession
+
+    init(projectRoot: String) {
+        self.projectRoot = projectRoot
+        self.projectName = URL(fileURLWithPath: projectRoot).lastPathComponent
+
+        let pgDir = (projectRoot as NSString).appendingPathComponent(".pg")
+        self.manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
+
+        // Read sessionName from manifest
+        if let data = FileManager.default.contents(atPath: self.manifestPath),
+           let manifest = try? JSONDecoder().decode(ManifestModel.self, from: data) {
+            self.sessionName = manifest.sessionName
+        } else {
+            self.sessionName = "ppg"
+        }
+
+        self.agentCommand = ProjectState.shared.agentCommand.isEmpty
+            ? "claude --dangerously-skip-permissions"
+            : ProjectState.shared.agentCommand
+        self.dashboardSession = DashboardSession(projectRoot: projectRoot)
+    }
+}
+
+// MARK: - OpenProjects
+
+nonisolated class OpenProjects: @unchecked Sendable {
+    static let shared = OpenProjects()
+
+    private let key = "PPGOpenProjects"
+    private(set) var projects: [ProjectContext] = []
+
+    init() {
+        loadFromDisk()
+    }
+
+    @discardableResult
+    func add(root: String) -> ProjectContext {
+        // If already open, return existing
+        if let existing = projects.first(where: { $0.projectRoot == root }) {
+            return existing
+        }
+        let ctx = ProjectContext(projectRoot: root)
+        projects.append(ctx)
+        RecentProjects.shared.add(root)
+        save()
+        return ctx
+    }
+
+    func remove(root: String) {
+        projects.removeAll { $0.projectRoot == root }
+        save()
+    }
+
+    func project(at index: Int) -> ProjectContext? {
+        guard index >= 0, index < projects.count else { return nil }
+        return projects[index]
+    }
+
+    func indexOf(root: String) -> Int? {
+        projects.firstIndex(where: { $0.projectRoot == root })
+    }
+
+    func save() {
+        let roots = projects.map(\.projectRoot)
+        UserDefaults.standard.set(roots, forKey: key)
+    }
+
+    func loadFromDisk() {
+        let roots = UserDefaults.standard.stringArray(forKey: key) ?? []
+        projects = roots
+            .filter { RecentProjects.shared.isValidProject($0) }
+            .map { ProjectContext(projectRoot: $0) }
+    }
+}
