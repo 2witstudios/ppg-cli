@@ -91,8 +91,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // App menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        let quitItem = appMenu.addItem(withTitle: "Quit PPG CLI", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        appMenu.addItem(withTitle: "About PPG CLI",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: "")
+
+        appMenu.addItem(.separator())
+
+        let checkForUpdatesItem = NSMenuItem(
+            title: "Check for Updates...",
+            action: nil,
+            keyEquivalent: "")
+        appMenu.addItem(checkForUpdatesItem)
+        UpdaterManager.shared.wireMenuItem(checkForUpdatesItem)
+
+        appMenu.addItem(.separator())
+
+        let quitItem = appMenu.addItem(withTitle: "Quit PPG CLI",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q")
         quitItem.tag = kMenuTagQuit
+
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
