@@ -46,6 +46,8 @@ class ContentViewController: NSViewController {
     private(set) var activeGridOwnerId: String?  // which entry owns the visible grid
     /// Called when a grid is permanently destroyed (exitGridMode or removeGrid). Parameter: owner entry ID.
     var onGridDestroyed: ((String) -> Void)?
+    /// Called when a grid is suspended (navigate away). Parameters: owner entry ID, layout snapshot.
+    var onGridSuspended: ((String, GridLayoutNode) -> Void)?
     var isGridMode: Bool {
         guard let grid = paneGrid else { return false }
         return grid.view.superview != nil && !grid.view.isHidden
@@ -335,7 +337,9 @@ class ContentViewController: NSViewController {
     /// Detach the active grid from the view hierarchy without destroying it.
     /// Terminal views remain alive inside the grid's cellViews.
     func suspendGrid() {
-        guard let grid = paneGrid, activeGridOwnerId != nil else { return }
+        guard let grid = paneGrid, let ownerId = activeGridOwnerId else { return }
+        // Save layout before detaching
+        onGridSuspended?(ownerId, grid.root.toLayoutNode())
         grid.view.removeFromSuperview()
         grid.removeFromParent()
         paneGrid = nil

@@ -121,6 +121,35 @@ indirect enum PaneSplitNode {
         if case .split(_, _, _, let ratio) = self { return ratio }
         return nil
     }
+
+    /// Convert to a serializable layout node (entry IDs only, no views).
+    func toLayoutNode() -> GridLayoutNode {
+        switch self {
+        case .leaf(_, let entry):
+            return .leaf(entryId: entry?.id)
+        case .split(let direction, let first, let second, let ratio):
+            let dirStr = direction == .horizontal ? "horizontal" : "vertical"
+            return .split(direction: dirStr, ratio: ratio, first: first.toLayoutNode(), second: second.toLayoutNode())
+        }
+    }
+
+    /// Reconstruct from a layout node, generating fresh leaf IDs.
+    static func fromLayoutNode(_ node: GridLayoutNode, idGenerator: inout Int) -> PaneSplitNode {
+        if node.isLeaf {
+            idGenerator += 1
+            // Entry will be filled in later by the caller
+            return .leaf(id: "pane-\(idGenerator)", entry: nil)
+        }
+        guard let children = node.children, children.count == 2,
+              let dirStr = node.direction else {
+            idGenerator += 1
+            return .leaf(id: "pane-\(idGenerator)", entry: nil)
+        }
+        let direction: SplitDirection = dirStr == "horizontal" ? .horizontal : .vertical
+        let first = fromLayoutNode(children[0], idGenerator: &idGenerator)
+        let second = fromLayoutNode(children[1], idGenerator: &idGenerator)
+        return .split(direction: direction, first: first, second: second, ratio: node.ratio ?? 0.5)
+    }
 }
 
 // MARK: - Pane Grid Controller
@@ -129,7 +158,7 @@ class PaneGridController: NSViewController {
 
     private(set) var root: PaneSplitNode
     private(set) var focusedLeafId: String
-    private static var leafIdCounter = 0
+    static var leafIdCounter = 0
 
     /// Caches: leafId -> PaneCellView
     private(set) var cellViews: [String: PaneCellView] = [:]
@@ -174,6 +203,13 @@ class PaneGridController: NSViewController {
     }
 
     // MARK: - Public API
+
+    /// Replace the entire split tree and rebuild the UI. Used for restoring a persisted layout.
+    func replaceRoot(_ newRoot: PaneSplitNode) {
+        root = newRoot
+        focusedLeafId = root.allLeafIds().first ?? focusedLeafId
+        rebuild()
+    }
 
     private func nextLeafId() -> String {
         Self.leafIdCounter += 1

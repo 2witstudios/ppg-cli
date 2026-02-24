@@ -1,5 +1,25 @@
 import Foundation
 
+/// Codable representation of a PaneSplitNode tree (entry IDs only, no views).
+struct GridLayoutNode: Codable {
+    /// Leaf: entryId is the session entry ID (nil = empty placeholder pane).
+    var entryId: String?
+    /// Split: direction ("horizontal" or "vertical"), ratio, and exactly 2 children.
+    var direction: String?
+    var ratio: CGFloat?
+    var children: [GridLayoutNode]?
+
+    var isLeaf: Bool { children == nil }
+
+    static func leaf(entryId: String?) -> GridLayoutNode {
+        GridLayoutNode(entryId: entryId)
+    }
+
+    static func split(direction: String, ratio: CGFloat, first: GridLayoutNode, second: GridLayoutNode) -> GridLayoutNode {
+        GridLayoutNode(direction: direction, ratio: ratio, children: [first, second])
+    }
+}
+
 class DashboardSession {
     struct TerminalEntry: Codable {
         let id: String
@@ -19,8 +39,15 @@ class DashboardSession {
         }
     }
 
+    /// Wrapper for the on-disk format (entries + grid layouts).
+    private struct SessionData: Codable {
+        var entries: [TerminalEntry]
+        var gridLayouts: [String: GridLayoutNode]?
+    }
+
     let projectRoot: String
     private(set) var entries: [TerminalEntry] = []
+    private var gridLayouts: [String: GridLayoutNode] = [:]
     private var terminalCounter = 0
     private var agentCounter = 0
 
@@ -125,8 +152,25 @@ class DashboardSession {
         }
     }
 
+    // MARK: - Grid Layouts
+
+    func saveGridLayout(ownerEntryId: String, layout: GridLayoutNode) {
+        gridLayouts[ownerEntryId] = layout
+        saveToDisk()
+    }
+
+    func gridLayout(forOwnerEntryId ownerEntryId: String) -> GridLayoutNode? {
+        gridLayouts[ownerEntryId]
+    }
+
+    func removeGridLayout(ownerEntryId: String) {
+        gridLayouts.removeValue(forKey: ownerEntryId)
+        saveToDisk()
+    }
+
     func removeAll() {
         entries.removeAll()
+        gridLayouts.removeAll()
         terminalCounter = 0
         agentCounter = 0
         saveToDisk()
@@ -145,7 +189,11 @@ class DashboardSession {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(entries)
+            let sessionData = SessionData(
+                entries: entries,
+                gridLayouts: gridLayouts.isEmpty ? nil : gridLayouts
+            )
+            let data = try encoder.encode(sessionData)
             try data.write(to: URL(fileURLWithPath: path))
         } catch {
             // Non-fatal — entries will be lost on restart
@@ -156,17 +204,25 @@ class DashboardSession {
         guard let path = persistencePath,
               FileManager.default.fileExists(atPath: path),
               let data = FileManager.default.contents(atPath: path) else { return }
-        do {
-            entries = try JSONDecoder().decode([TerminalEntry].self, from: data)
-            agentCounter = entries.filter { $0.kind == .agent }.count
-            terminalCounter = entries.filter { $0.kind == .terminal }.count
-        } catch {
+
+        // Try new wrapper format first, fall back to legacy [TerminalEntry] array
+        if let sessionData = try? JSONDecoder().decode(SessionData.self, from: data) {
+            entries = sessionData.entries
+            gridLayouts = sessionData.gridLayouts ?? [:]
+        } else if let legacyEntries = try? JSONDecoder().decode([TerminalEntry].self, from: data) {
+            entries = legacyEntries
+            gridLayouts = [:]
+        } else {
             entries = []
+            gridLayouts = [:]
         }
+        agentCounter = entries.filter { $0.kind == .agent }.count
+        terminalCounter = entries.filter { $0.kind == .terminal }.count
     }
 
     func reloadFromDisk() {
         entries = []
+        gridLayouts = [:]
         terminalCounter = 0
         agentCounter = 0
         loadFromDisk()

@@ -81,6 +81,18 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.showHomeDashboard()
         }
 
+        // Save grid layout when a grid is suspended (navigate away)
+        content.onGridSuspended = { [weak self] ownerEntryId, layout in
+            guard let self = self else { return }
+            for projectNode in self.sidebar.projectNodes {
+                guard case .project(let ctx) = projectNode.item else { continue }
+                if !ctx.dashboardSession.entriesForGrid(ownerEntryId: ownerEntryId).isEmpty {
+                    ctx.dashboardSession.saveGridLayout(ownerEntryId: ownerEntryId, layout: layout)
+                    return
+                }
+            }
+        }
+
         // Clean up persisted grid-owned session entries when a grid is destroyed
         content.onGridDestroyed = { [weak self] ownerEntryId in
             guard let self = self else { return }
@@ -93,6 +105,7 @@ class DashboardSplitViewController: NSSplitViewController {
                     }
                     ctx.dashboardSession.remove(id: gridEntry.id)
                 }
+                ctx.dashboardSession.removeGridLayout(ownerEntryId: ownerEntryId)
             }
         }
 
@@ -228,29 +241,84 @@ class DashboardSplitViewController: NSSplitViewController {
     // MARK: - Grid Restoration
 
     /// Rebuild a grid from persisted session entries after a reboot.
-    /// The owner entry is already showing in single-pane mode; we enter grid mode
-    /// and fill additional panes from the persisted grid children.
+    /// Uses the saved layout tree to preserve split directions and ratios.
     private func rebuildGridFromSession(entry: TabEntry, project: ProjectContext) {
         let gridEntries = project.dashboardSession.entriesForGrid(ownerEntryId: entry.id)
         guard !gridEntries.isEmpty else { return }
 
+        let sessionName = project.sessionName
+        let savedLayout = project.dashboardSession.gridLayout(forOwnerEntryId: entry.id)
+
         wireGridCallbacks()
         content.splitPaneRight()
 
-        // Fill the new (second) pane with the first grid child
-        let sessionName = project.sessionName
-        content.paneGrid?.fillFocusedPane(with: .sessionEntry(gridEntries[0], sessionName: sessionName))
+        guard let grid = content.paneGrid else { return }
 
-        // For each additional child, split and fill
-        for i in 1..<gridEntries.count {
-            content.paneGrid?.splitFocusedPane(direction: .vertical)
-            content.paneGrid?.fillFocusedPane(with: .sessionEntry(gridEntries[i], sessionName: sessionName))
+        if let layout = savedLayout {
+            // Rebuild the tree from the saved layout, then fill leaves with entries
+            var counter = PaneGridController.leafIdCounter
+            let restoredRoot = PaneSplitNode.fromLayoutNode(layout, idGenerator: &counter)
+            PaneGridController.leafIdCounter = counter
+
+            grid.replaceRoot(restoredRoot)
+
+            // Build a lookup from entry ID -> session entry
+            var entryById: [String: DashboardSession.TerminalEntry] = [:]
+            for ge in gridEntries { entryById[ge.id] = ge }
+
+            // Walk the layout and restored tree in parallel to fill entries
+            fillLeavesFromLayout(grid: grid, layout: layout, leafIds: restoredRoot.allLeafIds(), sessionName: sessionName, ownerEntry: entry, entryById: entryById)
+        } else {
+            // No saved layout — fall back to simple vertical splits
+            content.paneGrid?.fillFocusedPane(with: .sessionEntry(gridEntries[0], sessionName: sessionName))
+            for i in 1..<gridEntries.count {
+                grid.splitFocusedPane(direction: .vertical)
+                grid.fillFocusedPane(with: .sessionEntry(gridEntries[i], sessionName: sessionName))
+            }
         }
 
         // Focus back to the first pane
-        if let firstLeaf = content.paneGrid?.root.allLeafIds().first {
-            content.paneGrid?.setFocus(firstLeaf)
+        if let firstLeaf = grid.root.allLeafIds().first {
+            grid.setFocus(firstLeaf)
         }
+    }
+
+    /// Walk the layout tree and the matching leaf IDs to fill each pane with the right entry.
+    private func fillLeavesFromLayout(
+        grid: PaneGridController,
+        layout: GridLayoutNode,
+        leafIds: [String],
+        sessionName: String,
+        ownerEntry: TabEntry,
+        entryById: [String: DashboardSession.TerminalEntry]
+    ) {
+        // Collect entry IDs from the layout in tree order (depth-first)
+        let layoutEntryIds = collectLeafEntryIds(from: layout)
+
+        for (i, leafId) in leafIds.enumerated() {
+            guard i < layoutEntryIds.count else { break }
+            let entryId = layoutEntryIds[i]
+
+            if let entryId = entryId {
+                if entryId == ownerEntry.id {
+                    // This is the grid owner — show it directly
+                    grid.setFocus(leafId)
+                    grid.fillFocusedPane(with: ownerEntry)
+                } else if let sessionEntry = entryById[entryId] {
+                    grid.setFocus(leafId)
+                    grid.fillFocusedPane(with: .sessionEntry(sessionEntry, sessionName: sessionName))
+                }
+            }
+        }
+    }
+
+    /// Depth-first collection of entry IDs from a layout tree.
+    private func collectLeafEntryIds(from node: GridLayoutNode) -> [String?] {
+        if node.isLeaf {
+            return [node.entryId]
+        }
+        guard let children = node.children, children.count == 2 else { return [] }
+        return collectLeafEntryIds(from: children[0]) + collectLeafEntryIds(from: children[1])
     }
 
     // MARK: - Pane Grid Actions
