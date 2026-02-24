@@ -13,42 +13,6 @@ final class SidebarViewControllerTests: XCTestCase {
 
     // MARK: - Tree Structure
 
-    func testRootHasOneChildWhenMasterNodeExists() {
-        let vc = SidebarViewController()
-        vc.worktrees = []
-        vc.loadViewIfNeeded()
-        // After loadViewIfNeeded, refresh runs async. Manually trigger tree build for sync testing.
-        vc.worktrees = []
-        // Force tree rebuild by calling refresh internals
-        // Since rebuildTree is private, we test via the data source
-        // The masterNode is set during refresh; we simulate by setting worktrees and reloading
-    }
-
-    func testNumberOfChildrenAtRootReturnsOneForMaster() {
-        let vc = SidebarViewController()
-        vc.loadViewIfNeeded()
-        // Master node is nil until first refresh; test after manual setup
-        vc.worktrees = [makeWorktree()]
-        vc.refresh()
-
-        // Give async refresh a moment
-        let expectation = self.expectation(description: "refresh")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            // After refresh, master node should exist
-            let rootCount = vc.outlineView(vc.outlineView, numberOfChildrenOfItem: nil)
-            XCTAssertEqual(rootCount, 1) // just the master node
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-    }
-
-    func testMasterNodeIsExpandable() {
-        let vc = SidebarViewController()
-        vc.loadViewIfNeeded()
-        let node = SidebarNode(.master)
-        XCTAssertTrue(vc.outlineView(vc.outlineView, isItemExpandable: node))
-    }
-
     func testWorktreeNodeIsExpandable() {
         let vc = SidebarViewController()
         vc.loadViewIfNeeded()
@@ -66,7 +30,7 @@ final class SidebarViewControllerTests: XCTestCase {
     func testTerminalNodeIsNotExpandable() {
         let vc = SidebarViewController()
         vc.loadViewIfNeeded()
-        let session = DashboardSession()
+        let session = DashboardSession(projectRoot: "/tmp/test")
         let entry = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
         let node = SidebarNode(.terminal(entry))
         XCTAssertFalse(vc.outlineView(vc.outlineView, isItemExpandable: node))
@@ -74,11 +38,12 @@ final class SidebarViewControllerTests: XCTestCase {
 
     // MARK: - SidebarNode children
 
-    func testMasterNodeChildrenIncludeWorktrees() {
-        let master = SidebarNode(.master)
+    func testProjectNodeChildrenIncludeWorktrees() {
+        let ctx = ProjectContext(projectRoot: "/tmp/test-proj")
+        let project = SidebarNode(.project(ctx))
         let wt = SidebarNode(.worktree(makeWorktree()))
-        master.children = [wt]
-        XCTAssertEqual(master.children.count, 1)
+        project.children = [wt]
+        XCTAssertEqual(project.children.count, 1)
     }
 
     func testWorktreeNodeChildrenIncludeAgents() {
@@ -92,9 +57,6 @@ final class SidebarViewControllerTests: XCTestCase {
     // MARK: - SidebarItem identity
 
     func testSidebarItemIds() {
-        let master = SidebarItem.master
-        XCTAssertEqual(master.id, "__master__")
-
         let wt = SidebarItem.worktree(makeWorktree(id: "wt-abc"))
         XCTAssertEqual(wt.id, "wt-abc")
 
@@ -102,7 +64,7 @@ final class SidebarViewControllerTests: XCTestCase {
         XCTAssertEqual(agent.id, "ag-xyz")
     }
 
-    // MARK: - Status color (preserved from original)
+    // MARK: - Status color
 
     func testStatusColorMapping() {
         XCTAssertEqual(statusColor(for: .running), .systemGreen)
@@ -114,14 +76,6 @@ final class SidebarViewControllerTests: XCTestCase {
         XCTAssertEqual(statusColor(for: .spawning), .systemYellow)
     }
 
-    // MARK: - Add button
-
-    func testAddButtonExists() {
-        let vc = SidebarViewController()
-        vc.loadViewIfNeeded()
-        XCTAssertNotNil(vc.addButton.action)
-    }
-
     // MARK: - Callbacks
 
     func testCallbackPropertiesExist() {
@@ -129,8 +83,8 @@ final class SidebarViewControllerTests: XCTestCase {
         vc.loadViewIfNeeded()
         // Verify callback properties are settable
         vc.onItemSelected = { _ in }
-        vc.onAddAgent = { _ in }
-        vc.onAddTerminal = { _ in }
+        vc.onAddAgent = { _, _ in }
+        vc.onAddTerminal = { _, _ in }
         XCTAssertNotNil(vc.onItemSelected)
         XCTAssertNotNil(vc.onAddAgent)
         XCTAssertNotNil(vc.onAddTerminal)
