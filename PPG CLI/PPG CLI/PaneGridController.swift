@@ -279,6 +279,7 @@ class PaneGridController: NSViewController {
     }
 
     /// Split the focused pane in the given direction.
+    /// Uses incremental NSSplitView insertion instead of a full rebuild.
     @discardableResult
     func splitFocusedPane(direction: SplitDirection) -> Bool {
         let newId = nextLeafId()
@@ -290,13 +291,81 @@ class PaneGridController: NSViewController {
         ) else {
             return false
         }
+
+        let oldFocusedId = focusedLeafId
         root = newRoot
         focusedLeafId = newId
-        rebuild()
+
+        // Try incremental update: replace the existing cell with a split containing it + new cell
+        guard let existingCell = cellViews[oldFocusedId],
+              let parentView = existingCell.superview else {
+            rebuild()
+            return true
+        }
+
+        // Create the new cell for the empty pane
+        let newCell = cellView(for: newId)
+        newCell.showPlaceholder(
+            onNewAgent: { [weak self] in self?.onNewAgent?() },
+            onNewTerminal: { [weak self] in self?.onNewTerminal?() },
+            onPickFromSidebar: { [weak self] in self?.onPickFromSidebar?() }
+        )
+        newCell.onClick = { [weak self] in self?.setFocus(newId) }
+        newCell.onSplitHorizontal = { [weak self] in self?.onSplitPane?(newId, .horizontal) }
+        newCell.onSplitVertical = { [weak self] in self?.onSplitPane?(newId, .vertical) }
+        newCell.onClose = { [weak self] in self?.onClosePane?(newId) }
+
+        // Build a new NSSplitView to replace the cell in its parent
+        let splitView = NSSplitView()
+        splitView.isVertical = (direction == .vertical)
+        splitView.dividerStyle = .thin
+        splitView.translatesAutoresizingMaskIntoConstraints = false
+        splitView.wantsLayer = true
+
+        let delegate = SplitViewDelegate()
+        splitView.delegate = delegate
+        objc_setAssociatedObject(splitView, &splitViewDelegateKey, delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        // Record existing cell's index before detaching so we can insert at the same position
+        let existingIndex = (parentView as? NSSplitView)?.subviews.firstIndex(of: existingCell)
+
+        existingCell.removeFromSuperview()
+        splitView.addSubview(existingCell)
+        splitView.addSubview(newCell)
+
+        // Insert split into parent at the same position
+        if let parentSplit = parentView as? NSSplitView {
+            // Insert at the correct index to preserve visual ordering
+            if let idx = existingIndex, idx == 0, let remaining = parentSplit.subviews.first {
+                parentSplit.addSubview(splitView, positioned: .below, relativeTo: remaining)
+            } else {
+                parentSplit.addSubview(splitView)
+            }
+        } else {
+            // Parent is the root view
+            parentView.addSubview(splitView)
+            NSLayoutConstraint.activate([
+                splitView.topAnchor.constraint(equalTo: parentView.topAnchor),
+                splitView.leadingAnchor.constraint(equalTo: parentView.leadingAnchor),
+                splitView.trailingAnchor.constraint(equalTo: parentView.trailingAnchor),
+                splitView.bottomAnchor.constraint(equalTo: parentView.bottomAnchor),
+            ])
+        }
+
+        // Set initial ratio to 50/50
+        DispatchQueue.main.async { [weak self] in
+            self?.applySplitRatio(splitView, ratio: 0.5)
+            // Update focus borders
+            for (id, cell) in self?.cellViews ?? [:] {
+                cell.updateFocusIndicator(focused: id == self?.focusedLeafId)
+            }
+        }
+
         return true
     }
 
     /// Close the focused pane.
+    /// Uses incremental NSSplitView removal instead of a full rebuild.
     @discardableResult
     func closeFocusedPane() -> Bool {
         // Can't close the last pane
@@ -315,10 +384,62 @@ class PaneGridController: NSViewController {
         // Move focus to first remaining leaf
         focusedLeafId = root.allLeafIds().first ?? ""
 
+        // Try incremental removal: find the parent NSSplitView, remove the closing cell,
+        // and replace the split with the remaining sibling.
+        if let closingCell = cellViews[closingId],
+           let parentSplit = closingCell.superview as? NSSplitView {
+
+            // Find the sibling view (the one that's not the closing cell)
+            let siblings = parentSplit.subviews.filter { $0 !== closingCell }
+            if let sibling = siblings.first, let grandparent = parentSplit.superview {
+                // Record parentSplit's index in grandparent before removal
+                let parentIndex = (grandparent as? NSSplitView)?.subviews.firstIndex(of: parentSplit)
+
+                closingCell.removeFromSuperview()
+
+                if let grandSplit = grandparent as? NSSplitView {
+                    // Replace the parent split with the sibling at the same index
+                    parentSplit.removeFromSuperview()
+                    sibling.removeFromSuperview()
+                    if let idx = parentIndex, idx == 0, let remaining = grandSplit.subviews.first {
+                        grandSplit.addSubview(sibling, positioned: .below, relativeTo: remaining)
+                    } else {
+                        grandSplit.addSubview(sibling)
+                    }
+                } else {
+                    // Grandparent is the root view — replace parent split with sibling
+                    parentSplit.removeFromSuperview()
+                    sibling.removeFromSuperview()
+                    sibling.translatesAutoresizingMaskIntoConstraints = false
+                    grandparent.addSubview(sibling)
+                    NSLayoutConstraint.activate([
+                        sibling.topAnchor.constraint(equalTo: grandparent.topAnchor),
+                        sibling.leadingAnchor.constraint(equalTo: grandparent.leadingAnchor),
+                        sibling.trailingAnchor.constraint(equalTo: grandparent.trailingAnchor),
+                        sibling.bottomAnchor.constraint(equalTo: grandparent.bottomAnchor),
+                    ])
+                }
+            } else {
+                // Fallback to full rebuild
+                cellViews.removeValue(forKey: closingId)
+                rebuild()
+                return true
+            }
+        } else {
+            // Fallback to full rebuild
+            cellViews.removeValue(forKey: closingId)
+            rebuild()
+            return true
+        }
+
         // Remove cell view for the closed pane
         cellViews.removeValue(forKey: closingId)
 
-        rebuild()
+        // Update focus borders
+        for (id, cell) in cellViews {
+            cell.updateFocusIndicator(focused: id == focusedLeafId)
+        }
+
         return true
     }
 
