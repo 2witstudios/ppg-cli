@@ -207,7 +207,7 @@ class ContentViewController: NSViewController {
         containerView.addSubview(termView)
         NSLayoutConstraint.activate([
             termView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
             termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             termView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
         ])
