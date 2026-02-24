@@ -236,22 +236,21 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/PPG-CLI-Dashboard.dmg"
           PUB_DATE=$(date -u '+%a, %d %b %Y %H:%M:%S %z')
 
-          NEW_ITEM=$(cat <<ITEM_EOF
-              <item>
-                <title>Version ${VERSION}</title>
-                <pubDate>${PUB_DATE}</pubDate>
-                <sparkle:version>${BUILD_NUMBER}</sparkle:version>
-                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
-                <enclosure url="${DOWNLOAD_URL}"
-                           type="application/octet-stream"
-                           sparkle:edSignature="${ED_SIGNATURE}"
-                           length="${FILE_LENGTH}" />
-              </item>
-          ITEM_EOF
-          )
-
-          # Insert the new item before </channel>
-          sed -i "s|</channel>|${NEW_ITEM}\n  </channel>|" appcast.xml
+          # Insert new item before </channel> using awk (sed can't handle multiline)
+          awk -v ver="$VERSION" -v build="$BUILD_NUMBER" -v url="$DOWNLOAD_URL" \
+              -v date="$PUB_DATE" -v sig="$ED_SIGNATURE" -v len="$FILE_LENGTH" \
+              '/<\/channel>/ {
+                print "    <item>"
+                print "      <title>Version " ver "</title>"
+                print "      <pubDate>" date "</pubDate>"
+                print "      <sparkle:version>" build "</sparkle:version>"
+                print "      <sparkle:shortVersionString>" ver "</sparkle:shortVersionString>"
+                print "      <enclosure url=\"" url "\""
+                print "                 type=\"application/octet-stream\""
+                print "                 sparkle:edSignature=\"" sig "\""
+                print "                 length=\"" len "\" />"
+                print "    </item>"
+              } {print}' appcast.xml > appcast.tmp && mv appcast.tmp appcast.xml
 
       - name: Commit and push appcast
         run: |
