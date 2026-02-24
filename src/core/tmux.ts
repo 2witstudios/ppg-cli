@@ -53,10 +53,10 @@ export async function splitPane(
     flag,
     '-t', target,
     '-c', cwd,
-    '-P', '-F', '#{pane_id}',
+    '-P', '-F', '#{session_name}:#{window_index}.#{pane_index}|#{pane_id}',
   ]);
-  const paneId = result.stdout.trim();
-  return { paneId, target: paneId };
+  const [canonicalTarget, paneId] = result.stdout.trim().split('|');
+  return { paneId, target: canonicalTarget };
 }
 
 export async function sendKeys(target: string, command: string): Promise<void> {

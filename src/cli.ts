@@ -29,7 +29,7 @@ program
   .option('--var <key=value...>', 'Template variables', collectVars, [])
   .option('-b, --base <branch>', 'Base branch for the worktree')
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
-  .option('-c, --count <n>', 'Number of agents to spawn', parseInt, 1)
+  .option('-c, --count <n>', 'Number of agents to spawn', (v: string) => Number(v), 1)
   .option('--split', 'Put all agents in one window as split panes')
   .option('--no-open', 'Do not open a Terminal window for the spawned agents')
   .option('--json', 'Output as JSON')
@@ -56,6 +56,7 @@ program
   .option('-w, --worktree <id>', 'Kill all agents in a worktree')
   .option('--all', 'Kill all agents in all worktrees')
   .option('-r, --remove', 'Also remove the worktree after killing')
+  .option('-d, --delete', 'Delete agent/worktree entry from manifest after killing')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { killCommand } = await import('./commands/kill.js');
@@ -75,7 +76,7 @@ program
   .command('logs')
   .description('View agent pane output')
   .argument('<agent-id>', 'Agent ID')
-  .option('-l, --lines <n>', 'Number of lines to show', parseInt, 100)
+  .option('-l, --lines <n>', 'Number of lines to show', (v: string) => Number(v), 100)
   .option('-f, --follow', 'Follow output (poll every 1s)')
   .option('--full', 'Show full pane history')
   .option('--json', 'Output as JSON')

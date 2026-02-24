@@ -58,9 +58,14 @@ class DashboardSplitViewController: NSSplitViewController {
             self.renameManifestAgent(project: project, agentId: agentId, newName: newName)
         }
 
-        sidebar.onKillAgent = { [weak self] project, agentId in
+        sidebar.onDeleteAgent = { [weak self] project, agentId in
             guard let self = self else { return }
-            self.killManifestAgent(project: project, agentId: agentId)
+            self.deleteManifestAgent(project: project, agentId: agentId)
+        }
+
+        sidebar.onDeleteWorktree = { [weak self] project, worktreeId in
+            guard let self = self else { return }
+            self.deleteWorktree(project: project, worktreeId: worktreeId)
         }
     }
 
@@ -98,6 +103,9 @@ class DashboardSplitViewController: NSSplitViewController {
                 }
             }
             return .manifestAgent(ag, sessionName: sessionName)
+
+        case .agentGroup(let agents, let windowKey):
+            return .agentGroup(agents, windowKey, sessionName: sessionName)
 
         case .terminal(let entry):
             return .sessionEntry(entry, sessionName: sessionName)
@@ -148,7 +156,7 @@ class DashboardSplitViewController: NSSplitViewController {
             let worktrees = sidebar.worktrees(for: ctx)
             for wt in worktrees {
                 if wt.agents.contains(where: { $0.id == entryId }) {
-                    killManifestAgent(project: ctx, agentId: entryId)
+                    deleteManifestAgent(project: ctx, agentId: entryId)
                     return
                 }
             }
@@ -269,22 +277,62 @@ class DashboardSplitViewController: NSSplitViewController {
         sidebar.refresh()
     }
 
-    private func killManifestAgent(project: ProjectContext, agentId: String) {
+    private func deleteManifestAgent(project: ProjectContext, agentId: String) {
         let projectRoot = project.projectRoot
         guard !projectRoot.isEmpty else { return }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = PPGService.shared.runPPGCommand("kill --agent \(shellEscape(agentId)) --json", projectRoot: projectRoot)
+            let result = PPGService.shared.runPPGCommand("kill --agent \(shellEscape(agentId)) --delete --json", projectRoot: projectRoot)
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if result.exitCode != 0 {
                     let alert = NSAlert()
-                    alert.messageText = "Failed to Kill Agent"
+                    alert.messageText = "Failed to Delete Agent"
                     alert.informativeText = result.stderr.isEmpty ? result.stdout : result.stderr
                     alert.alertStyle = .warning
                     alert.runModal()
                 }
                 self.content.removeEntry(byId: agentId)
+                self.sidebar.refresh()
+            }
+        }
+    }
+
+    private func deleteWorktree(project: ProjectContext, worktreeId: String) {
+        let projectRoot = project.projectRoot
+        guard !projectRoot.isEmpty else { return }
+
+        // Collect agent IDs belonging to this worktree so we can clean up content views
+        let worktrees = sidebar.worktrees(for: project)
+        let agentIds = worktrees.first(where: { $0.id == worktreeId })?.agents.map(\.id) ?? []
+
+        // Collect dashboard session entries parented to this worktree
+        let sessionEntryIds = project.dashboardSession.entriesForWorktree(worktreeId).map(\.id)
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = PPGService.shared.runPPGCommand("kill --worktree \(shellEscape(worktreeId)) --delete --json", projectRoot: projectRoot)
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if result.exitCode != 0 {
+                    let alert = NSAlert()
+                    alert.messageText = "Failed to Delete Worktree"
+                    alert.informativeText = result.stderr.isEmpty ? result.stdout : result.stderr
+                    alert.alertStyle = .warning
+                    alert.runModal()
+                }
+                // Remove content views for all agents in the worktree
+                for id in agentIds {
+                    self.content.removeEntry(byId: id)
+                }
+                // Remove content views for dashboard session entries parented to this worktree
+                for id in sessionEntryIds {
+                    if let entry = project.dashboardSession.entry(byId: id),
+                       let tmuxTarget = entry.tmuxTarget {
+                        project.dashboardSession.killTmuxWindow(target: tmuxTarget)
+                    }
+                    self.content.removeEntry(byId: id)
+                    project.dashboardSession.remove(id: id)
+                }
                 self.sidebar.refresh()
             }
         }

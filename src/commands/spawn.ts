@@ -246,9 +246,12 @@ async function spawnIntoExistingWorktree(
     const aId = genAgentId();
 
     let target: string;
-    if (options.split) {
-      // --split: agents share the existing window as split panes
-      const direction = i % 2 === 0 ? 'horizontal' : 'vertical';
+    if (i === 0 && options.split) {
+      // First agent reuses the existing window pane
+      target = windowTarget;
+    } else if (options.split) {
+      // --split: additional agents share the same window as split panes
+      const direction = i % 2 === 1 ? 'horizontal' : 'vertical';
       const pane = await tmux.splitPane(windowTarget, direction, wt.path);
       target = pane.target;
     } else {

@@ -26,6 +26,7 @@ enum SidebarItem {
     case project(ProjectContext)
     case worktree(WorktreeModel)
     case agent(AgentModel)
+    case agentGroup([AgentModel], String)   // agents sharing a window, window key
     case terminal(DashboardSession.TerminalEntry)
 
     var id: String {
@@ -33,6 +34,7 @@ enum SidebarItem {
         case .project(let ctx): return "project-\(ctx.projectRoot.hashValue)"
         case .worktree(let wt): return wt.id
         case .agent(let ag): return ag.id
+        case .agentGroup(_, let windowKey): return "group-\(windowKey)"
         case .terminal(let te): return te.id
         }
     }
@@ -63,7 +65,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onRenameTerminal: ((ProjectContext, String, String) -> Void)?   // (project, id, newLabel)
     var onDeleteTerminal: ((ProjectContext, String) -> Void)?            // (project, id)
     var onRenameAgent: ((ProjectContext, String, String) -> Void)?       // (project, agentId, newName)
-    var onKillAgent: ((ProjectContext, String) -> Void)?                 // (project, agentId)
+    var onDeleteAgent: ((ProjectContext, String) -> Void)?               // (project, agentId)
+    var onDeleteWorktree: ((ProjectContext, String) -> Void)?            // (project, worktreeId)
     var onDataRefreshed: ((SidebarItem?) -> Void)?
 
     private var refreshTimer: Timer?
@@ -183,9 +186,32 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             let worktrees = projectWorktrees[ctx.projectRoot] ?? []
             for wt in worktrees {
                 let wtNode = SidebarNode(.worktree(wt))
+
+                // Group agents that share the same tmux window
+                var windowGroups: [String: [AgentModel]] = [:]
+                var agentOrder: [String] = []  // preserve first-seen order
                 for agent in wt.agents {
-                    wtNode.children.append(SidebarNode(.agent(agent)))
+                    let target = agent.tmuxTarget
+                    let windowKey: String
+                    if let dotIndex = target.lastIndex(of: ".") {
+                        windowKey = String(target[target.startIndex..<dotIndex])
+                    } else {
+                        windowKey = target
+                    }
+                    if windowGroups[windowKey] == nil {
+                        agentOrder.append(windowKey)
+                    }
+                    windowGroups[windowKey, default: []].append(agent)
                 }
+                for windowKey in agentOrder {
+                    let agents = windowGroups[windowKey]!
+                    if agents.count > 1 {
+                        wtNode.children.append(SidebarNode(.agentGroup(agents, windowKey)))
+                    } else {
+                        wtNode.children.append(SidebarNode(.agent(agents[0])))
+                    }
+                }
+
                 for entry in ctx.dashboardSession.entriesForWorktree(wt.id) {
                     wtNode.children.append(SidebarNode(.terminal(entry)))
                 }
@@ -248,6 +274,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
                 }
             }
             return nil
+        case .agentGroup(let agents, _):
+            guard let firstAgent = agents.first else { return nil }
+            return projectContext(for: .agent(firstAgent))
         case .terminal(let entry):
             for node in projectNodes {
                 if case .project(let ctx) = node.item {
@@ -288,6 +317,14 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             // Find parent worktree across all projects
             for (_, worktrees) in projectWorktrees {
                 for wt in worktrees where wt.agents.contains(where: { $0.id == ag.id }) {
+                    return wt.id
+                }
+            }
+            return nil
+        case .agentGroup(let agents, _):
+            guard let firstAgent = agents.first else { return nil }
+            for (_, worktrees) in projectWorktrees {
+                for wt in worktrees where wt.agents.contains(where: { $0.id == firstAgent.id }) {
                     return wt.id
                 }
             }
@@ -376,7 +413,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         guard let node = item as? SidebarNode else { return false }
         switch node.item {
         case .project, .worktree: return true
-        case .agent, .terminal: return false
+        case .agent, .agentGroup, .terminal: return false
         }
     }
 
@@ -391,6 +428,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             return makeWorktreeCell(wt)
         case .agent(let ag):
             return makeAgentCell(ag)
+        case .agentGroup(let agents, _):
+            return makeAgentGroupCell(agents)
         case .terminal(let entry):
             return makeTerminalEntryCell(entry)
         }
@@ -498,6 +537,35 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         return cell
     }
 
+    private func makeAgentGroupCell(_ agents: [AgentModel]) -> NSView {
+        let cell = NSTableCellView()
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        // Use the "worst" status for the group color (failed > running > completed)
+        let leadStatus = agents.first?.status ?? .running
+        let statusDesc = "\(agents.count) agents (split)"
+        let icon = NSImageView(image: NSImage(systemSymbolName: "rectangle.split.2x1.fill", accessibilityDescription: statusDesc)!)
+        icon.contentTintColor = statusColor(for: leadStatus)
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+
+        let label = NSTextField(labelWithString: "\(agents.count) agents (split)")
+        label.font = .systemFont(ofSize: 12)
+
+        stack.addArrangedSubview(icon)
+        stack.addArrangedSubview(label)
+
+        cell.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            stack.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+            stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        return cell
+    }
+
     private func makeTerminalEntryCell(_ entry: DashboardSession.TerminalEntry) -> NSView {
         let cell = NSTableCellView()
         let stack = NSStackView()
@@ -585,16 +653,19 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         case .project:
             contextClickedNode = node
             menu.addItem(withTitle: "Close Project", action: #selector(contextCloseProject(_:)), keyEquivalent: "").target = self
+        case .worktree:
+            contextClickedNode = node
+            menu.addItem(withTitle: "Delete Worktree", action: #selector(contextDeleteWorktree(_:)), keyEquivalent: "").target = self
         case .agent:
             contextClickedNode = node
             menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
-            menu.addItem(withTitle: "Kill", action: #selector(contextDelete(_:)), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "Delete", action: #selector(contextDelete(_:)), keyEquivalent: "").target = self
+        case .agentGroup:
+            contextClickedNode = nil  // no context menu for groups yet
         case .terminal:
             contextClickedNode = node
             menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
             menu.addItem(withTitle: "Delete", action: #selector(contextDelete(_:)), keyEquivalent: "").target = self
-        default:
-            contextClickedNode = nil
         }
     }
 
@@ -602,6 +673,20 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         guard let node = contextClickedNode, case .project(let ctx) = node.item else { return }
         OpenProjects.shared.remove(root: ctx.projectRoot)
         refresh()
+    }
+
+    @objc private func contextDeleteWorktree(_ sender: Any) {
+        guard let node = contextClickedNode, case .worktree(let wt) = node.item else { return }
+        guard let ctx = projectContext(for: node.item) else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Delete worktree \"\(wt.name)\"?"
+        alert.informativeText = "This will kill all agents, remove the git worktree, and delete the branch."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        onDeleteWorktree?(ctx, wt.id)
     }
 
     @objc private func contextDelete(_ sender: Any) {
@@ -622,13 +707,13 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         case .agent(let agent):
             let displayName = agent.name.isEmpty ? agent.id : agent.name
             let alert = NSAlert()
-            alert.messageText = "Kill agent \"\(displayName)\"?"
-            alert.informativeText = "This will send Ctrl-C and terminate the agent's tmux pane."
+            alert.messageText = "Delete agent \"\(displayName)\"?"
+            alert.informativeText = "This will kill the agent and remove it from the manifest."
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "Kill")
+            alert.addButton(withTitle: "Delete")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            onKillAgent?(ctx, agent.id)
+            onDeleteAgent?(ctx, agent.id)
 
         default:
             break

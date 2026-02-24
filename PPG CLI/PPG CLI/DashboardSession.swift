@@ -39,7 +39,16 @@ class DashboardSession {
         if let target = tmuxTarget {
             let fullCommand: String
             if command.contains("claude") {
-                fullCommand = "unset CLAUDECODE; \(command) --session-id \(sid)"
+                var cmd = "unset CLAUDECODE; \(command) --session-id \(sid)"
+                if parentWorktreeId == nil {
+                    let contextPath = ((projectRoot as NSString)
+                        .appendingPathComponent(".pg") as NSString)
+                        .appendingPathComponent("conductor-context.md")
+                    if FileManager.default.fileExists(atPath: contextPath) {
+                        cmd += " --append-system-prompt \"$(cat \(shellEscape(contextPath)))\""
+                    }
+                }
+                fullCommand = cmd
             } else {
                 fullCommand = command
             }

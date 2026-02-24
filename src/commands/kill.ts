@@ -11,6 +11,7 @@ export interface KillOptions {
   worktree?: string;
   all?: boolean;
   remove?: boolean;
+  delete?: boolean;
   json?: boolean;
 }
 
@@ -40,23 +41,48 @@ async function killSingleAgent(
   if (!found) throw new AgentNotFoundError(agentId);
 
   const { agent } = found;
+  const isTerminal = ['completed', 'failed', 'killed', 'lost'].includes(agent.status);
 
-  info(`Killing agent ${agentId}`);
-  await killAgent(agent);
-
-  await updateManifest(projectRoot, (m) => {
-    const f = findAgent(m, agentId);
-    if (f) {
-      f.agent.status = 'killed';
-      f.agent.completedAt = new Date().toISOString();
+  if (options.delete) {
+    // For --delete: skip kill if already in terminal state, just clean up
+    if (!isTerminal) {
+      info(`Killing agent ${agentId}`);
+      await killAgent(agent);
     }
-    return m;
-  });
+    // Kill the tmux pane explicitly (handles already-dead)
+    await import('../core/tmux.js').then((tmux) => tmux.killPane(agent.tmuxTarget));
 
-  if (options.json) {
-    output({ success: true, killed: [agentId] }, true);
+    await updateManifest(projectRoot, (m) => {
+      const f = findAgent(m, agentId);
+      if (f) {
+        delete f.worktree.agents[agentId];
+      }
+      return m;
+    });
+
+    if (options.json) {
+      output({ success: true, killed: [agentId], deleted: [agentId] }, true);
+    } else {
+      success(`Deleted agent ${agentId}`);
+    }
   } else {
-    success(`Killed agent ${agentId}`);
+    info(`Killing agent ${agentId}`);
+    await killAgent(agent);
+
+    await updateManifest(projectRoot, (m) => {
+      const f = findAgent(m, agentId);
+      if (f) {
+        f.agent.status = 'killed';
+        f.agent.completedAt = new Date().toISOString();
+      }
+      return m;
+    });
+
+    if (options.json) {
+      output({ success: true, killed: [agentId] }, true);
+    } else {
+      success(`Killed agent ${agentId}`);
+    }
   }
 }
 
@@ -90,15 +116,32 @@ async function killWorktreeAgents(
     return m;
   });
 
-  if (options.remove) {
+  // --delete implies --remove (always clean up worktree)
+  const shouldRemove = options.remove || options.delete;
+  if (shouldRemove) {
     await removeWorktreeCleanup(projectRoot, wt.id);
   }
 
+  // --delete also removes the worktree entry from manifest
+  if (options.delete) {
+    await updateManifest(projectRoot, (m) => {
+      delete m.worktrees[wt.id];
+      return m;
+    });
+  }
+
   if (options.json) {
-    output({ success: true, killed: killedIds, removed: options.remove ? [wt.id] : [] }, true);
+    output({
+      success: true,
+      killed: killedIds,
+      removed: shouldRemove ? [wt.id] : [],
+      deleted: options.delete ? [wt.id] : [],
+    }, true);
   } else {
     success(`Killed ${killedIds.length} agent(s) in worktree ${wt.id}`);
-    if (options.remove) {
+    if (options.delete) {
+      success(`Deleted worktree ${wt.id}`);
+    } else if (options.remove) {
       success(`Removed worktree ${wt.id}`);
     }
   }
@@ -140,17 +183,36 @@ async function killAllAgents(
     return m;
   });
 
-  if (options.remove) {
+  // --delete implies --remove
+  const shouldRemove = options.remove || options.delete;
+  if (shouldRemove) {
     for (const wtId of activeWorktreeIds) {
       await removeWorktreeCleanup(projectRoot, wtId);
     }
   }
 
+  // --delete also removes worktree entries from manifest
+  if (options.delete) {
+    await updateManifest(projectRoot, (m) => {
+      for (const wtId of activeWorktreeIds) {
+        delete m.worktrees[wtId];
+      }
+      return m;
+    });
+  }
+
   if (options.json) {
-    output({ success: true, killed: killedIds, removed: options.remove ? activeWorktreeIds : [] }, true);
+    output({
+      success: true,
+      killed: killedIds,
+      removed: shouldRemove ? activeWorktreeIds : [],
+      deleted: options.delete ? activeWorktreeIds : [],
+    }, true);
   } else {
     success(`Killed ${killedIds.length} agent(s) across ${activeWorktreeIds.length} worktree(s)`);
-    if (options.remove) {
+    if (options.delete) {
+      success(`Deleted ${activeWorktreeIds.length} worktree(s)`);
+    } else if (options.remove) {
       success(`Removed ${activeWorktreeIds.length} worktree(s)`);
     }
   }

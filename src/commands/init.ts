@@ -7,6 +7,31 @@ import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
 import { createEmptyManifest, writeManifest } from '../core/manifest.js';
 
+const CONDUCTOR_CONTEXT = `# PPG Conductor Context
+
+You are operating on the master branch of a ppg-managed project.
+
+## Critical Rule
+**NEVER make code changes directly on the master branch.** Use \`ppg spawn\` to create worktrees.
+
+## Quick Reference
+- \`ppg spawn --name <name> --prompt "<task>" --json --no-open\` — Spawn worktree + agent
+- \`ppg status --json\` — Check statuses
+- \`ppg aggregate --all --json\` — Collect results
+- \`ppg merge <wt-id> --json\` — Merge completed work
+- \`ppg kill --agent <id> --json\` — Kill agent
+
+## Workflow
+1. Break request into parallelizable tasks
+2. Spawn each: \`ppg spawn --name <name> --prompt "<self-contained prompt>" --json --no-open\`
+3. Poll: \`ppg status --json\` every 5s
+4. Aggregate: \`ppg aggregate --all --json\`
+5. Present results, then merge confirmed worktrees
+
+Each agent prompt must be self-contained — agents have no memory of this conversation.
+Always use \`--json --no-open\`.
+`;
+
 const DEFAULT_TEMPLATE = `# Task: {{TASK_NAME}}
 
 ## Context
@@ -80,6 +105,11 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
     info('Wrote sample template: default.md');
   }
 
+  // 8. Write conductor context
+  const conductorPath = path.join(pgDir(projectRoot), 'conductor-context.md');
+  await fs.writeFile(conductorPath, CONDUCTOR_CONTEXT, 'utf-8');
+  info('Wrote conductor-context.md');
+
   if (options.json) {
     console.log(JSON.stringify({
       success: true,
@@ -99,6 +129,7 @@ async function updateGitignore(projectRoot: string): Promise<void> {
     '.pg/logs/',
     '.pg/manifest.json',
     '.pg/prompts/',
+    '.pg/conductor-context.md',
   ];
 
   let content = '';
