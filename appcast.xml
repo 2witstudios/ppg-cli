@@ -5,5 +5,15 @@
     <link>https://2witstudios.github.io/ppg-cli/appcast.xml</link>
     <description>PPG CLI Dashboard updates</description>
     <language>en</language>
+    <item>
+      <title>Version 0.1.7</title>
+      <pubDate>Tue, 24 Feb 2026 15:28:52 +0000</pubDate>
+      <sparkle:version>017</sparkle:version>
+      <sparkle:shortVersionString>0.1.7</sparkle:shortVersionString>
+      <enclosure url="https://github.com/2witstudios/ppg-cli/releases/download/v0.1.7/PPG-CLI-Dashboard.dmg"
+                 type="application/octet-stream"
+                 sparkle:edSignature="0z1PnB+CAP/ySHsVfbFfdzZG+Dy0Y8rUIq7sMdimkQh20ZhkrW0oG79OOhQxryJc5VaxnFXwEeihwOFhIr4rBw=="
+                 length="3578768" />
+    </item>
   </channel>
 </rss>
