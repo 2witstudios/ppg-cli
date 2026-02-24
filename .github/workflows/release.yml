@@ -158,6 +158,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: dashboard
@@ -166,33 +168,42 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ github.ref_name }}"
-          AUTO_NOTES=$(gh api repos/${{ github.repository }}/releases/generate-notes -f tag_name="$VERSION" --jq '.body')
-          cat > release-notes.md << EOF
-          ## PPG CLI Dashboard for macOS
 
-          The desktop dashboard gives you a visual control center for your parallel agent workflows — monitor status, view logs, and manage worktrees from a native macOS app.
+          # Find the previous tag to build changelog from commits
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
 
-          ### Download
+          # Build changelog from commit messages, filtering out internal-only changes
+          CHANGELOG=$(git log "${PREV_TAG}..${VERSION}" --pretty=format:"- %s" \
+            --no-merges \
+            | grep -v -i "bump version" \
+            | grep -v -i "^- Merge" \
+            | grep -v -i "notariz" \
+            | grep -v -i "fix test" \
+            | grep -v -i "fix ci" \
+            | grep -v -i "code sign" \
+            || true)
 
-          | Asset | Description |
-          |-------|-------------|
-          | **PPG-CLI-Dashboard.dmg** | macOS desktop dashboard (Apple signed & notarized) |
+          cat > release-notes.md << 'NOTES_EOF'
+          ## Changelog
+          NOTES_EOF
 
-          > The DMG is signed with a Developer ID certificate and notarized by Apple — it will open without Gatekeeper warnings.
+          echo "" >> release-notes.md
+          echo "$CHANGELOG" >> release-notes.md
 
-          ### Install via CLI
+          cat >> release-notes.md << 'NOTES_EOF'
 
-          You can also install the dashboard directly from ppg:
+          ## Install
 
-          \`\`\`bash
+          ```bash
+          # CLI
+          npm install -g ppg-cli
+
+          # Dashboard app
           ppg install-dashboard
-          \`\`\`
+          ```
 
-          ---
-
-          ### Changes
-          ${AUTO_NOTES}
-          EOF
+          Or download **PPG-CLI-Dashboard.dmg** from the assets below.
+          NOTES_EOF
           sed -i 's/^          //' release-notes.md
 
       - name: Create GitHub Release
