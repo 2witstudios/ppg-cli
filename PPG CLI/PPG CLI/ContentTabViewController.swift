@@ -43,7 +43,9 @@ class ContentViewController: NSViewController {
     // MARK: - Grid Mode
     private(set) var paneGrid: PaneGridController?  // currently visible grid
     private var gridsByEntry: [String: PaneGridController] = [:]  // all grids (active + suspended)
-    private var activeGridOwnerId: String?  // which entry owns the visible grid
+    private(set) var activeGridOwnerId: String?  // which entry owns the visible grid
+    /// Called when a grid is permanently destroyed (exitGridMode or removeGrid). Parameter: owner entry ID.
+    var onGridDestroyed: ((String) -> Void)?
     var isGridMode: Bool {
         guard let grid = paneGrid else { return false }
         return grid.view.superview != nil && !grid.view.isHidden
@@ -324,6 +326,7 @@ class ContentViewController: NSViewController {
         // Remove grid from storage — exit is permanent (unlike suspend)
         if let ownerId = ownerId {
             gridsByEntry.removeValue(forKey: ownerId)
+            onGridDestroyed?(ownerId)
         }
         paneGrid = nil
         activeGridOwnerId = nil
@@ -375,7 +378,11 @@ class ContentViewController: NSViewController {
 
     /// Fully tear down a grid: terminate all terminals, remove from gridsByEntry.
     func removeGrid(forEntryId entryId: String) {
-        guard let grid = gridsByEntry.removeValue(forKey: entryId) else { return }
+        guard let grid = gridsByEntry.removeValue(forKey: entryId) else {
+            // No in-memory grid, but still notify so persisted entries get cleaned up
+            onGridDestroyed?(entryId)
+            return
+        }
 
         // If this is the active grid, detach it
         if activeGridOwnerId == entryId {
@@ -389,6 +396,7 @@ class ContentViewController: NSViewController {
         grid.terminateAllExcept(leafId: "", using: { [weak self] view in
             self?.terminateTerminal(view)
         })
+        onGridDestroyed?(entryId)
     }
 
     // MARK: - Worktree Detail

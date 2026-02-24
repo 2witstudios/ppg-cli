@@ -10,6 +10,8 @@ class DashboardSession {
         let command: String
         var tmuxTarget: String?
         var sessionId: String?
+        /// When set, this entry belongs to a grid owned by another entry and should not appear in the sidebar.
+        var gridOwnerEntryId: String?
 
         enum Kind: String, Codable {
             case agent
@@ -101,15 +103,26 @@ class DashboardSession {
     }
 
     func entriesForMaster() -> [TerminalEntry] {
-        entries.filter { $0.parentWorktreeId == nil }
+        entries.filter { $0.parentWorktreeId == nil && $0.gridOwnerEntryId == nil }
     }
 
     func entriesForWorktree(_ worktreeId: String) -> [TerminalEntry] {
-        entries.filter { $0.parentWorktreeId == worktreeId }
+        entries.filter { $0.parentWorktreeId == worktreeId && $0.gridOwnerEntryId == nil }
+    }
+
+    func entriesForGrid(ownerEntryId: String) -> [TerminalEntry] {
+        entries.filter { $0.gridOwnerEntryId == ownerEntryId }
     }
 
     func entry(byId id: String) -> TerminalEntry? {
         entries.first { $0.id == id }
+    }
+
+    func setGridOwner(entryId: String, gridOwnerEntryId: String?) {
+        if let index = entries.firstIndex(where: { $0.id == entryId }) {
+            entries[index].gridOwnerEntryId = gridOwnerEntryId
+            saveToDisk()
+        }
     }
 
     func removeAll() {

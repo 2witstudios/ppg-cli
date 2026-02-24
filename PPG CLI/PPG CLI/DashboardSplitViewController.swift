@@ -81,6 +81,21 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.showHomeDashboard()
         }
 
+        // Clean up persisted grid-owned session entries when a grid is destroyed
+        content.onGridDestroyed = { [weak self] ownerEntryId in
+            guard let self = self else { return }
+            for projectNode in self.sidebar.projectNodes {
+                guard case .project(let ctx) = projectNode.item else { continue }
+                let gridEntries = ctx.dashboardSession.entriesForGrid(ownerEntryId: ownerEntryId)
+                for gridEntry in gridEntries {
+                    if let tmuxTarget = gridEntry.tmuxTarget {
+                        ctx.dashboardSession.killTmuxWindow(target: tmuxTarget)
+                    }
+                    ctx.dashboardSession.remove(id: gridEntry.id)
+                }
+            }
+        }
+
         // Auto-show dashboard on launch
         DispatchQueue.main.async { [weak self] in
             self?.showHomeDashboard()
@@ -210,6 +225,34 @@ class DashboardSplitViewController: NSSplitViewController {
         content.removeEntry(byId: entryId)
     }
 
+    // MARK: - Grid Restoration
+
+    /// Rebuild a grid from persisted session entries after a reboot.
+    /// The owner entry is already showing in single-pane mode; we enter grid mode
+    /// and fill additional panes from the persisted grid children.
+    private func rebuildGridFromSession(entry: TabEntry, project: ProjectContext) {
+        let gridEntries = project.dashboardSession.entriesForGrid(ownerEntryId: entry.id)
+        guard !gridEntries.isEmpty else { return }
+
+        wireGridCallbacks()
+        content.splitPaneRight()
+
+        // Fill the new (second) pane with the first grid child
+        let sessionName = project.sessionName
+        content.paneGrid?.fillFocusedPane(with: .sessionEntry(gridEntries[0], sessionName: sessionName))
+
+        // For each additional child, split and fill
+        for i in 1..<gridEntries.count {
+            content.paneGrid?.splitFocusedPane(direction: .vertical)
+            content.paneGrid?.fillFocusedPane(with: .sessionEntry(gridEntries[i], sessionName: sessionName))
+        }
+
+        // Focus back to the first pane
+        if let firstLeaf = content.paneGrid?.root.allLeafIds().first {
+            content.paneGrid?.setFocus(firstLeaf)
+        }
+    }
+
     // MARK: - Pane Grid Actions
 
     func splitPaneBelow() {
@@ -282,6 +325,7 @@ class DashboardSplitViewController: NSSplitViewController {
 
     /// Add agent and fill the focused grid pane.
     private func addAgentToGrid(project: ProjectContext, parentWorktreeId: String?) {
+        guard let gridOwnerId = content.activeGridOwnerId else { return }
         let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
         let entry = project.dashboardSession.addAgent(
             sessionName: project.sessionName,
@@ -289,22 +333,22 @@ class DashboardSplitViewController: NSSplitViewController {
             command: project.agentCommand,
             workingDir: workingDir
         )
+        // Mark as grid-owned so it persists but doesn't appear in the sidebar.
+        project.dashboardSession.setGridOwner(entryId: entry.id, gridOwnerEntryId: gridOwnerId)
         content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
-        // Remove from session so it doesn't appear as a duplicate sidebar entry.
-        // The grid pane owns the terminal view; the tmux window stays alive.
-        project.dashboardSession.remove(id: entry.id)
     }
 
     /// Add terminal and fill the focused grid pane.
     private func addTerminalToGrid(project: ProjectContext, parentWorktreeId: String?) {
+        guard let gridOwnerId = content.activeGridOwnerId else { return }
         let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
         let entry = project.dashboardSession.addTerminal(
             parentWorktreeId: parentWorktreeId,
             workingDir: workingDir
         )
+        // Mark as grid-owned so it persists but doesn't appear in the sidebar.
+        project.dashboardSession.setGridOwner(entryId: entry.id, gridOwnerEntryId: gridOwnerId)
         content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
-        // Remove from session so it doesn't appear as a duplicate sidebar entry.
-        project.dashboardSession.remove(id: entry.id)
     }
 
     // MARK: - Home Dashboard
@@ -333,6 +377,11 @@ class DashboardSplitViewController: NSSplitViewController {
             // Does this entry own a saved grid? Restore it.
             if content.restoreGrid(forEntryId: entry.id) {
                 // Grid restored — done
+            } else if let ctx = sidebar.projectContext(for: item),
+                      !ctx.dashboardSession.entriesForGrid(ownerEntryId: entry.id).isEmpty {
+                // Persisted grid children exist (e.g. after reboot) — rebuild the grid
+                content.showEntry(entry)
+                rebuildGridFromSession(entry: entry, project: ctx)
             } else {
                 // Normal single-pane navigation (suspendGrid happens inside showEntry)
                 content.showEntry(entry)
