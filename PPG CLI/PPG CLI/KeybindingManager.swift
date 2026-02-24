@@ -17,6 +17,13 @@ enum BindableAction: String, CaseIterable {
     case switchProject9
     case closeEntry
     case refresh
+    case splitBelow
+    case splitRight
+    case closePane
+    case focusPaneUp
+    case focusPaneDown
+    case focusPaneLeft
+    case focusPaneRight
 
     var displayName: String {
         switch self {
@@ -34,6 +41,13 @@ enum BindableAction: String, CaseIterable {
         case .switchProject9: return "Switch to Project 9"
         case .closeEntry: return "Close"
         case .refresh: return "Refresh"
+        case .splitBelow: return "Split Pane Below"
+        case .splitRight: return "Split Pane Right"
+        case .closePane: return "Close Pane"
+        case .focusPaneUp: return "Focus Pane Above"
+        case .focusPaneDown: return "Focus Pane Below"
+        case .focusPaneLeft: return "Focus Pane Left"
+        case .focusPaneRight: return "Focus Pane Right"
         }
     }
 
@@ -53,11 +67,25 @@ enum BindableAction: String, CaseIterable {
         case .switchProject9: return "9"
         case .closeEntry: return "w"
         case .refresh: return "r"
+        case .splitBelow: return "d"
+        case .splitRight: return "d"
+        case .closePane: return "w"
+        case .focusPaneUp: return String(Character(UnicodeScalar(NSUpArrowFunctionKey)!))
+        case .focusPaneDown: return String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
+        case .focusPaneLeft: return String(Character(UnicodeScalar(NSLeftArrowFunctionKey)!))
+        case .focusPaneRight: return String(Character(UnicodeScalar(NSRightArrowFunctionKey)!))
         }
     }
 
     var defaultModifierMask: NSEvent.ModifierFlags {
-        return .command
+        switch self {
+        case .splitBelow: return .command
+        case .splitRight: return [.command, .shift]
+        case .closePane: return [.command, .shift]
+        case .focusPaneUp, .focusPaneDown, .focusPaneLeft, .focusPaneRight:
+            return [.command, .option]
+        default: return .command
+        }
     }
 }
 
@@ -234,6 +262,13 @@ let kMenuTagProject6   = 116
 let kMenuTagProject7   = 117
 let kMenuTagProject8   = 118
 let kMenuTagProject9   = 119
+let kMenuTagSplitBelow     = 130
+let kMenuTagSplitRight     = 131
+let kMenuTagClosePane      = 132
+let kMenuTagFocusPaneUp    = 133
+let kMenuTagFocusPaneDown  = 134
+let kMenuTagFocusPaneLeft  = 135
+let kMenuTagFocusPaneRight = 136
 
 func menuTagToActionId(_ tag: Int) -> String {
     switch tag {
@@ -251,6 +286,13 @@ func menuTagToActionId(_ tag: Int) -> String {
     case kMenuTagProject7: return BindableAction.switchProject7.rawValue
     case kMenuTagProject8: return BindableAction.switchProject8.rawValue
     case kMenuTagProject9: return BindableAction.switchProject9.rawValue
+    case kMenuTagSplitBelow: return BindableAction.splitBelow.rawValue
+    case kMenuTagSplitRight: return BindableAction.splitRight.rawValue
+    case kMenuTagClosePane: return BindableAction.closePane.rawValue
+    case kMenuTagFocusPaneUp: return BindableAction.focusPaneUp.rawValue
+    case kMenuTagFocusPaneDown: return BindableAction.focusPaneDown.rawValue
+    case kMenuTagFocusPaneLeft: return BindableAction.focusPaneLeft.rawValue
+    case kMenuTagFocusPaneRight: return BindableAction.focusPaneRight.rawValue
     default: return ""
     }
 }

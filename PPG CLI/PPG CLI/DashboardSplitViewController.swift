@@ -158,6 +158,12 @@ class DashboardSplitViewController: NSSplitViewController {
 
     /// Cmd+W handler: close/kill the currently displayed entry.
     func closeCurrentEntry() {
+        // In grid mode, Cmd+W closes the focused pane (same as Cmd+Shift+W).
+        if content.isGridMode {
+            _ = content.closeFocusedPane()
+            return
+        }
+
         guard let entryId = content.currentEntryId else { return }
 
         // Try to find which project owns this entry
@@ -189,6 +195,84 @@ class DashboardSplitViewController: NSSplitViewController {
         content.removeEntry(byId: entryId)
     }
 
+    // MARK: - Pane Grid Actions
+
+    func splitPaneBelow() {
+        guard content.currentEntryId != nil || content.isGridMode else { return }
+        wireGridCallbacks()
+        content.splitPaneBelow()
+    }
+
+    func splitPaneRight() {
+        guard content.currentEntryId != nil || content.isGridMode else { return }
+        wireGridCallbacks()
+        content.splitPaneRight()
+    }
+
+    func closeFocusedPane() {
+        guard content.isGridMode else { return }
+        _ = content.closeFocusedPane()
+    }
+
+    func movePaneFocus(direction: SplitDirection, forward: Bool) {
+        guard content.isGridMode else { return }
+        content.movePaneFocus(direction: direction, forward: forward)
+    }
+
+    /// Set up grid controller callbacks for picker actions.
+    /// Callbacks resolve the current project context at invocation time (not wire time)
+    /// so they stay correct when the user switches projects.
+    private func wireGridCallbacks() {
+        let grid = content.ensureGridController()
+
+        // Only wire once
+        guard grid.onNewAgent == nil else { return }
+
+        grid.onNewAgent = { [weak self] in
+            guard let self = self else { return }
+            // Resolve project context now — not at wire time
+            guard let ctx = self.sidebar.selectedProjectContext() else { return }
+            let worktreeId = self.sidebar.selectedWorktreeId()
+            self.addAgentToGrid(project: ctx, parentWorktreeId: worktreeId)
+        }
+
+        grid.onNewTerminal = { [weak self] in
+            guard let self = self else { return }
+            guard let ctx = self.sidebar.selectedProjectContext() else { return }
+            let worktreeId = self.sidebar.selectedWorktreeId()
+            self.addTerminalToGrid(project: ctx, parentWorktreeId: worktreeId)
+        }
+
+        grid.onPickFromSidebar = { [weak self] in
+            guard let self = self else { return }
+            self.sidebar.view.window?.makeFirstResponder(self.sidebar.view)
+        }
+    }
+
+    /// Add agent and fill the focused grid pane.
+    private func addAgentToGrid(project: ProjectContext, parentWorktreeId: String?) {
+        let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
+        let entry = project.dashboardSession.addAgent(
+            sessionName: project.sessionName,
+            parentWorktreeId: parentWorktreeId,
+            command: project.agentCommand,
+            workingDir: workingDir
+        )
+        content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
+        sidebar.refresh()
+    }
+
+    /// Add terminal and fill the focused grid pane.
+    private func addTerminalToGrid(project: ProjectContext, parentWorktreeId: String?) {
+        let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
+        let entry = project.dashboardSession.addTerminal(
+            parentWorktreeId: parentWorktreeId,
+            workingDir: workingDir
+        )
+        content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
+        sidebar.refresh()
+    }
+
     // MARK: - Home Dashboard
 
     func showHomeDashboard() {
@@ -210,7 +294,19 @@ class DashboardSplitViewController: NSSplitViewController {
             }
             showProjectDetail(ctx: ctx, worktreeId: wt.id)
         default:
-            content.showEntry(tabEntry(for: item))
+            let entry = tabEntry(for: item)
+            // In grid mode (or restorable), sidebar clicks fill the focused pane
+            if content.isGridMode {
+                if let entry = entry {
+                    content.paneGrid?.fillFocusedPane(with: entry)
+                }
+            } else if content.restoreGridIfAvailable() {
+                if let entry = entry {
+                    content.paneGrid?.fillFocusedPane(with: entry)
+                }
+            } else {
+                content.showEntry(entry)
+            }
         }
         updateWindowTitle(for: item)
     }
