@@ -13,14 +13,62 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      - name: Import code signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          rm certificate.p12
+
       - name: Build dashboard app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild -scheme "PPG CLI" -configuration Release -derivedDataPath build \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            OTHER_CODE_SIGN_FLAGS="--options runtime" \
+            build
         working-directory: PPG CLI
-        run: xcodebuild -scheme "PPG CLI" -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY="-" build
-      - name: Create dashboard DMG
+
+      - name: Notarize app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_PATH="PPG CLI/build/Build/Products/Release/PPG CLI.app"
+
+          # Create zip for notarization submission
+          ditto -c -k --keepParent "$APP_PATH" app.zip
+
+          # Submit for notarization and wait
+          xcrun notarytool submit app.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          # Staple the notarization ticket to the app
+          xcrun stapler staple "$APP_PATH"
+
+          rm app.zip
+
+      - name: Create and sign DMG
         run: |
           APP_PATH="PPG CLI/build/Build/Products/Release/PPG CLI.app"
           DMG_PATH="$GITHUB_WORKSPACE/PPG-CLI-Dashboard.dmg"
           hdiutil create -volname "PPG CLI" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
+          codesign -s "Developer ID Application" "$DMG_PATH"
+
       - uses: actions/upload-artifact@v4
         with:
           name: dashboard
