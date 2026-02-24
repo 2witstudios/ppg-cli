@@ -37,9 +37,11 @@ class ContentViewController: NSViewController {
     private(set) var currentEntry: TabEntry?
     private var terminalViews: [String: NSView] = [:]
     private var worktreeDetailView: WorktreeDetailView?
+    private var homeDashboardView: HomeDashboardView?
 
     var currentEntryId: String? { currentEntry?.id }
     var isShowingWorktreeDetail: Bool { worktreeDetailView?.superview != nil }
+    var isShowingHomeDashboard: Bool { homeDashboardView?.superview != nil }
 
     override func loadView() {
         view = NSView()
@@ -74,6 +76,7 @@ class ContentViewController: NSViewController {
     }
 
     func showEntry(_ entry: TabEntry?) {
+        homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
 
         guard let entry = entry else {
@@ -149,6 +152,43 @@ class ContentViewController: NSViewController {
 
     // MARK: - Worktree Detail
 
+    // MARK: - Home Dashboard
+
+    func showHomeDashboard(projects: [ProjectContext], worktreesByProject: [String: [WorktreeModel]]) {
+        // Hide terminals and worktree detail
+        for (_, termView) in terminalViews {
+            termView.isHidden = true
+        }
+        currentEntry = nil
+        worktreeDetailView?.removeFromSuperview()
+        placeholderLabel.isHidden = true
+        containerView.isHidden = true
+
+        if homeDashboardView == nil {
+            homeDashboardView = HomeDashboardView()
+        }
+        guard let dashboard = homeDashboardView else { return }
+
+        if dashboard.superview != view {
+            dashboard.removeFromSuperview()
+            dashboard.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(dashboard)
+            NSLayoutConstraint.activate([
+                dashboard.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                dashboard.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                dashboard.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+                dashboard.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+        }
+
+        dashboard.configure(projects: projects, worktreesByProject: worktreesByProject)
+    }
+
+    func refreshHomeDashboard(projects: [ProjectContext], worktreesByProject: [String: [WorktreeModel]]) {
+        guard let dashboard = homeDashboardView, dashboard.superview != nil else { return }
+        dashboard.configure(projects: projects, worktreesByProject: worktreesByProject)
+    }
+
     func showWorktreeDetail(
         worktree: WorktreeModel,
         projectRoot: String,
@@ -156,6 +196,7 @@ class ContentViewController: NSViewController {
         onNewTerminal: @escaping () -> Void,
         onNewWorktree: @escaping () -> Void
     ) {
+        homeDashboardView?.removeFromSuperview()
         // Hide terminal views and clear current entry
         for (_, termView) in terminalViews {
             termView.isHidden = true
@@ -681,8 +722,8 @@ class WorktreeDetailView: NSView {
             separator.trailingAnchor.constraint(equalTo: trailingAnchor),
 
             scrollView.topAnchor.constraint(equalTo: separator.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
             // Stack view width tracks the scroll view's clip view
