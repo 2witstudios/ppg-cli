@@ -11,8 +11,18 @@ permissions:
 jobs:
   build-dashboard:
     runs-on: macos-26
+    outputs:
+      ed_signature: ${{ steps.sparkle-sign.outputs.ed_signature }}
+      file_length: ${{ steps.sparkle-sign.outputs.file_length }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_NUMBER=$(echo "$VERSION" | tr -d '.')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
 
       - name: Import code signing certificate
         env:
@@ -37,6 +47,8 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
             OTHER_CODE_SIGN_FLAGS="--options runtime --timestamp" \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             build
         working-directory: PPG CLI
 
@@ -69,6 +81,23 @@ jobs:
           DMG_PATH="$GITHUB_WORKSPACE/PPG-CLI-Dashboard.dmg"
           hdiutil create -volname "PPG CLI" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
           codesign -s "Developer ID Application" --timestamp "$DMG_PATH"
+
+      - name: Sign DMG with Sparkle EdDSA
+        id: sparkle-sign
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          SPARKLE_VERSION="2.9.0"
+          curl -L -o sparkle.tar.xz \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir sparkle-tools && tar -xf sparkle.tar.xz -C sparkle-tools
+          echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
+          SIGN_OUTPUT=$(sparkle-tools/bin/sign_update PPG-CLI-Dashboard.dmg --ed-key-file sparkle_key)
+          ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"' | cut -d'"' -f2)
+          FILE_LENGTH=$(echo "$SIGN_OUTPUT" | grep -o 'length="[^"]*"' | cut -d'"' -f2)
+          echo "ed_signature=$ED_SIGNATURE" >> $GITHUB_OUTPUT
+          echo "file_length=$FILE_LENGTH" >> $GITHUB_OUTPUT
+          rm sparkle_key sparkle.tar.xz && rm -rf sparkle-tools
 
       - uses: actions/upload-artifact@v4
         with:
@@ -127,3 +156,47 @@ jobs:
             --title "PPG CLI ${VERSION_NUM}" \
             --notes-file release-notes.md \
             PPG-CLI-Dashboard.dmg
+
+  update-appcast:
+    needs: [build-dashboard, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+
+      - name: Update appcast.xml
+        env:
+          ED_SIGNATURE: ${{ needs.build-dashboard.outputs.ed_signature }}
+          FILE_LENGTH: ${{ needs.build-dashboard.outputs.file_length }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_NUMBER=$(echo "$VERSION" | tr -d '.')
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/PPG-CLI-Dashboard.dmg"
+          PUB_DATE=$(date -u '+%a, %d %b %Y %H:%M:%S %z')
+
+          NEW_ITEM=$(cat <<ITEM_EOF
+              <item>
+                <title>Version ${VERSION}</title>
+                <pubDate>${PUB_DATE}</pubDate>
+                <sparkle:version>${BUILD_NUMBER}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <enclosure url="${DOWNLOAD_URL}"
+                           type="application/octet-stream"
+                           sparkle:edSignature="${ED_SIGNATURE}"
+                           length="${FILE_LENGTH}" />
+              </item>
+          ITEM_EOF
+          )
+
+          # Insert the new item before </channel>
+          sed -i "s|</channel>|${NEW_ITEM}\n  </channel>|" appcast.xml
+
+      - name: Commit and push appcast
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "Update appcast for ${GITHUB_REF_NAME}"
+          git push

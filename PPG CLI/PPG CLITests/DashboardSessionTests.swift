@@ -6,11 +6,11 @@ final class DashboardSessionTests: XCTestCase {
     private var session: DashboardSession!
 
     override func setUp() {
-        session = DashboardSession()
+        session = DashboardSession(projectRoot: "/tmp/test-dashboard")
     }
 
     func testAddAgentCreatesEntry() {
-        let entry = session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        let entry = session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
         XCTAssertTrue(entry.id.hasPrefix("da-"))
         XCTAssertEqual(entry.label, "Claude 1")
         XCTAssertEqual(entry.command, "claude")
@@ -27,8 +27,8 @@ final class DashboardSessionTests: XCTestCase {
     }
 
     func testAddMultipleIncrementsLabels() {
-        session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
-        session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
         session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
         session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
 
@@ -39,20 +39,20 @@ final class DashboardSessionTests: XCTestCase {
     }
 
     func testRemoveDeletesEntry() {
-        let entry = session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        let entry = session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
         session.remove(id: entry.id)
         XCTAssertEqual(session.entries.count, 0)
     }
 
     func testRemoveNonexistentIdIsNoOp() {
-        session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
         session.remove(id: "nonexistent")
         XCTAssertEqual(session.entries.count, 1)
     }
 
     func testEntriesForMasterReturnsMasterLevel() {
-        session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
-        session.addAgent(parentWorktreeId: "wt-123", command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: "wt-123", command: "claude", workingDir: "/tmp")
         session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
 
         let master = session.entriesForMaster()
@@ -61,8 +61,8 @@ final class DashboardSessionTests: XCTestCase {
     }
 
     func testEntriesForWorktreeReturnsWorktreeLevel() {
-        session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
-        session.addAgent(parentWorktreeId: "wt-123", command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: "wt-123", command: "claude", workingDir: "/tmp")
         session.addTerminal(parentWorktreeId: "wt-123", workingDir: "/tmp")
 
         let wt = session.entriesForWorktree("wt-123")
@@ -71,7 +71,7 @@ final class DashboardSessionTests: XCTestCase {
     }
 
     func testEntryByIdFindsEntry() {
-        let entry = session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        let entry = session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
         let found = session.entry(byId: entry.id)
         XCTAssertEqual(found?.id, entry.id)
     }
@@ -81,20 +81,20 @@ final class DashboardSessionTests: XCTestCase {
     }
 
     func testRemoveAllClearsEverything() {
-        session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
         session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
         session.removeAll()
         XCTAssertEqual(session.entries.count, 0)
     }
 
     func testAddAgentWithWorktreeId() {
-        let entry = session.addAgent(parentWorktreeId: "wt-abc", command: "claude", workingDir: "/tmp/wt")
+        let entry = session.addAgent(sessionName: "test", parentWorktreeId: "wt-abc", command: "claude", workingDir: "/tmp/wt")
         XCTAssertEqual(entry.parentWorktreeId, "wt-abc")
         XCTAssertEqual(entry.workingDirectory, "/tmp/wt")
     }
 
     func testKindIsCorrect() {
-        let agent = session.addAgent(parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
+        let agent = session.addAgent(sessionName: "test", parentWorktreeId: nil, command: "claude", workingDir: "/tmp")
         let terminal = session.addTerminal(parentWorktreeId: nil, workingDir: "/tmp")
 
         switch agent.kind {

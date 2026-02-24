@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		FB6FFC742F4CA4E000C8D98B /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = FB6FFC302F4C820000C8D98B /* SwiftTerm */; };
+		FB6FFC802F4CB00000C8D98B /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = FB6FFC7F2F4CB00000C8D98B /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +37,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FB6FFC062F4C81C600C8D98B /* PPG CLI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8AF4C8BA6C0F4BED8B6A7661 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
 			path = "PPG CLI";
 			sourceTree = "<group>";
 		};
@@ -51,12 +55,23 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8AF4C8BA6C0F4BED8B6A7661 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FB6FFC032F4C81C600C8D98B /* PPG CLI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		FB6FFC012F4C81C600C8D98B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				FB6FFC742F4CA4E000C8D98B /* SwiftTerm in Frameworks */,
+				FB6FFC802F4CB00000C8D98B /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -118,6 +133,7 @@
 			name = "PPG CLI";
 			packageProductDependencies = (
 				FB6FFC302F4C820000C8D98B /* SwiftTerm */,
+				FB6FFC7F2F4CB00000C8D98B /* Sparkle */,
 			);
 			productName = "PPG CLI";
 			productReference = FB6FFC042F4C81C600C8D98B /* PPG CLI.app */;
@@ -203,6 +219,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				FB6FFC2F2F4C820000C8D98B /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				FB6FFC7E2F4CB00000C8D98B /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FB6FFC052F4C81C600C8D98B /* Products */;
@@ -405,6 +422,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PPG CLI/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.1;
 				MARKETING_VERSION = 1.0;
@@ -432,6 +450,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PPG CLI/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.1;
 				MARKETING_VERSION = 1.0;
@@ -584,8 +603,16 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
 			requirement = {
-				kind = branch;
 				branch = main;
+				kind = branch;
+			};
+		};
+		FB6FFC7E2F4CB00000C8D98B /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -595,6 +622,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FB6FFC2F2F4C820000C8D98B /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
+		};
+		FB6FFC7F2F4CB00000C8D98B /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB6FFC7E2F4CB00000C8D98B /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

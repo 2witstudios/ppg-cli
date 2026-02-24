@@ -183,8 +183,51 @@ class DashboardSplitViewController: NSSplitViewController {
     // MARK: - Selection & Refresh
 
     private func handleSelection(_ item: SidebarItem) {
-        content.showEntry(tabEntry(for: item))
+        switch item {
+        case .project(let ctx):
+            showProjectDetail(ctx: ctx, worktreeId: nil)
+        case .worktree(let wt):
+            guard let ctx = sidebar.projectContext(for: item) else {
+                content.showEntry(nil)
+                break
+            }
+            showProjectDetail(ctx: ctx, worktreeId: wt.id)
+        default:
+            content.showEntry(tabEntry(for: item))
+        }
         updateWindowTitle(for: item)
+    }
+
+    private func showProjectDetail(ctx: ProjectContext, worktreeId: String?) {
+        let worktrees = sidebar.worktrees(for: ctx)
+        let wt: WorktreeModel
+        if let wtId = worktreeId, let found = worktrees.first(where: { $0.id == wtId }) {
+            wt = found
+        } else {
+            // Synthetic worktree model for the project root
+            wt = WorktreeModel(
+                id: "__project__",
+                name: ctx.projectName,
+                path: ctx.projectRoot,
+                branch: currentBranch(at: ctx.projectRoot),
+                status: "active",
+                tmuxWindow: "",
+                agents: []
+            )
+        }
+        content.showWorktreeDetail(
+            worktree: wt,
+            projectRoot: ctx.projectRoot,
+            onNewAgent: { [weak self] in self?.addAgent(project: ctx, parentWorktreeId: worktreeId) },
+            onNewTerminal: { [weak self] in self?.addTerminal(project: ctx, parentWorktreeId: worktreeId) },
+            onNewWorktree: { [weak self] in self?.createWorktree(project: ctx) }
+        )
+    }
+
+    private func currentBranch(at path: String) -> String {
+        let result = PPGService.shared.runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], cwd: path)
+        let branch = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return branch.isEmpty ? "main" : branch
     }
 
     private func updateWindowTitle(for item: SidebarItem) {
@@ -204,6 +247,20 @@ class DashboardSplitViewController: NSSplitViewController {
 
     private func handleRefresh(_ currentItem: SidebarItem?) {
         guard let item = currentItem else { return }
+
+        // If a project or worktree is selected and its detail view is showing, refresh the diff
+        let isDetailItem: Bool
+        switch item {
+        case .project, .worktree: isDetailItem = true
+        default: isDetailItem = false
+        }
+        if isDetailItem, content.isShowingWorktreeDetail {
+            content.refreshWorktreeDetail()
+            let validIds = collectAllTerminalIds()
+            content.clearStaleViews(validIds: validIds)
+            return
+        }
+
         let entry = tabEntry(for: item)
 
         if let entry = entry, let currentId = content.currentEntryId, entry.id == currentId {

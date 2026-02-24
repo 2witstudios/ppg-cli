@@ -107,6 +107,35 @@ nonisolated class PPGService: @unchecked Sendable {
         }
     }
 
+    /// Run a git command directly in a specific directory. Faster than runPPGCommand
+    /// since git doesn't need shell profile sourcing.
+    func runGitCommand(_ args: [String], cwd: String) -> CommandResult {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        task.arguments = args
+        task.currentDirectoryURL = URL(fileURLWithPath: cwd)
+
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        task.standardOutput = outPipe
+        task.standardError = errPipe
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return CommandResult(exitCode: -1, stdout: "", stderr: error.localizedDescription)
+        }
+
+        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        return CommandResult(
+            exitCode: task.terminationStatus,
+            stdout: String(data: outData, encoding: .utf8) ?? "",
+            stderr: String(data: errData, encoding: .utf8) ?? ""
+        )
+    }
+
     /// Check if a directory is a git repository.
     func isGitRepo(_ path: String) -> Bool {
         let pgDir = (path as NSString).appendingPathComponent(".git")

@@ -78,7 +78,7 @@ final class ContentViewControllerTests: XCTestCase {
     func testTabEntryLabels() {
         let agent = makeAgent(id: "ag-test")
         let agentTab = TabEntry.manifestAgent(agent, sessionName: "s")
-        XCTAssertEqual(agentTab.label, "ag-test — claude")
+        XCTAssertEqual(agentTab.label, "claude")
         XCTAssertEqual(agentTab.id, "ag-test")
 
         let session = DashboardSession(projectRoot: "/tmp/test")
