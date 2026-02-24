@@ -1,7 +1,9 @@
+import fs from 'node:fs/promises';
 import { updateManifest } from './manifest.js';
 import { removeWorktree } from './worktree.js';
 import { teardownWorktreeEnv } from './env.js';
 import * as tmux from './tmux.js';
+import { agentPromptFile } from '../lib/paths.js';
 import { warn } from '../lib/output.js';
 import type { WorktreeEntry } from '../types/manifest.js';
 
@@ -23,6 +25,12 @@ export async function cleanupWorktree(
     windowKills.push(tmux.killWindow(wt.tmuxWindow).catch(() => {}));
   }
   await Promise.all(windowKills);
+
+  // Remove agent prompt files
+  for (const agent of Object.values(wt.agents)) {
+    const pFile = agentPromptFile(projectRoot, agent.id);
+    await fs.rm(pFile, { force: true });
+  }
 
   // Teardown env
   try {

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath } from '../lib/paths.js';
+import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir } from '../lib/paths.js';
 import { NotGitRepoError, TmuxNotFoundError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
@@ -76,6 +76,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
     logsDir(projectRoot),
     templatesDir(projectRoot),
     promptsDir(projectRoot),
+    agentPromptsDir(projectRoot),
     swarmsDir(projectRoot),
   ];
 
@@ -211,6 +212,7 @@ async function updateGitignore(projectRoot: string): Promise<void> {
     '.pg/logs/',
     '.pg/manifest.json',
     '.pg/prompts/',
+    '.pg/agent-prompts/',
     '.pg/swarms/',
     '.pg/conductor-context.md',
   ];

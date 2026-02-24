@@ -42,6 +42,14 @@ export function promptFile(projectRoot: string, agentId: string): string {
   return path.join(promptsDir(projectRoot), `${agentId}.md`);
 }
 
+export function agentPromptsDir(projectRoot: string): string {
+  return path.join(pgDir(projectRoot), 'agent-prompts');
+}
+
+export function agentPromptFile(projectRoot: string, agentId: string): string {
+  return path.join(agentPromptsDir(projectRoot), `${agentId}.md`);
+}
+
 export function worktreeBaseDir(projectRoot: string): string {
   return path.join(projectRoot, '.worktrees');
 }

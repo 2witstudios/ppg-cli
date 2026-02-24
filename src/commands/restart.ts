@@ -6,7 +6,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
-import { promptFile, resultFile } from '../lib/paths.js';
+import { agentPromptFile, resultFile } from '../lib/paths.js';
 import { PgError, NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { renderTemplate, type TemplateContext } from '../core/template.js';
@@ -45,7 +45,7 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
   if (options.prompt) {
     promptText = options.prompt;
   } else {
-    const pFile = promptFile(projectRoot, oldAgent.id);
+    const pFile = agentPromptFile(projectRoot, oldAgent.id);
     try {
       promptText = await fs.readFile(pFile, 'utf-8');
     } catch {

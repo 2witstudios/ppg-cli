@@ -88,7 +88,8 @@ your-project/
 │   ├── config.yaml      # Agent and project config
 │   ├── manifest.json     # Runtime state (worktrees, agents, status)
 │   ├── templates/        # Reusable prompt templates
-│   ├── prompts/          # Generated per-agent prompt files
+│   ├── prompts/          # Reusable prompt files for swarms
+│   ├── agent-prompts/    # Rendered per-agent prompt files (ephemeral)
 │   └── results/          # Agent result files
 ├── .worktrees/
 │   ├── wt-abc123/        # Isolated git worktree

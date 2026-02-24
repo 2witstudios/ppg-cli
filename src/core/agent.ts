@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { resultFile, promptFile } from '../lib/paths.js';
+import { resultFile, agentPromptFile, agentPromptsDir } from '../lib/paths.js';
 import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
 import { updateManifest } from './manifest.js';
 import { PgError } from '../lib/errors.js';
@@ -49,7 +49,8 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
   }
 
   // Write prompt to file
-  const pFile = promptFile(projectRoot, agentId);
+  const pFile = agentPromptFile(projectRoot, agentId);
+  await fs.mkdir(agentPromptsDir(projectRoot), { recursive: true });
   await fs.writeFile(pFile, fullPrompt, 'utf-8');
 
   // Build and send command
