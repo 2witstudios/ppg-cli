@@ -38,7 +38,11 @@ class ContentViewController: NSViewController {
     private var terminalViews: [String: NSView] = [:]
     private var worktreeDetailView: WorktreeDetailView?
     private var homeDashboardView: HomeDashboardView?
+    private var promptsView: PromptsView?
+    private var swarmsView: SwarmsView?
     private var dashboardConstraints: [NSLayoutConstraint] = []
+    private var promptsConstraints: [NSLayoutConstraint] = []
+    private var swarmsConstraints: [NSLayoutConstraint] = []
 
     // MARK: - Grid Mode
     private(set) var paneGrid: PaneGridController?  // currently visible grid
@@ -59,6 +63,8 @@ class ContentViewController: NSViewController {
     }
     var isShowingWorktreeDetail: Bool { worktreeDetailView?.superview != nil }
     var isShowingHomeDashboard: Bool { homeDashboardView?.superview != nil }
+    var isShowingPromptsView: Bool { promptsView?.superview != nil }
+    var isShowingSwarmsView: Bool { swarmsView?.superview != nil }
 
     override func loadView() {
         view = NSView()
@@ -95,6 +101,8 @@ class ContentViewController: NSViewController {
     func showEntry(_ entry: TabEntry?) {
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
+        promptsView?.removeFromSuperview()
+        swarmsView?.removeFromSuperview()
 
         // Suspend any active grid — sidebar clicks always navigate, never fill panes
         suspendGrid()
@@ -357,6 +365,8 @@ class ContentViewController: NSViewController {
         // Hide single-pane content
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
+        promptsView?.removeFromSuperview()
+        swarmsView?.removeFromSuperview()
         for (_, termView) in terminalViews where termView.superview === containerView {
             termView.isHidden = true
         }
@@ -415,6 +425,8 @@ class ContentViewController: NSViewController {
         }
         currentEntry = nil
         worktreeDetailView?.removeFromSuperview()
+        promptsView?.removeFromSuperview()
+        swarmsView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -454,6 +466,8 @@ class ContentViewController: NSViewController {
         onNewWorktree: @escaping () -> Void
     ) {
         homeDashboardView?.removeFromSuperview()
+        promptsView?.removeFromSuperview()
+        swarmsView?.removeFromSuperview()
         suspendGrid()
         // Hide terminal views and clear current entry (only containerView-owned, not grid-owned)
         for (_, termView) in terminalViews where termView.superview === containerView {
@@ -508,6 +522,78 @@ class ContentViewController: NSViewController {
                 detailView?.updateDiff(diffData)
             }
         }
+    }
+
+    // MARK: - Prompts & Swarms Views
+
+    func showPromptsView(projects: [ProjectContext]) {
+        suspendGrid()
+        for (_, termView) in terminalViews where termView.superview === containerView {
+            termView.isHidden = true
+        }
+        currentEntry = nil
+        homeDashboardView?.removeFromSuperview()
+        worktreeDetailView?.removeFromSuperview()
+        swarmsView?.removeFromSuperview()
+        placeholderLabel.isHidden = true
+        containerView.isHidden = true
+
+        if promptsView == nil {
+            promptsView = PromptsView()
+        }
+        guard let pv = promptsView else { return }
+
+        if pv.superview != view {
+            pv.removeFromSuperview()
+            pv.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(pv)
+            if promptsConstraints.isEmpty {
+                promptsConstraints = [
+                    pv.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                    pv.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                    pv.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+                    pv.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                ]
+            }
+            NSLayoutConstraint.activate(promptsConstraints)
+        }
+
+        pv.configure(projects: projects)
+    }
+
+    func showSwarmsView(projects: [ProjectContext]) {
+        suspendGrid()
+        for (_, termView) in terminalViews where termView.superview === containerView {
+            termView.isHidden = true
+        }
+        currentEntry = nil
+        homeDashboardView?.removeFromSuperview()
+        worktreeDetailView?.removeFromSuperview()
+        promptsView?.removeFromSuperview()
+        placeholderLabel.isHidden = true
+        containerView.isHidden = true
+
+        if swarmsView == nil {
+            swarmsView = SwarmsView()
+        }
+        guard let sv = swarmsView else { return }
+
+        if sv.superview != view {
+            sv.removeFromSuperview()
+            sv.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(sv)
+            if swarmsConstraints.isEmpty {
+                swarmsConstraints = [
+                    sv.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                    sv.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                    sv.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+                    sv.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                ]
+            }
+            NSLayoutConstraint.activate(swarmsConstraints)
+        }
+
+        sv.configure(projects: projects)
     }
 
     // MARK: - Private

@@ -81,6 +81,14 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.showHomeDashboard()
         }
 
+        sidebar.onSwarmsClicked = { [weak self] in
+            self?.showSwarmsView()
+        }
+
+        sidebar.onPromptsClicked = { [weak self] in
+            self?.showPromptsView()
+        }
+
         // Save grid layout when a grid is suspended (navigate away)
         content.onGridSuspended = { [weak self] ownerEntryId, layout in
             guard let self = self else { return }
@@ -460,6 +468,18 @@ class DashboardSplitViewController: NSSplitViewController {
         view.window?.title = "ppg"
     }
 
+    func showSwarmsView() {
+        let projects = OpenProjects.shared.projects
+        content.showSwarmsView(projects: projects)
+        view.window?.title = "ppg - Swarms"
+    }
+
+    func showPromptsView() {
+        let projects = OpenProjects.shared.projects
+        content.showPromptsView(projects: projects)
+        view.window?.title = "ppg - Prompts"
+    }
+
     // MARK: - Selection & Refresh
 
     private func handleSelection(_ item: SidebarItem) {
@@ -537,6 +557,13 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     private func handleRefresh(_ currentItem: SidebarItem?) {
+        // If prompts or swarms view is visible, just clean stale views
+        if content.isShowingPromptsView || content.isShowingSwarmsView {
+            let validIds = collectAllTerminalIds()
+            content.clearStaleViews(validIds: validIds)
+            return
+        }
+
         // If the home dashboard is visible, refresh it
         if content.isShowingHomeDashboard {
             let projects = OpenProjects.shared.projects

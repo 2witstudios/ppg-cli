@@ -20,6 +20,12 @@ func statusColor(for status: AgentStatus) -> NSColor {
     }
 }
 
+// MARK: - Sidebar Tab
+
+enum SidebarTab {
+    case dashboard, swarms, prompts
+}
+
 // MARK: - Sidebar Item
 
 enum SidebarItem {
@@ -81,10 +87,15 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onSettingsClicked: (() -> Void)?
     var onAddProject: (() -> Void)?
     var onDashboardClicked: (() -> Void)?
+    var onSwarmsClicked: (() -> Void)?
+    var onPromptsClicked: (() -> Void)?
 
     private var refreshTimer: Timer?
-    private(set) var isDashboardSelected = false
-    private var dashboardButton: NSButton!
+    private(set) var activeTab: SidebarTab?
+    var isDashboardSelected: Bool { activeTab == .dashboard }
+    private var dashboardRow: SidebarNavRow!
+    private var swarmsRow: SidebarNavRow!
+    private var promptsRow: SidebarNavRow!
     var projectNodes: [SidebarNode] = []
     private var selectedItemId: String?
     private var suppressSelectionCallback = false
@@ -120,42 +131,51 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         outlineView.backgroundColor = .clear
         view.addSubview(scrollView)
 
-        // Dashboard button bar
-        let dashboardBar = NSView()
-        dashboardBar.translatesAutoresizingMaskIntoConstraints = false
+        // Navigation rows (Slack/Notion style)
+        let navBar = NSView()
+        navBar.translatesAutoresizingMaskIntoConstraints = false
 
-        dashboardButton = NSButton()
-        dashboardButton.bezelStyle = .accessoryBarAction
-        dashboardButton.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Dashboard")
-        dashboardButton.title = "Dashboard"
-        dashboardButton.imagePosition = .imageLeading
-        dashboardButton.font = .systemFont(ofSize: 12)
-        dashboardButton.isBordered = false
-        dashboardButton.contentTintColor = terminalForeground
-        dashboardButton.target = self
-        dashboardButton.action = #selector(dashboardButtonClicked)
-        dashboardButton.translatesAutoresizingMaskIntoConstraints = false
-        dashboardBar.addSubview(dashboardButton)
+        dashboardRow = SidebarNavRow(title: "Dashboard", icon: "square.grid.2x2") { [weak self] in
+            self?.dashboardButtonClicked()
+        }
+        swarmsRow = SidebarNavRow(title: "Swarms", icon: "arrow.triangle.swap") { [weak self] in
+            self?.swarmsButtonClicked()
+        }
+        promptsRow = SidebarNavRow(title: "Prompts", icon: "doc.text") { [weak self] in
+            self?.promptsButtonClicked()
+        }
+
+        let navStack = NSStackView(views: [dashboardRow, swarmsRow, promptsRow])
+        navStack.orientation = .vertical
+        navStack.alignment = .leading
+        navStack.spacing = 2
+        navStack.translatesAutoresizingMaskIntoConstraints = false
+        navBar.addSubview(navStack)
 
         let dashSeparator = NSBox()
         dashSeparator.boxType = .separator
         dashSeparator.translatesAutoresizingMaskIntoConstraints = false
-        dashboardBar.addSubview(dashSeparator)
+        navBar.addSubview(dashSeparator)
 
-        view.addSubview(dashboardBar)
+        view.addSubview(navBar)
 
         NSLayoutConstraint.activate([
-            dashboardBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            dashboardBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            dashboardBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            dashboardBar.heightAnchor.constraint(equalToConstant: 30),
+            navBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            navBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            navBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
 
-            dashboardButton.leadingAnchor.constraint(equalTo: dashboardBar.leadingAnchor, constant: 8),
-            dashboardButton.centerYAnchor.constraint(equalTo: dashboardBar.centerYAnchor),
+            navStack.topAnchor.constraint(equalTo: navBar.topAnchor, constant: 6),
+            navStack.leadingAnchor.constraint(equalTo: navBar.leadingAnchor, constant: 8),
+            navStack.trailingAnchor.constraint(equalTo: navBar.trailingAnchor, constant: -8),
+            navStack.bottomAnchor.constraint(equalTo: dashSeparator.topAnchor, constant: -6),
 
-            dashSeparator.bottomAnchor.constraint(equalTo: dashboardBar.bottomAnchor),
-            dashSeparator.leadingAnchor.constraint(equalTo: dashboardBar.leadingAnchor),
-            dashSeparator.trailingAnchor.constraint(equalTo: dashboardBar.trailingAnchor),
+            dashboardRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
+            swarmsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
+            promptsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
+
+            dashSeparator.bottomAnchor.constraint(equalTo: navBar.bottomAnchor),
+            dashSeparator.leadingAnchor.constraint(equalTo: navBar.leadingAnchor),
+            dashSeparator.trailingAnchor.constraint(equalTo: navBar.trailingAnchor),
         ])
 
         // Footer bar
@@ -200,7 +220,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         view.addSubview(footerBar)
 
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: dashboardBar.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: navBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: footerBar.topAnchor),
@@ -227,11 +247,36 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         startRefreshTimer()
     }
 
-    @objc private func dashboardButtonClicked() {
+    func selectTab(_ tab: SidebarTab) {
+        activeTab = tab
+        dashboardRow.isSelected = (tab == .dashboard)
+        swarmsRow.isSelected = (tab == .swarms)
+        promptsRow.isSelected = (tab == .prompts)
+    }
+
+    private func deselectAllTabs() {
+        activeTab = nil
+        dashboardRow.isSelected = false
+        swarmsRow.isSelected = false
+        promptsRow.isSelected = false
+    }
+
+    private func dashboardButtonClicked() {
         outlineView.deselectAll(nil)
-        isDashboardSelected = true
-        dashboardButton.contentTintColor = .controlAccentColor
+        selectTab(.dashboard)
         onDashboardClicked?()
+    }
+
+    private func swarmsButtonClicked() {
+        outlineView.deselectAll(nil)
+        selectTab(.swarms)
+        onSwarmsClicked?()
+    }
+
+    private func promptsButtonClicked() {
+        outlineView.deselectAll(nil)
+        selectTab(.prompts)
+        onPromptsClicked?()
     }
 
     @objc private func settingsButtonClicked() {
@@ -910,9 +955,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         guard !suppressSelectionCallback else { return }
         userIsSelecting = true
 
-        if isDashboardSelected {
-            isDashboardSelected = false
-            dashboardButton.contentTintColor = terminalForeground
+        if activeTab != nil {
+            deselectAllTabs()
         }
 
         let row = outlineView.selectedRow
@@ -924,5 +968,109 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         DispatchQueue.main.async { [weak self] in
             self?.userIsSelecting = false
         }
+    }
+}
+
+// MARK: - SidebarNavRow
+
+/// Full-width clickable row for sidebar navigation (Slack/Notion style).
+class SidebarNavRow: NSView {
+
+    private static let selectedBackground = NSColor.white.withAlphaComponent(0.08)
+    private static let hoverBackground = NSColor.white.withAlphaComponent(0.05)
+    private static let rowHeight: CGFloat = 26
+
+    private let iconView = NSImageView()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private var onClick: (() -> Void)?
+    private var isHovered = false
+    private var trackingArea: NSTrackingArea?
+
+    var isSelected: Bool = false {
+        didSet { needsDisplay = true; updateAppearance() }
+    }
+
+    init(title: String, icon: String, onClick: @escaping () -> Void) {
+        self.onClick = onClick
+        super.init(frame: .zero)
+
+        wantsLayer = true
+        layer?.cornerRadius = 5
+
+        iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: title)
+        iconView.contentTintColor = terminalForeground.withAlphaComponent(0.7)
+        iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        addSubview(iconView)
+
+        titleLabel.stringValue = title
+        titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        titleLabel.textColor = terminalForeground.withAlphaComponent(0.7)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: Self.rowHeight),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 16),
+            iconView.heightAnchor.constraint(equalToConstant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 7),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not supported")
+    }
+
+    private func updateAppearance() {
+        if isSelected {
+            layer?.backgroundColor = Self.selectedBackground.cgColor
+            iconView.contentTintColor = terminalForeground
+            titleLabel.textColor = terminalForeground
+        } else if isHovered {
+            layer?.backgroundColor = Self.hoverBackground.cgColor
+            iconView.contentTintColor = terminalForeground.withAlphaComponent(0.7)
+            titleLabel.textColor = terminalForeground.withAlphaComponent(0.7)
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            iconView.contentTintColor = terminalForeground.withAlphaComponent(0.7)
+            titleLabel.textColor = terminalForeground.withAlphaComponent(0.7)
+        }
+    }
+
+    // MARK: - Mouse Tracking
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea!)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        updateAppearance()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        updateAppearance()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
     }
 }
