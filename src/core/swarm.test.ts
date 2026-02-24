@@ -228,4 +228,41 @@ agents:
 
     expect(actual.agents[0].prompt).toBe('review_quality-v2');
   });
+
+  test('given template name with path traversal, should throw INVALID_ARGS', async () => {
+    await expect(loadSwarm(TMP_ROOT, '../../etc/passwd'))
+      .rejects.toThrow('Invalid swarm template name');
+  });
+
+  test('given template name with slashes, should throw INVALID_ARGS', async () => {
+    await expect(loadSwarm(TMP_ROOT, 'sub/dir'))
+      .rejects.toThrow('Invalid swarm template name');
+  });
+
+  test('given template name with spaces, should throw INVALID_ARGS', async () => {
+    await expect(loadSwarm(TMP_ROOT, 'bad name'))
+      .rejects.toThrow('Invalid swarm template name');
+  });
+
+  test('given YAML with unsafe swarm name, should throw INVALID_ARGS', async () => {
+    const yaml = `name: "../../bad"
+agents:
+  - prompt: review-quality
+`;
+    await fs.writeFile(path.join(SWARMS_DIR, 'sneaky.yaml'), yaml);
+
+    await expect(loadSwarm(TMP_ROOT, 'sneaky'))
+      .rejects.toThrow('Invalid swarm name');
+  });
+
+  test('given YAML with spaces in swarm name, should throw INVALID_ARGS', async () => {
+    const yaml = `name: "bad name"
+agents:
+  - prompt: review-quality
+`;
+    await fs.writeFile(path.join(SWARMS_DIR, 'bad-name.yaml'), yaml);
+
+    await expect(loadSwarm(TMP_ROOT, 'bad-name'))
+      .rejects.toThrow('Invalid swarm name');
+  });
 });

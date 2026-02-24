@@ -32,6 +32,13 @@ export async function listSwarms(projectRoot: string): Promise<string[]> {
 }
 
 export async function loadSwarm(projectRoot: string, name: string): Promise<SwarmTemplate> {
+  if (!SAFE_NAME.test(name)) {
+    throw new PgError(
+      `Invalid swarm template name: "${name}" — must be alphanumeric, hyphens, or underscores`,
+      'INVALID_ARGS',
+    );
+  }
+
   const dir = swarmsDir(projectRoot);
 
   // Try .yaml first, then .yml
@@ -52,6 +59,13 @@ export async function loadSwarm(projectRoot: string, name: string): Promise<Swar
 
   if (!parsed.name || !parsed.agents || !Array.isArray(parsed.agents)) {
     throw new PgError(`Invalid swarm template: ${name} (missing name or agents)`, 'INVALID_ARGS');
+  }
+
+  if (!SAFE_NAME.test(parsed.name)) {
+    throw new PgError(
+      `Invalid swarm name: "${parsed.name}" — must be alphanumeric, hyphens, or underscores`,
+      'INVALID_ARGS',
+    );
   }
 
   if (parsed.strategy && parsed.strategy !== 'shared' && parsed.strategy !== 'isolated') {
@@ -78,9 +92,9 @@ export async function loadSwarm(projectRoot: string, name: string): Promise<Swar
     }
   }
 
-  // Default strategy to shared
-  parsed.strategy = parsed.strategy ?? 'shared';
-  parsed.description = parsed.description ?? '';
-
-  return parsed;
+  return {
+    ...parsed,
+    strategy: parsed.strategy ?? 'shared',
+    description: parsed.description ?? '',
+  };
 }
