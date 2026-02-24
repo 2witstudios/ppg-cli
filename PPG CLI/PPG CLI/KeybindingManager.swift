@@ -70,14 +70,22 @@ struct StoredBinding: Codable {
 
 // MARK: - KeybindingManager
 
-class KeybindingManager {
+final class KeybindingManager {
     static let shared = KeybindingManager()
 
     private let defaultsKey = "PPGCustomKeybindings"
 
     private var customBindings: [String: StoredBinding] = [:]
 
-    init() {
+    /// Reserved shortcuts (Edit menu) that cannot be overridden.
+    private static let reservedShortcuts: [(key: String, modifiers: NSEvent.ModifierFlags, name: String)] = [
+        ("x", .command, "Cut"),
+        ("c", .command, "Copy"),
+        ("v", .command, "Paste"),
+        ("a", .command, "Select All"),
+    ]
+
+    private init() {
         loadBindings()
     }
 
@@ -140,12 +148,25 @@ class KeybindingManager {
 
     // MARK: - Conflict Detection
 
+    /// Returns the conflicting action, or nil. For reserved shortcuts (Edit menu),
+    /// returns `.quit` as a sentinel since those can never be rebound.
     func findConflict(keyEquivalent: String, modifiers: NSEvent.ModifierFlags, excluding: BindableAction) -> BindableAction? {
         for action in BindableAction.allCases where action != excluding {
             let key = self.keyEquivalent(for: action)
             let mods = self.modifierMask(for: action)
             if key == keyEquivalent && mods == modifiers {
                 return action
+            }
+        }
+        return nil
+    }
+
+    /// Check if a shortcut collides with a reserved Edit menu item (⌘X/C/V/A).
+    /// Returns the display name of the reserved shortcut, or nil.
+    func findReservedConflict(keyEquivalent: String, modifiers: NSEvent.ModifierFlags) -> String? {
+        for reserved in Self.reservedShortcuts {
+            if reserved.key == keyEquivalent && reserved.modifiers == modifiers {
+                return reserved.name
             }
         }
         return nil

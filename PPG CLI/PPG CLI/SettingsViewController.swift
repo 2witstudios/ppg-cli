@@ -138,6 +138,12 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         guard let row = recordingRow else { return }
         let action = actions[row]
 
+        // Escape cancels recording
+        if event.keyCode == 53 {
+            cancelRecording()
+            return
+        }
+
         let key = event.charactersIgnoringModifiers ?? ""
         let mods = event.modifierFlags.intersection([.command, .option, .shift, .control])
 
@@ -153,7 +159,15 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
             return
         }
 
-        // Check for conflict
+        // Check for conflict with reserved shortcuts (Edit menu)
+        if let reservedName = KeybindingManager.shared.findReservedConflict(keyEquivalent: key, modifiers: mods) {
+            cancelRecording()
+            let shortcutStr = KeybindingManager.displayString(keyEquivalent: key, modifiers: mods)
+            showAlert("Shortcut Conflict", "\(shortcutStr) is reserved for \"\(reservedName)\".")
+            return
+        }
+
+        // Check for conflict with other bindable actions
         if let conflict = KeybindingManager.shared.findConflict(keyEquivalent: key, modifiers: mods, excluding: action) {
             cancelRecording()
             let shortcutStr = KeybindingManager.displayString(keyEquivalent: key, modifiers: mods)
@@ -165,6 +179,12 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         cancelRecording()
         tableView.reloadData()
         applyAndRefreshMenu()
+    }
+
+    deinit {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     private func cancelRecording() {
