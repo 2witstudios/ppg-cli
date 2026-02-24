@@ -194,6 +194,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         refreshItem.tag = kMenuTagRefresh
         viewMenu.addItem(refreshItem)
 
+        viewMenu.addItem(.separator())
+
+        let splitBelowItem = NSMenuItem(title: "Split Pane Below", action: #selector(splitPaneBelow), keyEquivalent: "d")
+        splitBelowItem.target = self
+        splitBelowItem.tag = kMenuTagSplitBelow
+        viewMenu.addItem(splitBelowItem)
+
+        let splitRightItem = NSMenuItem(title: "Split Pane Right", action: #selector(splitPaneRight), keyEquivalent: "d")
+        splitRightItem.keyEquivalentModifierMask = [.command, .shift]
+        splitRightItem.target = self
+        splitRightItem.tag = kMenuTagSplitRight
+        viewMenu.addItem(splitRightItem)
+
+        let closePaneItem = NSMenuItem(title: "Close Pane", action: #selector(closeFocusedPane), keyEquivalent: "w")
+        closePaneItem.keyEquivalentModifierMask = [.command, .shift]
+        closePaneItem.target = self
+        closePaneItem.tag = kMenuTagClosePane
+        viewMenu.addItem(closePaneItem)
+
+        viewMenu.addItem(.separator())
+
+        let focusUpItem = NSMenuItem(title: "Focus Pane Above", action: #selector(focusPaneUp), keyEquivalent: String(Character(UnicodeScalar(NSUpArrowFunctionKey)!)))
+        focusUpItem.keyEquivalentModifierMask = [.command, .option]
+        focusUpItem.target = self
+        focusUpItem.tag = kMenuTagFocusPaneUp
+        viewMenu.addItem(focusUpItem)
+
+        let focusDownItem = NSMenuItem(title: "Focus Pane Below", action: #selector(focusPaneDown), keyEquivalent: String(Character(UnicodeScalar(NSDownArrowFunctionKey)!)))
+        focusDownItem.keyEquivalentModifierMask = [.command, .option]
+        focusDownItem.target = self
+        focusDownItem.tag = kMenuTagFocusPaneDown
+        viewMenu.addItem(focusDownItem)
+
+        let focusLeftItem = NSMenuItem(title: "Focus Pane Left", action: #selector(focusPaneLeft), keyEquivalent: String(Character(UnicodeScalar(NSLeftArrowFunctionKey)!)))
+        focusLeftItem.keyEquivalentModifierMask = [.command, .option]
+        focusLeftItem.target = self
+        focusLeftItem.tag = kMenuTagFocusPaneLeft
+        viewMenu.addItem(focusLeftItem)
+
+        let focusRightItem = NSMenuItem(title: "Focus Pane Right", action: #selector(focusPaneRight), keyEquivalent: String(Character(UnicodeScalar(NSRightArrowFunctionKey)!)))
+        focusRightItem.keyEquivalentModifierMask = [.command, .option]
+        focusRightItem.target = self
+        focusRightItem.tag = kMenuTagFocusPaneRight
+        viewMenu.addItem(focusRightItem)
+
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
@@ -219,6 +264,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showCreationMenu(_ sender: Any) {
         guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
         splitVC.showCreationMenu()
+    }
+
+    @objc private func splitPaneBelow() {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.splitPaneBelow()
+    }
+
+    @objc private func splitPaneRight() {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.splitPaneRight()
+    }
+
+    @objc private func closeFocusedPane() {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.closeFocusedPane()
+    }
+
+    @objc private func focusPaneUp() {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.movePaneFocus(direction: .horizontal, forward: false)
+    }
+
+    @objc private func focusPaneDown() {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.movePaneFocus(direction: .horizontal, forward: true)
+    }
+
+    @objc private func focusPaneLeft() {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.movePaneFocus(direction: .vertical, forward: false)
+    }
+
+    @objc private func focusPaneRight() {
+        guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
+        splitVC.movePaneFocus(direction: .vertical, forward: true)
     }
 
     func openProject() {

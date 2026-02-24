@@ -40,7 +40,17 @@ class ContentViewController: NSViewController {
     private var homeDashboardView: HomeDashboardView?
     private var dashboardConstraints: [NSLayoutConstraint] = []
 
-    var currentEntryId: String? { currentEntry?.id }
+    // MARK: - Grid Mode
+    private(set) var paneGrid: PaneGridController?
+    var isGridMode: Bool {
+        guard let grid = paneGrid else { return false }
+        return grid.view.superview != nil && !grid.view.isHidden
+    }
+
+    var currentEntryId: String? {
+        if isGridMode { return paneGrid?.focusedEntry?.id }
+        return currentEntry?.id
+    }
     var isShowingWorktreeDetail: Bool { worktreeDetailView?.superview != nil }
     var isShowingHomeDashboard: Bool { homeDashboardView?.superview != nil }
 
@@ -82,12 +92,21 @@ class ContentViewController: NSViewController {
 
         guard let entry = entry else {
             // Show placeholder
+            if isGridMode {
+                exitGridMode()
+            }
             for (_, termView) in terminalViews {
                 termView.isHidden = true
             }
             currentEntry = nil
             placeholderLabel.isHidden = false
             containerView.isHidden = true
+            return
+        }
+
+        // Grid mode: fill the focused pane instead of replacing everything
+        if isGridMode {
+            paneGrid?.fillFocusedPane(with: entry)
             return
         }
 
@@ -109,6 +128,12 @@ class ContentViewController: NSViewController {
     }
 
     func updateCurrentEntry(_ entry: TabEntry) {
+        // Update in grid mode if the entry is visible in any pane
+        if isGridMode, let grid = paneGrid, grid.containsEntry(id: entry.id) {
+            grid.updateEntry(entry)
+            return
+        }
+
         guard let current = currentEntry, current.id == entry.id else { return }
         currentEntry = entry
         switch entry {
@@ -151,12 +176,165 @@ class ContentViewController: NSViewController {
         }
     }
 
+    // MARK: - Grid Mode
+
+    /// Lazily create the grid controller and transfer current content into its first pane.
+    func ensureGridController() -> PaneGridController {
+        if let existing = paneGrid {
+            return existing
+        }
+        let grid = PaneGridController()
+        grid.terminalViewProvider = { [weak self] entry in
+            guard let self = self else { return NSView() }
+            return self.terminalView(for: entry)
+        }
+        grid.terminalTerminator = { [weak self] view in
+            self?.terminateTerminal(view)
+        }
+        paneGrid = grid
+        return grid
+    }
+
+    private func enterGridMode() {
+        let grid = ensureGridController()
+
+        // Hide single-pane content
+        for (_, termView) in terminalViews {
+            termView.isHidden = true
+        }
+        placeholderLabel.isHidden = true
+        containerView.isHidden = true
+
+        // Add grid view to main view
+        if grid.view.superview != view {
+            addChild(grid)
+            grid.view.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(grid.view)
+            NSLayoutConstraint.activate([
+                grid.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                grid.view.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                grid.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+                grid.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+        } else {
+            // Grid was hidden — restore it
+            grid.view.isHidden = false
+        }
+
+        // Transfer the current entry into the first leaf, reusing the existing terminal view
+        if let entry = currentEntry {
+            let existingView = terminalViews.removeValue(forKey: entry.id)
+            grid.setInitialEntry(entry, existingView: existingView)
+        }
+
+        currentEntry = nil
+    }
+
+    func splitPaneBelow() {
+        if !isGridMode {
+            enterGridMode()
+        }
+        paneGrid?.splitFocusedPane(direction: .horizontal)
+    }
+
+    func splitPaneRight() {
+        if !isGridMode {
+            enterGridMode()
+        }
+        paneGrid?.splitFocusedPane(direction: .vertical)
+    }
+
+    func closeFocusedPane() -> Bool {
+        guard let grid = paneGrid, isGridMode else { return false }
+
+        if grid.root.leafCount <= 1 {
+            // Last pane — exit grid mode entirely
+            exitGridMode()
+            return true
+        }
+
+        return grid.closeFocusedPane()
+    }
+
+    func movePaneFocus(direction: SplitDirection, forward: Bool) {
+        paneGrid?.moveFocus(direction, forward: forward)
+    }
+
+    func exitGridMode() {
+        guard let grid = paneGrid else { return }
+
+        // Restore the focused entry back into single-pane mode
+        if let entry = grid.focusedEntry {
+            // Extract the terminal view from the focused cell so we can reuse it
+            let focusedCell = grid.cellViews[grid.focusedLeafId]
+            let existingView = focusedCell?.detachTerminalView()
+
+            grid.view.removeFromSuperview()
+            grid.removeFromParent()
+
+            // Re-install into single-pane container
+            currentEntry = entry
+            placeholderLabel.isHidden = true
+            containerView.isHidden = false
+
+            for (_, termView) in terminalViews {
+                termView.isHidden = true
+            }
+
+            if let existingView = existingView {
+                existingView.translatesAutoresizingMaskIntoConstraints = false
+                containerView.addSubview(existingView)
+                let leadingPadding: CGFloat = (existingView is TerminalPane) ? 0 : 8
+                NSLayoutConstraint.activate([
+                    existingView.topAnchor.constraint(equalTo: containerView.topAnchor),
+                    existingView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: leadingPadding),
+                    existingView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                    existingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+                ])
+                terminalViews[entry.id] = existingView
+            } else {
+                let termView = terminalView(for: entry)
+                termView.isHidden = false
+            }
+        } else {
+            grid.view.removeFromSuperview()
+            grid.removeFromParent()
+            placeholderLabel.isHidden = false
+            containerView.isHidden = true
+        }
+
+        // Tear down remaining grid terminals (non-focused panes)
+        grid.terminateAllExcept(leafId: grid.focusedLeafId, using: { [weak self] view in
+            self?.terminateTerminal(view)
+        })
+        paneGrid = nil
+    }
+
+    /// Preserve grid state: when switching to home dashboard or worktree detail,
+    /// just hide the grid view rather than tearing it down.
+    private func hideGridIfActive() {
+        guard let grid = paneGrid, grid.view.superview != nil else { return }
+        grid.view.isHidden = true
+    }
+
+    /// Restore a previously hidden grid. Returns true if the grid was restored.
+    func restoreGridIfAvailable() -> Bool {
+        guard let grid = paneGrid, grid.view.superview == view, grid.view.isHidden else { return false }
+        grid.view.isHidden = false
+        homeDashboardView?.removeFromSuperview()
+        worktreeDetailView?.removeFromSuperview()
+        placeholderLabel.isHidden = true
+        containerView.isHidden = true
+        return true
+    }
+
     // MARK: - Worktree Detail
 
     // MARK: - Home Dashboard
 
     func showHomeDashboard(projects: [ProjectContext], worktreesByProject: [String: [WorktreeModel]]) {
-        // Hide terminals and worktree detail
+        // Hide terminals, grid, and worktree detail
+        hideGridIfActive()
         for (_, termView) in terminalViews {
             termView.isHidden = true
         }
@@ -201,6 +379,7 @@ class ContentViewController: NSViewController {
         onNewWorktree: @escaping () -> Void
     ) {
         homeDashboardView?.removeFromSuperview()
+        hideGridIfActive()
         // Hide terminal views and clear current entry
         for (_, termView) in terminalViews {
             termView.isHidden = true
