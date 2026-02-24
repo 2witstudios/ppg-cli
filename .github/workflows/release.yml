@@ -180,6 +180,8 @@ jobs:
             | grep -v -i "notariz" \
             | grep -v -i "fix test" \
             | grep -v -i "fix ci" \
+            | grep -v -i "fix appcast" \
+            | grep -v -i "fix workflow" \
             | grep -v -i "code sign" \
             || true)
 
@@ -196,7 +198,7 @@ jobs:
 
           ```bash
           # CLI
-          npm install -g ppg-cli
+          npm install -g pure-point-guard
 
           # Dashboard app
           ppg install-dashboard
