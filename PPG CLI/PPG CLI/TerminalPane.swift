@@ -20,6 +20,7 @@ class TerminalPane: NSView {
 
     private func setupUI() {
         wantsLayer = true
+        layer?.backgroundColor = terminalBackground.cgColor
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.7
         layer?.shadowRadius = 40
@@ -42,10 +43,18 @@ class TerminalPane: NSView {
             label.heightAnchor.constraint(equalToConstant: 20),
 
             terminalView.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
             terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+    }
+
+    override func layout() {
+        super.layout()
+        // Inset shadow source on the leading edge so the shadow doesn't bleed
+        // into the 8px gap between the sidebar and this pane.
+        let r = layer?.shadowRadius ?? 0
+        layer?.shadowPath = CGPath(rect: CGRect(x: r, y: 0, width: bounds.width - r, height: bounds.height), transform: nil)
     }
 
     func startTmux() {

@@ -15,7 +15,7 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
     override func viewDidLoad() {
         super.viewDidLoad()
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7).cgColor
+        view.layer?.backgroundColor = chromeBackground.cgColor
 
         recentProjects = RecentProjects.shared.projects.filter { RecentProjects.shared.isValidProject($0) }
 

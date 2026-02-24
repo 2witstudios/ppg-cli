@@ -1,5 +1,14 @@
 import AppKit
 
+/// Chrome background — semi-transparent dark to let desktop show through.
+let chromeBackground = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7)
+
+/// Terminal background — opaque dark to match tmux.
+let terminalBackground = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
+
+/// Terminal foreground text — light on dark.
+let terminalForeground = NSColor(srgbRed: 0.85, green: 0.85, blue: 0.87, alpha: 1.0)
+
 func statusColor(for status: AgentStatus) -> NSColor {
     switch status {
     case .running: return .systemGreen

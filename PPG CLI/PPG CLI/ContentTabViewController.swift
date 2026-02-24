@@ -47,8 +47,10 @@ class ContentViewController: NSViewController {
         super.viewDidLoad()
 
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7).cgColor
+        view.layer?.backgroundColor = chromeBackground.cgColor
 
+        containerView.wantsLayer = true
+        containerView.layer?.backgroundColor = terminalBackground.cgColor
         containerView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(containerView)
 
@@ -205,9 +207,11 @@ class ContentViewController: NSViewController {
 
         termView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(termView)
+        // TerminalPane handles its own leading inset; other views get 8px gap from the container.
+        let leadingPadding: CGFloat = (termView is TerminalPane) ? 0 : 8
         NSLayoutConstraint.activate([
             termView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+            termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: leadingPadding),
             termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             termView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
         ])

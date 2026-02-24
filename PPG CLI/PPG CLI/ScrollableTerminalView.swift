@@ -22,9 +22,9 @@ class ScrollableTerminalView: NSView {
         super.init(frame: frame)
 
         // Harmonize terminal background with UI chrome (replaces pure black default)
-        self.terminalView.nativeBackgroundColor = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7)
-        self.terminalView.nativeForegroundColor = NSColor(srgbRed: 0.85, green: 0.85, blue: 0.87, alpha: 1.0)
-        self.terminalView.layer?.backgroundColor = self.terminalView.nativeBackgroundColor.cgColor
+        self.terminalView.nativeBackgroundColor = terminalBackground
+        self.terminalView.nativeForegroundColor = terminalForeground
+        self.terminalView.layer?.backgroundColor = terminalBackground.cgColor
 
         self.terminalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(self.terminalView)

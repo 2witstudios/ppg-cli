@@ -15,9 +15,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7)
+        window.backgroundColor = chromeBackground
         window.isOpaque = false
         window.isRestorable = false
+        window.appearance = NSAppearance(named: .darkAqua)
 
         let toolbar = NSToolbar(identifier: "MainToolbar")
         toolbar.displayMode = .iconOnly
