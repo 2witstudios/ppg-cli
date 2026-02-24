@@ -1,12 +1,15 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { listSwarms, loadSwarm } from './swarm.js';
 
-const TMP_ROOT = path.join(process.cwd(), '.test-tmp-swarm');
-const SWARMS_DIR = path.join(TMP_ROOT, '.pg', 'swarms');
+let TMP_ROOT: string;
+let SWARMS_DIR: string;
 
 beforeEach(async () => {
+  TMP_ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-swarm-test-'));
+  SWARMS_DIR = path.join(TMP_ROOT, '.pg', 'swarms');
   await fs.mkdir(SWARMS_DIR, { recursive: true });
 });
 

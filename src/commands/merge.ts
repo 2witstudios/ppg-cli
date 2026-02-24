@@ -5,6 +5,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { PgError, NotInitializedError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
+import { execaEnv } from '../lib/env.js';
 
 export interface MergeOptions {
   strategy?: 'squash' | 'no-ff';
@@ -65,12 +66,14 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
     info(`Merging ${wt.branch} into ${wt.baseBranch} (${strategy})`);
 
     if (strategy === 'squash') {
-      await execa('git', ['merge', '--squash', wt.branch], { cwd: projectRoot });
+      await execa('git', ['merge', '--squash', wt.branch], { ...execaEnv, cwd: projectRoot });
       await execa('git', ['commit', '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
+        ...execaEnv,
         cwd: projectRoot,
       });
     } else {
       await execa('git', ['merge', '--no-ff', wt.branch, '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
+        ...execaEnv,
         cwd: projectRoot,
       });
     }

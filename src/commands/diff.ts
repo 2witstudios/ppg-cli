@@ -3,6 +3,7 @@ import { readManifest, resolveWorktree } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output } from '../lib/output.js';
+import { execaEnv } from '../lib/env.js';
 
 export interface DiffOptions {
   stat?: boolean;
@@ -28,7 +29,7 @@ export async function diffCommand(worktreeRef: string, options: DiffOptions): Pr
 
   if (options.json) {
     // Machine-readable: numstat for file-level changes
-    const result = await execa('git', ['diff', '--numstat', diffRange], { cwd: projectRoot });
+    const result = await execa('git', ['diff', '--numstat', diffRange], { ...execaEnv, cwd: projectRoot });
     const files = result.stdout.trim().split('\n').filter(Boolean).map((line) => {
       const [added, removed, file] = line.split('\t');
       return {
@@ -44,13 +45,13 @@ export async function diffCommand(worktreeRef: string, options: DiffOptions): Pr
       files,
     }, true);
   } else if (options.stat) {
-    const result = await execa('git', ['diff', '--stat', diffRange], { cwd: projectRoot });
+    const result = await execa('git', ['diff', '--stat', diffRange], { ...execaEnv, cwd: projectRoot });
     console.log(result.stdout);
   } else if (options.nameOnly) {
-    const result = await execa('git', ['diff', '--name-only', diffRange], { cwd: projectRoot });
+    const result = await execa('git', ['diff', '--name-only', diffRange], { ...execaEnv, cwd: projectRoot });
     console.log(result.stdout);
   } else {
-    const result = await execa('git', ['diff', diffRange], { cwd: projectRoot });
+    const result = await execa('git', ['diff', diffRange], { ...execaEnv, cwd: projectRoot });
     console.log(result.stdout);
   }
 }
