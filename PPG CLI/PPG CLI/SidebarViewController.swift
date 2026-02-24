@@ -69,6 +69,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onDeleteWorktree: ((ProjectContext, String) -> Void)?            // (project, worktreeId)
     var onDataRefreshed: ((SidebarItem?) -> Void)?
     var onSettingsClicked: (() -> Void)?
+    var onAddProject: (() -> Void)?
 
     private var refreshTimer: Timer?
     var projectNodes: [SidebarNode] = []
@@ -106,9 +107,15 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         outlineView.backgroundColor = .clear
         view.addSubview(scrollView)
 
-        // Footer bar with gear button
+        // Footer bar
         let footerBar = NSView()
+        footerBar.wantsLayer = true
         footerBar.translatesAutoresizingMaskIntoConstraints = false
+
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        footerBar.addSubview(separator)
 
         let gearButton = NSButton()
         gearButton.bezelStyle = .accessoryBarAction
@@ -119,6 +126,25 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         gearButton.action = #selector(settingsButtonClicked)
         gearButton.translatesAutoresizingMaskIntoConstraints = false
         footerBar.addSubview(gearButton)
+
+        let addProjectButton = NSButton()
+        addProjectButton.bezelStyle = .accessoryBarAction
+        addProjectButton.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: "Add Project")
+        addProjectButton.title = "Add Project"
+        addProjectButton.imagePosition = .imageLeading
+        addProjectButton.font = .systemFont(ofSize: 11)
+        addProjectButton.isBordered = false
+        addProjectButton.contentTintColor = terminalForeground
+        addProjectButton.target = self
+        addProjectButton.action = #selector(addProjectButtonClicked)
+        addProjectButton.translatesAutoresizingMaskIntoConstraints = false
+        footerBar.addSubview(addProjectButton)
+
+        let shortcutLabel = NSTextField(labelWithString: "\u{2318}O")
+        shortcutLabel.font = .systemFont(ofSize: 10)
+        shortcutLabel.textColor = .tertiaryLabelColor
+        shortcutLabel.translatesAutoresizingMaskIntoConstraints = false
+        footerBar.addSubview(shortcutLabel)
 
         view.addSubview(footerBar)
 
@@ -131,10 +157,20 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             footerBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             footerBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             footerBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            footerBar.heightAnchor.constraint(equalToConstant: 32),
+            footerBar.heightAnchor.constraint(equalToConstant: 36),
+
+            separator.topAnchor.constraint(equalTo: footerBar.topAnchor),
+            separator.leadingAnchor.constraint(equalTo: footerBar.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: footerBar.trailingAnchor),
 
             gearButton.leadingAnchor.constraint(equalTo: footerBar.leadingAnchor, constant: 8),
             gearButton.centerYAnchor.constraint(equalTo: footerBar.centerYAnchor),
+
+            addProjectButton.trailingAnchor.constraint(equalTo: shortcutLabel.leadingAnchor, constant: -4),
+            addProjectButton.centerYAnchor.constraint(equalTo: footerBar.centerYAnchor),
+
+            shortcutLabel.trailingAnchor.constraint(equalTo: footerBar.trailingAnchor, constant: -10),
+            shortcutLabel.centerYAnchor.constraint(equalTo: footerBar.centerYAnchor),
         ])
 
         startRefreshTimer()
@@ -142,6 +178,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     @objc private func settingsButtonClicked() {
         onSettingsClicked?()
+    }
+
+    @objc private func addProjectButtonClicked() {
+        onAddProject?()
     }
 
     // MARK: - Refresh

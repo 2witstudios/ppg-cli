@@ -180,6 +180,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         splitVC.showCreationMenu()
     }
 
+    func openProject() {
+        openProjectAction(self)
+    }
+
     @objc private func openProjectAction(_ sender: Any) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true

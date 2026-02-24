@@ -71,6 +71,11 @@ class DashboardSplitViewController: NSSplitViewController {
         sidebar.onSettingsClicked = { [weak self] in
             self?.showSettings()
         }
+
+        sidebar.onAddProject = {
+            guard let delegate = NSApp.delegate as? AppDelegate else { return }
+            delegate.openProject()
+        }
     }
 
     private func showSettings() {
