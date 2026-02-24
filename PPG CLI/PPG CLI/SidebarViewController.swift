@@ -68,6 +68,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onDeleteAgent: ((ProjectContext, String) -> Void)?               // (project, agentId)
     var onDeleteWorktree: ((ProjectContext, String) -> Void)?            // (project, worktreeId)
     var onDataRefreshed: ((SidebarItem?) -> Void)?
+    var onSettingsClicked: (() -> Void)?
 
     private var refreshTimer: Timer?
     var projectNodes: [SidebarNode] = []
@@ -105,14 +106,42 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         outlineView.backgroundColor = .clear
         view.addSubview(scrollView)
 
+        // Footer bar with gear button
+        let footerBar = NSView()
+        footerBar.translatesAutoresizingMaskIntoConstraints = false
+
+        let gearButton = NSButton()
+        gearButton.bezelStyle = .accessoryBarAction
+        gearButton.image = NSImage(systemSymbolName: "gear", accessibilityDescription: "Settings")
+        gearButton.isBordered = false
+        gearButton.contentTintColor = terminalForeground
+        gearButton.target = self
+        gearButton.action = #selector(settingsButtonClicked)
+        gearButton.translatesAutoresizingMaskIntoConstraints = false
+        footerBar.addSubview(gearButton)
+
+        view.addSubview(footerBar)
+
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: footerBar.topAnchor),
+
+            footerBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            footerBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            footerBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            footerBar.heightAnchor.constraint(equalToConstant: 32),
+
+            gearButton.leadingAnchor.constraint(equalTo: footerBar.leadingAnchor, constant: 8),
+            gearButton.centerYAnchor.constraint(equalTo: footerBar.centerYAnchor),
         ])
 
         startRefreshTimer()
+    }
+
+    @objc private func settingsButtonClicked() {
+        onSettingsClicked?()
     }
 
     // MARK: - Refresh

@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
+        KeybindingManager.shared.applyBindings(to: NSApp.mainMenu!)
 
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 100, y: 100, width: 1400, height: 900)
 
@@ -68,7 +69,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // App menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit PPG CLI", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quitItem = appMenu.addItem(withTitle: "Quit PPG CLI", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.tag = kMenuTagQuit
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
@@ -79,13 +81,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Cmd+N — New... (creation menu)
         let newItem = NSMenuItem(title: "New...", action: #selector(showCreationMenu(_:)), keyEquivalent: "n")
         newItem.target = self
+        newItem.tag = kMenuTagNew
         fileMenu.addItem(newItem)
 
         fileMenu.addItem(.separator())
 
         // Cmd+O — Open/Add Project
-        fileMenu.addItem(withTitle: "Open Project...", action: #selector(openProjectAction(_:)), keyEquivalent: "o")
-            .target = self
+        let openItem = fileMenu.addItem(withTitle: "Open Project...", action: #selector(openProjectAction(_:)), keyEquivalent: "o")
+        openItem.target = self
+        openItem.tag = kMenuTagOpen
 
         // Recent Projects submenu (no Cmd+1-9 shortcuts here — those are for project switching)
         let recentItem = NSMenuItem(title: "Recent Projects", action: nil, keyEquivalent: "")
@@ -125,20 +129,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let viewMenu = NSMenu(title: "View")
 
         // Cmd+1-9 — switch to project 1-9
+        let projectMenuTags = [
+            kMenuTagProject1, kMenuTagProject2, kMenuTagProject3,
+            kMenuTagProject4, kMenuTagProject5, kMenuTagProject6,
+            kMenuTagProject7, kMenuTagProject8, kMenuTagProject9,
+        ]
         for i in 1...9 {
             let projectItem = NSMenuItem(title: "Project \(i)", action: #selector(switchToProject(_:)), keyEquivalent: "\(i)")
             projectItem.target = self
-            projectItem.tag = i
+            projectItem.tag = projectMenuTags[i - 1]
+            projectItem.representedObject = i  // store the project index
             viewMenu.addItem(projectItem)
         }
         viewMenu.addItem(.separator())
 
         let closeItem = NSMenuItem(title: "Close", action: #selector(closeCurrentEntry), keyEquivalent: "w")
         closeItem.target = self
+        closeItem.tag = kMenuTagClose
         viewMenu.addItem(closeItem)
 
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshSidebar), keyEquivalent: "r")
         refreshItem.target = self
+        refreshItem.tag = kMenuTagRefresh
         viewMenu.addItem(refreshItem)
 
         viewMenuItem.submenu = viewMenu
@@ -149,7 +161,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func switchToProject(_ sender: NSMenuItem) {
         guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return }
-        splitVC.sidebar.selectProject(at: sender.tag - 1)
+        let index = (sender.representedObject as? Int) ?? 1
+        splitVC.sidebar.selectProject(at: index - 1)
     }
 
     @objc private func closeCurrentEntry() {
