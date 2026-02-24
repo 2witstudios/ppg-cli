@@ -50,7 +50,8 @@ enum SidebarItem {
     var contentSignature: String {
         switch self {
         case .project(let ctx):
-            return ctx.projectName
+            let idx = OpenProjects.shared.indexOf(root: ctx.projectRoot) ?? -1
+            return "\(ctx.projectName)|\(idx)"
         case .worktree(let wt):
             return "\(wt.name)|\(wt.branch)|\(wt.status)|\(wt.agents.count)"
         case .agent(let ag):
@@ -115,7 +116,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private var promptsRow: SidebarNavRow!
     var projectNodes: [SidebarNode] = []
     private var suppressSelectionCallback = false
-    private var userIsSelecting = false
     private var contextClickedNode: SidebarNode?
 
     override func loadView() {
@@ -355,12 +355,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         }
     }
 
-    private func currentSelectedId() -> String? {
-        let row = outlineView.selectedRow
-        guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
-        return node.item.id
-    }
-
     private func currentSelectedItem() -> SidebarItem? {
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
@@ -491,8 +485,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
                         projectNodes.remove(at: currentIndex)
                         projectNodes.insert(movingNode, at: targetIndex)
                     }
-                    outlineView.removeItems(at: IndexSet(integer: currentIndex), inParent: parent, withAnimation: .init())
-                    outlineView.insertItems(at: IndexSet(integer: targetIndex), inParent: parent, withAnimation: .init())
+                    outlineView.moveItem(at: currentIndex, inParent: parent, to: targetIndex, inParent: parent)
                 }
             } else {
                 // Genuinely new item — insert
@@ -1079,7 +1072,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionCallback else { return }
-        userIsSelecting = true
 
         if activeTab != nil {
             deselectAllTabs()
@@ -1087,13 +1079,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else {
-            userIsSelecting = false
             return
         }
         onItemSelected?(node.item)
-        DispatchQueue.main.async { [weak self] in
-            self?.userIsSelecting = false
-        }
     }
 }
 
