@@ -1,5 +1,6 @@
 # ppg — Pure Point Guard
 
+[![CI](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/ppg-cli.svg)](https://www.npmjs.com/package/ppg-cli)
 [![license](https://img.shields.io/npm/l/ppg-cli.svg)](https://github.com/2witstudios/ppg-cli/blob/main/LICENSE)
 
