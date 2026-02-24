@@ -62,6 +62,15 @@ class DashboardSplitViewController: NSSplitViewController {
             guard let self = self else { return }
             self.killManifestAgent(project: project, agentId: agentId)
         }
+
+        sidebar.onSettingsClicked = { [weak self] in
+            self?.showSettings()
+        }
+    }
+
+    private func showSettings() {
+        let settingsVC = SettingsViewController()
+        presentAsSheet(settingsVC)
     }
 
     // MARK: - Single Entry Conversion
