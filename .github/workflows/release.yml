@@ -35,7 +35,8 @@ jobs:
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
-            OTHER_CODE_SIGN_FLAGS="--options runtime" \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            OTHER_CODE_SIGN_FLAGS="--options runtime --timestamp" \
             build
         working-directory: PPG CLI
 
@@ -67,7 +68,7 @@ jobs:
           APP_PATH="PPG CLI/build/Build/Products/Release/PPG CLI.app"
           DMG_PATH="$GITHUB_WORKSPACE/PPG-CLI-Dashboard.dmg"
           hdiutil create -volname "PPG CLI" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
-          codesign -s "Developer ID Application" "$DMG_PATH"
+          codesign -s "Developer ID Application" --timestamp "$DMG_PATH"
 
       - uses: actions/upload-artifact@v4
         with:
