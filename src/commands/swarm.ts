@@ -96,8 +96,8 @@ async function spawnSwarmAgent(opts: SpawnSwarmAgentOptions): Promise<AgentEntry
     RESULT_FILE: resultFile(projectRoot, aId),
     PROJECT_ROOT: projectRoot,
     TASK_NAME: taskName,
-    ...userVars,
     ...(swarmAgent.vars ?? {}),
+    ...userVars,
   };
   const renderedPrompt = renderTemplate(promptContent, ctx);
 
@@ -137,6 +137,22 @@ async function swarmShared(
   await tmux.ensureSession(sessionName);
   const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
 
+  // Register worktree in manifest before spawning agents so partial failures are tracked
+  await updateManifest(projectRoot, (m) => {
+    m.worktrees[wtId] = {
+      id: wtId,
+      name,
+      path: wtPath,
+      branch: branchName,
+      baseBranch,
+      status: 'active',
+      tmuxWindow: windowTarget,
+      agents: {},
+      createdAt: new Date().toISOString(),
+    };
+    return m;
+  });
+
   const agents: AgentEntry[] = [];
   for (let i = 0; i < swarm.agents.length; i++) {
     const target = i === 0
@@ -148,24 +164,12 @@ async function swarmShared(
       wtPath, branchName, tmuxTarget: target, taskName: name, userVars,
     });
     agents.push(agentEntry);
+
+    await updateManifest(projectRoot, (m) => {
+      m.worktrees[wtId].agents[agentEntry.id] = agentEntry;
+      return m;
+    });
   }
-
-  const worktreeEntry: WorktreeEntry = {
-    id: wtId,
-    name,
-    path: wtPath,
-    branch: branchName,
-    baseBranch,
-    status: 'active',
-    tmuxWindow: windowTarget,
-    agents: Object.fromEntries(agents.map((a) => [a.id, a])),
-    createdAt: new Date().toISOString(),
-  };
-
-  await updateManifest(projectRoot, (m) => {
-    m.worktrees[wtId] = worktreeEntry;
-    return m;
-  });
 
   if (options.open !== false) {
     openTerminalWindow(sessionName, windowTarget, name).catch(() => {});
@@ -279,6 +283,14 @@ async function swarmIntoExistingWorktree(
     windowTarget = await tmux.createWindow(sessionName, wt.name, wt.path);
   }
 
+  // Update tmux window before spawning so partial failures are tracked
+  if (!wt.tmuxWindow) {
+    await updateManifest(projectRoot, (m) => {
+      m.worktrees[wt.id].tmuxWindow = windowTarget;
+      return m;
+    });
+  }
+
   const agents: AgentEntry[] = [];
   for (let i = 0; i < swarm.agents.length; i++) {
     const target = i === 0
@@ -290,18 +302,12 @@ async function swarmIntoExistingWorktree(
       wtPath: wt.path, branchName: wt.branch, tmuxTarget: target, taskName: wt.name, userVars,
     });
     agents.push(agentEntry);
-  }
 
-  await updateManifest(projectRoot, (m) => {
-    const mWt = m.worktrees[wt.id];
-    if (!mWt.tmuxWindow) {
-      mWt.tmuxWindow = windowTarget;
-    }
-    for (const a of agents) {
-      mWt.agents[a.id] = a;
-    }
-    return m;
-  });
+    await updateManifest(projectRoot, (m) => {
+      m.worktrees[wt.id].agents[agentEntry.id] = agentEntry;
+      return m;
+    });
+  }
 
   if (options.open !== false) {
     openTerminalWindow(sessionName, windowTarget, wt.name).catch(() => {});
