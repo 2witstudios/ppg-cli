@@ -28,10 +28,7 @@ class TerminalPane: NSView {
         layer?.shadowRadius = 40
         layer?.shadowOffset = .zero
 
-        label.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-        label.textColor = statusColor(for: agent.status)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
+        label.isHidden = true
 
         terminalView.wantsLayer = true
         terminalView.layer?.masksToBounds = true
@@ -39,12 +36,7 @@ class TerminalPane: NSView {
         addSubview(terminalView)
 
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor),
-            label.heightAnchor.constraint(equalToConstant: 20),
-
-            terminalView.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
+            terminalView.topAnchor.constraint(equalTo: topAnchor),
             terminalView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
             terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
