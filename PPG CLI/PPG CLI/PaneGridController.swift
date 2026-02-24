@@ -541,10 +541,11 @@ class PaneCellView: NSView {
         layer?.backgroundColor = terminalBackground.cgColor
         translatesAutoresizingMaskIntoConstraints = false
 
-        // Focus border layer
+        // Focus border layer — zPosition keeps it above terminal subviews
         focusBorderLayer.borderWidth = 0
         focusBorderLayer.borderColor = Self.focusBorderColor.cgColor
         focusBorderLayer.cornerRadius = 2
+        focusBorderLayer.zPosition = 1000
         layer?.addSublayer(focusBorderLayer)
     }
 
@@ -666,9 +667,11 @@ class PaneCellView: NSView {
         termView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(termView)
 
+        // TerminalPane has its own 8px leading inset; other views need it from the cell.
+        let leadingPadding: CGFloat = (termView is TerminalPane) ? 0 : 8
         NSLayoutConstraint.activate([
             termView.topAnchor.constraint(equalTo: topAnchor),
-            termView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            termView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leadingPadding),
             termView.trailingAnchor.constraint(equalTo: trailingAnchor),
             termView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
