@@ -179,6 +179,22 @@ class DashboardSplitViewController: NSSplitViewController {
 
     private func handleSelection(_ item: SidebarItem) {
         content.showEntry(tabEntry(for: item))
+        updateWindowTitle(for: item)
+    }
+
+    private func updateWindowTitle(for item: SidebarItem) {
+        switch item {
+        case .project(let ctx):
+            view.window?.title = ctx.projectName
+        case .worktree(let wt):
+            view.window?.title = wt.name
+        case .agent(let ag):
+            view.window?.title = ag.name.isEmpty ? ag.id : ag.name
+        case .agentGroup(let agents, _):
+            view.window?.title = "\(agents.count) agents (split)"
+        case .terminal(let entry):
+            view.window?.title = entry.label
+        }
     }
 
     private func handleRefresh(_ currentItem: SidebarItem?) {

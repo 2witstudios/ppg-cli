@@ -45,7 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showDashboard() {
         let frame = window.frame
         let activeProject = OpenProjects.shared.projects.first
-        window.title = activeProject.map { "ppg — \($0.projectName)" } ?? "ppg"
+        window.title = activeProject.map { $0.projectName } ?? "ppg"
         window.contentViewController = DashboardSplitViewController()
         window.setFrame(frame, display: true)
     }
@@ -208,7 +208,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             splitVC.sidebar.refresh()
             // Update window title to show active project
             if let active = OpenProjects.shared.projects.first {
-                window.title = "ppg — \(active.projectName)"
+                window.title = active.projectName
             }
         }
     }

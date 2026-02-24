@@ -16,7 +16,7 @@ enum TabEntry {
 
     var label: String {
         switch self {
-        case .manifestAgent(let agent, _): return "\(agent.id) — \(agent.agentType)"
+        case .manifestAgent(let agent, _): return agent.name.isEmpty ? agent.id : agent.name
         case .agentGroup(let agents, _, _): return "\(agents.count) agents (split)"
         case .sessionEntry(let entry, _): return entry.label
         }

@@ -11,7 +11,8 @@ class TerminalPane: NSView {
     init(agent: AgentModel, sessionName: String) {
         self.agent = agent
         self.sessionName = sessionName
-        self.label = NSTextField(labelWithString: "\(agent.id) — \(agent.status.rawValue)")
+        let displayName = agent.name.isEmpty ? agent.id : agent.name
+        self.label = NSTextField(labelWithString: "\(displayName) — \(agent.status.rawValue)")
         self.terminalView = ScrollableTerminalView(frame: .zero)
         super.init(frame: .zero)
         setupUI()
@@ -106,7 +107,8 @@ class TerminalPane: NSView {
     }
 
     func updateStatus(_ status: AgentStatus) {
-        label.stringValue = "\(agent.id) — \(status.rawValue)"
+        let displayName = agent.name.isEmpty ? agent.id : agent.name
+        label.stringValue = "\(displayName) — \(status.rawValue)"
         label.textColor = statusColor(for: status)
     }
 
