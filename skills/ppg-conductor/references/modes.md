@@ -13,12 +13,24 @@
 
 **Spawn patterns:**
 
-Option A — Single spawn with `--count` (same prompt, N agents):
+Option A — **Swarm template** (preferred when a matching template exists):
+```
+# Check available swarm templates
+ppg list swarms --json
+
+# Run a predefined swarm
+ppg swarm code-review --var CONTEXT="Review the auth module" --json --no-open
+
+# Run against an existing worktree
+ppg swarm code-review --worktree <wt-id> --var CONTEXT="Review PR #42" --json --no-open
+```
+
+Option B — Single spawn with `--count` (same prompt, N agents):
 ```
 ppg spawn --name "security-review" --prompt "Review for security vulnerabilities..." --count 3 --json --no-open
 ```
 
-Option B — Sequential spawns into same worktree (different prompts per agent):
+Option C — Sequential spawns into same worktree (different prompts per agent):
 ```
 # First spawn creates the worktree
 ppg spawn --name "pr-review" --prompt "Review code quality and readability..." --json --no-open
@@ -27,7 +39,7 @@ ppg spawn --worktree <wt-id> --prompt "Review for performance issues..." --json 
 ppg spawn --worktree <wt-id> --prompt "Review test coverage gaps..." --json --no-open
 ```
 
-**Option B is preferred** when each agent needs a distinct prompt (which is almost always the case).
+**Option A is preferred** when a matching swarm template exists. **Option C is preferred** for custom swarm workflows where each agent needs a distinct prompt.
 
 **Post-completion:**
 1. Aggregate all results: `ppg aggregate --all --json`

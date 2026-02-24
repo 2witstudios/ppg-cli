@@ -2,11 +2,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, manifestPath } from '../lib/paths.js';
+import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath } from '../lib/paths.js';
 import { NotGitRepoError, TmuxNotFoundError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
 import { createEmptyManifest, writeManifest } from '../core/manifest.js';
+import { bundledPrompts } from '../bundled/prompts.js';
+import { bundledSwarms } from '../bundled/swarms.js';
 
 const CONDUCTOR_CONTEXT = `# PPG Conductor Context
 
@@ -74,6 +76,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
     logsDir(projectRoot),
     templatesDir(projectRoot),
     promptsDir(projectRoot),
+    swarmsDir(projectRoot),
   ];
 
   for (const dir of dirs) {
@@ -106,12 +109,34 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
     info('Wrote sample template: default.md');
   }
 
-  // 8. Write conductor context
+  // 8. Write bundled prompt files
+  for (const [name, content] of Object.entries(bundledPrompts)) {
+    const pPath = promptFile(projectRoot, name);
+    try {
+      await fs.access(pPath);
+    } catch {
+      await fs.writeFile(pPath, content, 'utf-8');
+      info(`Wrote prompt: ${name}.md`);
+    }
+  }
+
+  // 9. Write bundled swarm templates
+  for (const [name, content] of Object.entries(bundledSwarms)) {
+    const sPath = path.join(swarmsDir(projectRoot), `${name}.yaml`);
+    try {
+      await fs.access(sPath);
+    } catch {
+      await fs.writeFile(sPath, content, 'utf-8');
+      info(`Wrote swarm template: ${name}.yaml`);
+    }
+  }
+
+  // 10. Write conductor context
   const conductorPath = path.join(pgDir(projectRoot), 'conductor-context.md');
   await fs.writeFile(conductorPath, CONDUCTOR_CONTEXT, 'utf-8');
   info('Wrote conductor-context.md');
 
-  // 9. Register Claude Code plugin
+  // 11. Register Claude Code plugin
   const pluginRegistered = await registerClaudePlugin();
   if (pluginRegistered) {
     info('Registered ppg Claude Code plugin');
@@ -186,6 +211,7 @@ async function updateGitignore(projectRoot: string): Promise<void> {
     '.pg/logs/',
     '.pg/manifest.json',
     '.pg/prompts/',
+    '.pg/swarms/',
     '.pg/conductor-context.md',
   ];
 

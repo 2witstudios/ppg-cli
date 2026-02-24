@@ -21,7 +21,18 @@ ppg spawn --name "<name>" --prompt "<self-contained prompt>" --json --no-open
 
 **Store a tracking table** with: worktree ID, agent IDs, name, and branch for each spawned task.
 
-For swarm mode with different prompts, spawn the first agent (creates the worktree), then use `--worktree <wt-id>` for subsequent agents:
+**Swarm templates** — If a matching swarm template exists in `.pg/swarms/`, prefer `ppg swarm` over manual multi-spawn:
+```bash
+# Use a predefined swarm template (much simpler than manual spawning)
+ppg swarm code-review --var CONTEXT="Review the auth module" --json --no-open
+
+# Run a swarm against an existing worktree (e.g., review a PR's worktree)
+ppg swarm code-review --worktree wt-abc123 --var CONTEXT="Review PR #42" --json --no-open
+```
+
+Check available swarms: `ppg list swarms --json`
+
+For **custom swarm mode** (when no template matches), spawn the first agent (creates the worktree), then use `--worktree <wt-id>` for subsequent agents:
 ```bash
 # First agent — creates the worktree
 ppg spawn --name "review" --prompt "Focus on code quality..." --json --no-open
