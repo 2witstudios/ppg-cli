@@ -51,6 +51,9 @@ class HomeDashboardView: NSView {
     // Generation counter to discard stale background fetches
     private var fetchGeneration = 0
 
+    /// Tracks whether this view is currently visible. When false, background git fetches are skipped.
+    private(set) var isVisible = false
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupViews()
@@ -110,6 +113,13 @@ class HomeDashboardView: NSView {
         outerStack.addArrangedSubview(statsBar)
     }
 
+    // MARK: - Visibility
+
+    /// Mark this view as visible and trigger a data refresh if needed.
+    func setVisible(_ visible: Bool) {
+        isVisible = visible
+    }
+
     // MARK: - Public API
 
     /// Called from ContentViewController. Kicks off a background fetch and updates UI.
@@ -163,6 +173,10 @@ class HomeDashboardView: NSView {
         // Update aggregate stats bar immediately
         projectCountLabel.stringValue = "\(projects.count) project\(projects.count == 1 ? "" : "s"), \(totalWorktrees) worktree\(totalWorktrees == 1 ? "" : "s")"
         updateAgentStatsLabel(totalAgentCounts)
+
+        // Skip expensive background git fetches when the dashboard is not visible.
+        // The aggregate stats bar (above) is still updated from cached worktree data.
+        guard isVisible else { return }
 
         // Background: fetch git data per project
         let fetchHeatmap = shouldFetchHeatmap

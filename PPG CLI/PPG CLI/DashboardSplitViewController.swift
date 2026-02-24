@@ -4,6 +4,10 @@ class DashboardSplitViewController: NSSplitViewController {
     let sidebar = SidebarViewController()
     let content = ContentViewController()
 
+    /// Coalesces rapid handleRefresh calls into a single main-thread pass.
+    private var pendingRefreshWork: DispatchWorkItem?
+    private let refreshCoalesceDelay: TimeInterval = 0.05  // 50ms
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -557,6 +561,19 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     private func handleRefresh(_ currentItem: SidebarItem?) {
+        // Cancel any pending coalesced refresh — we'll schedule a new one
+        pendingRefreshWork?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.performRefresh(currentItem)
+        }
+        pendingRefreshWork = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + refreshCoalesceDelay, execute: workItem)
+    }
+
+    /// Actual refresh logic, invoked after coalescing delay.
+    private func performRefresh(_ currentItem: SidebarItem?) {
         // If prompts or swarms view is visible, just clean stale views
         if content.isShowingPromptsView || content.isShowingSwarmsView {
             let validIds = collectAllTerminalIds()

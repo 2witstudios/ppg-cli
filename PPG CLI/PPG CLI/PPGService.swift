@@ -239,4 +239,48 @@ nonisolated class PPGService: @unchecked Sendable {
                 )
             }
     }
+
+    // MARK: - Async Variants (background thread execution with main-thread delivery)
+
+    private static let backgroundQueue = DispatchQueue(label: "ppg.service.background", qos: .utility, attributes: .concurrent)
+
+    /// Run a ppg command on a background thread. Completion is called on main.
+    func runPPGCommandAsync(_ args: String, projectRoot: String, completion: @escaping (CommandResult) -> Void) {
+        Self.backgroundQueue.async {
+            let result = self.runPPGCommand(args, projectRoot: projectRoot)
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Run a git command on a background thread. Completion is called on main.
+    func runGitCommandAsync(_ args: [String], cwd: String, completion: @escaping (CommandResult) -> Void) {
+        Self.backgroundQueue.async {
+            let result = self.runGitCommand(args, cwd: cwd)
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Check CLI availability on a background thread. Completion is called on main.
+    func checkCLIAvailableAsync(completion: @escaping (Bool, String?) -> Void) {
+        Self.backgroundQueue.async {
+            let result = self.checkCLIAvailable()
+            DispatchQueue.main.async { completion(result.available, result.version) }
+        }
+    }
+
+    /// Check latest CLI version on a background thread. Completion is called on main.
+    func checkLatestCLIVersionAsync(completion: @escaping (String?) -> Void) {
+        Self.backgroundQueue.async {
+            let version = self.checkLatestCLIVersion()
+            DispatchQueue.main.async { completion(version) }
+        }
+    }
+
+    /// Refresh status on a background thread, parsing manifest off main. Completion called on main.
+    func refreshStatusAsync(manifestPath: String, completion: @escaping ([WorktreeModel]) -> Void) {
+        Self.backgroundQueue.async {
+            let worktrees = self.refreshStatus(manifestPath: manifestPath)
+            DispatchQueue.main.async { completion(worktrees) }
+        }
+    }
 }

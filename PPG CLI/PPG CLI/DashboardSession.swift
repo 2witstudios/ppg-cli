@@ -51,6 +51,13 @@ class DashboardSession {
     private var terminalCounter = 0
     private var agentCounter = 0
 
+    /// Serial queue for all disk I/O — keeps file reads/writes off the main thread.
+    private let ioQueue = DispatchQueue(label: "ppg.dashboard-session.io", qos: .utility)
+    /// Pending debounced write work item (cancelled + replaced on each mutation).
+    private var pendingWrite: DispatchWorkItem?
+    /// Debounce interval for disk writes (seconds).
+    private let writeDebounceInterval: TimeInterval = 1.0
+
     init(projectRoot: String) {
         self.projectRoot = projectRoot
         loadFromDisk()
@@ -186,24 +193,57 @@ class DashboardSession {
 
     private func saveToDisk() {
         guard let path = persistencePath else { return }
+
+        // Snapshot current state for the background write
+        let sessionData = SessionData(
+            entries: entries,
+            gridLayouts: gridLayouts.isEmpty ? nil : gridLayouts
+        )
+
+        // Cancel any pending debounced write and schedule a new one
+        pendingWrite?.cancel()
+        let workItem = DispatchWorkItem { [sessionData] in
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(sessionData)
+                try data.write(to: URL(fileURLWithPath: path))
+            } catch {
+                // Non-fatal — entries will be lost on restart
+            }
+        }
+        pendingWrite = workItem
+        ioQueue.asyncAfter(deadline: .now() + writeDebounceInterval, execute: workItem)
+    }
+
+    /// Force an immediate synchronous write (e.g., before app termination).
+    func flushToDisk() {
+        pendingWrite?.cancel()
+        pendingWrite = nil
+        guard let path = persistencePath else { return }
+        let sessionData = SessionData(
+            entries: entries,
+            gridLayouts: gridLayouts.isEmpty ? nil : gridLayouts
+        )
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let sessionData = SessionData(
-                entries: entries,
-                gridLayouts: gridLayouts.isEmpty ? nil : gridLayouts
-            )
             let data = try encoder.encode(sessionData)
             try data.write(to: URL(fileURLWithPath: path))
         } catch {
-            // Non-fatal — entries will be lost on restart
+            // Non-fatal
         }
     }
 
     private func loadFromDisk() {
-        guard let path = persistencePath,
-              FileManager.default.fileExists(atPath: path),
-              let data = FileManager.default.contents(atPath: path) else { return }
+        guard let path = persistencePath else { return }
+
+        // Read and decode on IO queue to avoid blocking main thread
+        let data: Data? = ioQueue.sync {
+            guard FileManager.default.fileExists(atPath: path) else { return nil }
+            return FileManager.default.contents(atPath: path)
+        }
+        guard let data = data else { return }
 
         // Try new wrapper format first, fall back to legacy [TerminalEntry] array
         if let sessionData = try? JSONDecoder().decode(SessionData.self, from: data) {

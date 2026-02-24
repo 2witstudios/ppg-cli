@@ -99,6 +99,7 @@ class ContentViewController: NSViewController {
     }
 
     func showEntry(_ entry: TabEntry?) {
+        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
@@ -363,6 +364,7 @@ class ContentViewController: NSViewController {
         suspendGrid()
 
         // Hide single-pane content
+        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
@@ -450,6 +452,7 @@ class ContentViewController: NSViewController {
             NSLayoutConstraint.activate(dashboardConstraints)
         }
 
+        dashboard.setVisible(true)
         dashboard.configure(projects: projects, worktreesByProject: worktreesByProject)
     }
 
@@ -465,6 +468,7 @@ class ContentViewController: NSViewController {
         onNewTerminal: @escaping () -> Void,
         onNewWorktree: @escaping () -> Void
     ) {
+        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
@@ -532,6 +536,7 @@ class ContentViewController: NSViewController {
             termView.isHidden = true
         }
         currentEntry = nil
+        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
@@ -567,6 +572,7 @@ class ContentViewController: NSViewController {
             termView.isHidden = true
         }
         currentEntry = nil
+        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
