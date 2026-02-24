@@ -340,7 +340,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         return node.item.id
     }
 
-    private func currentSelectedItem() -> SidebarItem? {
+    func currentSelectedItem() -> SidebarItem? {
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
         return node.item

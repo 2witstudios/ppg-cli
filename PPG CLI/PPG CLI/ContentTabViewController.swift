@@ -99,7 +99,6 @@ class ContentViewController: NSViewController {
     }
 
     func showEntry(_ entry: TabEntry?) {
-        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
@@ -364,7 +363,6 @@ class ContentViewController: NSViewController {
         suspendGrid()
 
         // Hide single-pane content
-        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
@@ -468,7 +466,6 @@ class ContentViewController: NSViewController {
         onNewTerminal: @escaping () -> Void,
         onNewWorktree: @escaping () -> Void
     ) {
-        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
@@ -536,7 +533,6 @@ class ContentViewController: NSViewController {
             termView.isHidden = true
         }
         currentEntry = nil
-        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
@@ -572,7 +568,6 @@ class ContentViewController: NSViewController {
             termView.isHidden = true
         }
         currentEntry = nil
-        homeDashboardView?.setVisible(false)
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()

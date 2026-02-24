@@ -36,8 +36,8 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.createWorktree(project: project)
         }
 
-        sidebar.onDataRefreshed = { [weak self] currentItem in
-            self?.handleRefresh(currentItem)
+        sidebar.onDataRefreshed = { [weak self] _ in
+            self?.handleRefresh()
         }
 
         sidebar.onRenameTerminal = { [weak self] project, id, newLabel in
@@ -560,13 +560,15 @@ class DashboardSplitViewController: NSSplitViewController {
         }
     }
 
-    private func handleRefresh(_ currentItem: SidebarItem?) {
+    private func handleRefresh() {
         // Cancel any pending coalesced refresh — we'll schedule a new one
         pendingRefreshWork?.cancel()
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            self.performRefresh(currentItem)
+            // Re-read the current selection at execution time to avoid stale captures
+            let freshItem = self.sidebar.currentSelectedItem()
+            self.performRefresh(freshItem)
         }
         pendingRefreshWork = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + refreshCoalesceDelay, execute: workItem)

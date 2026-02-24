@@ -115,9 +115,14 @@ class HomeDashboardView: NSView {
 
     // MARK: - Visibility
 
-    /// Mark this view as visible and trigger a data refresh if needed.
+    /// Mark this view as visible or hidden. Visibility gates expensive background git fetches.
     func setVisible(_ visible: Bool) {
         isVisible = visible
+    }
+
+    override func removeFromSuperview() {
+        isVisible = false
+        super.removeFromSuperview()
     }
 
     // MARK: - Public API
