@@ -183,7 +183,22 @@ class DashboardSplitViewController: NSSplitViewController {
     // MARK: - Selection & Refresh
 
     private func handleSelection(_ item: SidebarItem) {
-        content.showEntry(tabEntry(for: item))
+        switch item {
+        case .worktree(let wt):
+            guard let ctx = sidebar.projectContext(for: item) else {
+                content.showEntry(nil)
+                break
+            }
+            content.showWorktreeDetail(
+                worktree: wt,
+                projectRoot: ctx.projectRoot,
+                onNewAgent: { [weak self] in self?.addAgent(project: ctx, parentWorktreeId: wt.id) },
+                onNewTerminal: { [weak self] in self?.addTerminal(project: ctx, parentWorktreeId: wt.id) },
+                onNewWorktree: { [weak self] in self?.createWorktree(project: ctx) }
+            )
+        default:
+            content.showEntry(tabEntry(for: item))
+        }
         updateWindowTitle(for: item)
     }
 
@@ -204,6 +219,16 @@ class DashboardSplitViewController: NSSplitViewController {
 
     private func handleRefresh(_ currentItem: SidebarItem?) {
         guard let item = currentItem else { return }
+
+        // If a worktree is selected and its detail view is showing, refresh the diff
+        if case .worktree = item, content.isShowingWorktreeDetail {
+            content.refreshWorktreeDetail()
+            // Still clean stale cached views
+            let validIds = collectAllTerminalIds()
+            content.clearStaleViews(validIds: validIds)
+            return
+        }
+
         let entry = tabEntry(for: item)
 
         if let entry = entry, let currentId = content.currentEntryId, entry.id == currentId {
