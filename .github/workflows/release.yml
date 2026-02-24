@@ -52,6 +52,37 @@ jobs:
             build
         working-directory: PPG CLI
 
+      - name: Re-sign Sparkle embedded binaries
+        run: |
+          APP_PATH="PPG CLI/build/Build/Products/Release/PPG CLI.app"
+          SPARKLE_DIR="$APP_PATH/Contents/Frameworks/Sparkle.framework"
+
+          # Sparkle ships with ad-hoc signed XPC services and helpers.
+          # Apple notarization requires every binary to be signed with a
+          # Developer ID certificate and hardened runtime. Re-sign inner
+          # binaries first (deepest-first), then the framework bundle.
+          for item in \
+            "$SPARKLE_DIR/Versions/B/XPCServices/Downloader.xpc" \
+            "$SPARKLE_DIR/Versions/B/XPCServices/Installer.xpc" \
+            "$SPARKLE_DIR/Versions/B/Updater.app" \
+            "$SPARKLE_DIR/Versions/B/Autoupdate"; do
+            if [ -e "$item" ]; then
+              codesign --force --sign "Developer ID Application" \
+                --options runtime --timestamp "$item"
+            fi
+          done
+
+          # Re-sign the framework bundle itself (preserves identifier)
+          codesign --force --sign "Developer ID Application" \
+            --options runtime --timestamp "$SPARKLE_DIR"
+
+          # Re-sign the main app (outer seal must cover everything)
+          codesign --force --sign "Developer ID Application" \
+            --options runtime --timestamp "$APP_PATH"
+
+          # Verify the whole bundle
+          codesign --verify --deep --strict "$APP_PATH"
+
       - name: Notarize app
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -63,12 +94,30 @@ jobs:
           # Create zip for notarization submission
           ditto -c -k --keepParent "$APP_PATH" app.zip
 
-          # Submit for notarization and wait
-          xcrun notarytool submit app.zip \
+          # Submit for notarization and wait, capturing output for the submission ID
+          SUBMIT_OUTPUT=$(xcrun notarytool submit app.zip \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --wait 2>&1) || true
+          echo "$SUBMIT_OUTPUT"
+
+          # Extract submission ID and status
+          SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep 'id:' | head -1 | awk '{print $2}')
+          STATUS=$(echo "$SUBMIT_OUTPUT" | grep 'status:' | tail -1 | awk '{print $2}')
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization failed with status: $STATUS"
+            # Fetch the log to see why Apple rejected it
+            if [ -n "$SUBMISSION_ID" ]; then
+              echo "--- Notarization log ---"
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" || true
+            fi
+            exit 1
+          fi
 
           # Staple the notarization ticket to the app
           xcrun stapler staple "$APP_PATH"
