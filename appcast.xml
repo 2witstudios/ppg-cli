@@ -25,5 +25,15 @@
                  sparkle:edSignature="bMpYpQ8jywjyiWHkOPQ13xJp5TqPlJ/VUecz5EfQnEK4fnSMQzAGnXtIONdi5O6Q3VEuic8u6oTL9UAqFbkICA=="
                  length="3805189" />
     </item>
+    <item>
+      <title>Version 0.1.8</title>
+      <pubDate>Tue, 24 Feb 2026 19:38:26 +0000</pubDate>
+      <sparkle:version>018</sparkle:version>
+      <sparkle:shortVersionString>0.1.8</sparkle:shortVersionString>
+      <enclosure url="https://github.com/2witstudios/ppg-cli/releases/download/v0.1.8/PPG-CLI-Dashboard.dmg"
+                 type="application/octet-stream"
+                 sparkle:edSignature="qOjhY8aiPu2FlctxO5lVesBbrnS7t3d3joGKxwLW7sY5qdwT7BuYDyCMX1UUBXgWQUXJGRoK3DOFwbCvbxVgDw=="
+                 length="3805527" />
+    </item>
   </channel>
 </rss>
