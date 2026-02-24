@@ -6,6 +6,7 @@ class TerminalPane: NSView {
     let sessionName: String
     let label: NSTextField
     let terminalView: ScrollableTerminalView
+    private var processStarted = false
 
     init(agent: AgentModel, sessionName: String) {
         self.agent = agent
@@ -55,12 +56,47 @@ class TerminalPane: NSView {
         // into the 8px gap between the sidebar and this pane.
         let r = layer?.shadowRadius ?? 0
         layer?.shadowPath = CGPath(rect: CGRect(x: r, y: 0, width: bounds.width - r, height: bounds.height), transform: nil)
+
+        // Start the tmux process only after the first layout pass gives us a real
+        // frame.  Starting earlier (while frame is .zero) causes SwiftTerm to open
+        // a 1-column PTY; tmux then rewraps all scrollback to 1 column which is
+        // never reflowed even after a later SIGWINCH resize.
+        if !processStarted && terminalView.bounds.width > 1 {
+            processStarted = true
+            startTmux()
+        }
     }
 
     func startTmux() {
-        // Hide the tmux status bar in the embedded terminal, then attach
-        let escaped = shellEscape(agent.tmuxTarget)
-        let cmd = "tmux set-option -t \(escaped) status off 2>/dev/null; exec tmux attach-session -t \(escaped)"
+        let target = agent.tmuxTarget
+
+        // Parse session name and window spec from the tmux target.
+        // Format is typically "session:window" or "session:window.pane".
+        let tmuxSession: String
+        let windowSpec: String?
+        if let colonIdx = target.firstIndex(of: ":") {
+            tmuxSession = String(target[..<colonIdx])
+            let after = String(target[target.index(after: colonIdx)...])
+            windowSpec = after.isEmpty ? nil : after
+        } else {
+            tmuxSession = target
+            windowSpec = nil
+        }
+
+        // Use a grouped session so this client gets independent current-window
+        // tracking.  Without this, all TerminalPanes sharing the same tmux session
+        // would display whichever window was most recently attached — clicking one
+        // agent would hijack every other agent's view.
+        let viewSession = "\(tmuxSession)-view-\(agent.id)"
+
+        var cmd = "tmux set-option -t \(shellEscape(target)) status off 2>/dev/null; "
+        cmd += "exec tmux new-session -t \(shellEscape(tmuxSession)) -s \(shellEscape(viewSession))"
+        cmd += " \\; set-option destroy-unattached on"
+        cmd += " \\; set-option status off"
+        if let win = windowSpec {
+            cmd += " \\; select-window -t :\(shellEscape(win))"
+        }
+
         terminalView.startProcess(
             executable: "/bin/zsh",
             args: ["-c", cmd],
