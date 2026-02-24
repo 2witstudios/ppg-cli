@@ -284,7 +284,7 @@ class ProjectContext {
 
 // MARK: - OpenProjects
 
-nonisolated class OpenProjects: @unchecked Sendable {
+class OpenProjects {
     static let shared = OpenProjects()
 
     private let key = "PPGOpenProjects"
