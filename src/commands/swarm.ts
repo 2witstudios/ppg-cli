@@ -189,9 +189,16 @@ async function swarmIsolated(
   const worktrees: Array<{ id: string; name: string; branch: string; path: string; tmuxWindow: string }> = [];
   const allAgents: AgentEntry[] = [];
 
+  const usedNames = new Set<string>();
   for (const swarmAgent of swarm.agents) {
     const wtId = genWorktreeId();
-    const wtName = `${baseName}-${swarmAgent.prompt}`;
+    let wtName = `${baseName}-${swarmAgent.prompt}`;
+    if (usedNames.has(wtName)) {
+      let suffix = 2;
+      while (usedNames.has(`${wtName}-${suffix}`)) suffix++;
+      wtName = `${wtName}-${suffix}`;
+    }
+    usedNames.add(wtName);
     const branchName = `ppg/${wtName}`;
 
     info(`Creating worktree ${wtId} on branch ${branchName}`);

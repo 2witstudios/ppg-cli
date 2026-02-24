@@ -79,7 +79,7 @@ async function listSwarmsCommand(options: ListOptions): Promise<void> {
     swarmNames.map(async (name) => {
       const swarm = await loadSwarm(projectRoot, name);
       return {
-        name: swarm.name,
+        name,
         description: swarm.description,
         strategy: swarm.strategy,
         agents: swarm.agents.length,
