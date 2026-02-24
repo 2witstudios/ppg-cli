@@ -38,6 +38,7 @@ class ContentViewController: NSViewController {
     private var terminalViews: [String: NSView] = [:]
     private var worktreeDetailView: WorktreeDetailView?
     private var homeDashboardView: HomeDashboardView?
+    private var dashboardConstraints: [NSLayoutConstraint] = []
 
     var currentEntryId: String? { currentEntry?.id }
     var isShowingWorktreeDetail: Bool { worktreeDetailView?.superview != nil }
@@ -173,12 +174,15 @@ class ContentViewController: NSViewController {
             dashboard.removeFromSuperview()
             dashboard.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(dashboard)
-            NSLayoutConstraint.activate([
-                dashboard.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-                dashboard.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-                dashboard.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-                dashboard.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            ])
+            if dashboardConstraints.isEmpty {
+                dashboardConstraints = [
+                    dashboard.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                    dashboard.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                    dashboard.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+                    dashboard.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                ]
+            }
+            NSLayoutConstraint.activate(dashboardConstraints)
         }
 
         dashboard.configure(projects: projects, worktreesByProject: worktreesByProject)

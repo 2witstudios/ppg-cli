@@ -33,6 +33,10 @@ class CommitHeatmapView: NSView {
     // Pre-computed grid: (date, count, rect) for each cell
     private var cellInfos: [(date: String, count: Int, rect: NSRect)] = []
 
+    // Cached from recomputeCells for use by drawMonthLabels
+    private var cachedStartDate: Date?
+    private var cachedStartWeekday: Int = 0
+
     // MARK: - Public API
 
     func configure(heatmapData: HeatmapData) {
@@ -63,25 +67,31 @@ class CommitHeatmapView: NSView {
         let originX = Self.dayLabelWidth
         let originY: CGFloat = 0  // grid starts at bottom
 
-        // Compute the start date: go back 90 days from today (91 days total including today).
-        // Align to the start of a week (Sunday = column 0).
+        // Compute the raw start date (90 days back) then align to the beginning
+        // of its week (Sunday) so every day maps into columns 0..<cols.
         let daysBack = 90
-        guard let startDate = calendar.date(byAdding: .day, value: -daysBack, to: today) else { return }
+        guard let rawStart = calendar.date(byAdding: .day, value: -daysBack, to: today) else { return }
+        let startWeekday = calendar.component(.weekday, from: rawStart) - 1  // 0=Sun
+        guard let startDate = calendar.date(byAdding: .day, value: -startWeekday, to: rawStart) else { return }
 
-        // Iterate 91 days
-        for dayOffset in 0...daysBack {
+        // Cache for drawMonthLabels
+        cachedStartDate = startDate
+        cachedStartWeekday = startWeekday
+
+        // Total days from aligned start through today
+        let totalDays = calendar.dateComponents([.day], from: startDate, to: today).day ?? daysBack
+
+        for dayOffset in 0...totalDays {
             guard let date = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else { continue }
             let dateStr = formatter.string(from: date)
             let count = data.commitsByDate[dateStr] ?? 0
 
             // Row = weekday (0=Sun at top, 6=Sat at bottom).  We draw bottom-up, so invert.
             let weekday = calendar.component(.weekday, from: date) - 1  // 0-based, 0=Sun
-            let row = 6 - weekday  // bottom=Sat, top=Sun → visually Mon=row5, Wed=row3, Fri=row1
+            let row = 6 - weekday
 
-            // Column = week offset from startDate
-            let daysSinceStart = calendar.dateComponents([.day], from: startDate, to: date).day ?? 0
-            let startWeekday = calendar.component(.weekday, from: startDate) - 1
-            let col = (daysSinceStart + startWeekday) / 7
+            // Column = week offset from aligned startDate (always starts on Sunday)
+            let col = dayOffset / 7
 
             guard col >= 0, col < Self.cols else { continue }
 
@@ -138,9 +148,8 @@ class CommitHeatmapView: NSView {
     }
 
     private func drawMonthLabels(ctx: CGContext, attrs: [NSAttributedString.Key: Any]) {
+        guard let startDate = cachedStartDate else { return }
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        guard let startDate = calendar.date(byAdding: .day, value: -90, to: today) else { return }
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
 
@@ -148,9 +157,8 @@ class CommitHeatmapView: NSView {
 
         var lastMonth = -1
         for col in 0..<Self.cols {
-            // The date at row 0 (Sunday) of this column
-            let startWeekday = calendar.component(.weekday, from: startDate) - 1
-            let dayOffset = col * 7 - startWeekday
+            // startDate is already aligned to Sunday, so Sunday of each column is col*7 days from start
+            let dayOffset = col * 7
             guard let colDate = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else { continue }
             let month = calendar.component(.month, from: colDate)
             if month != lastMonth {

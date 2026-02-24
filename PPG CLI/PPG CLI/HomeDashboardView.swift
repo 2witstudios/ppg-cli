@@ -44,7 +44,12 @@ class HomeDashboardView: NSView {
     // Per-project card views (reused on refresh)
     private var projectCards: [String: ProjectCardView] = [:]
 
+    // Heatmap cache: persists across throttled refreshes so new cards get real data
+    private var heatmapCache: [String: CommitHeatmapView.HeatmapData] = [:]
     private var lastHeatmapFetch: Date?
+
+    // Generation counter to discard stale background fetches
+    private var fetchGeneration = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -161,6 +166,10 @@ class HomeDashboardView: NSView {
 
         // Background: fetch git data per project
         let fetchHeatmap = shouldFetchHeatmap
+        fetchGeneration += 1
+        let generation = fetchGeneration
+        let cachedHeatmaps = heatmapCache
+
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var results: [ProjectDashboardData] = []
             for snap in projectSnapshots {
@@ -169,7 +178,8 @@ class HomeDashboardView: NSView {
                 if fetchHeatmap {
                     heatmap = Self.fetchHeatmapData(projectRoot: snap.root)
                 } else {
-                    heatmap = CommitHeatmapView.HeatmapData(commitsByDate: [:])
+                    // Use cached heatmap so new cards don't start empty
+                    heatmap = cachedHeatmaps[snap.root] ?? CommitHeatmapView.HeatmapData(commitsByDate: [:])
                 }
                 let commits = Self.fetchRecentCommits(projectRoot: snap.root)
 
@@ -185,7 +195,14 @@ class HomeDashboardView: NSView {
             }
 
             DispatchQueue.main.async {
-                self?.updateCards(results, skipHeatmap: !fetchHeatmap)
+                guard let self = self, self.fetchGeneration == generation else { return }
+                // Update heatmap cache when we did a fresh fetch
+                if fetchHeatmap {
+                    for result in results {
+                        self.heatmapCache[result.projectRoot] = result.heatmap
+                    }
+                }
+                self.updateCards(results, skipHeatmap: !fetchHeatmap)
             }
         }
     }
@@ -228,9 +245,7 @@ class HomeDashboardView: NSView {
     // MARK: - Static Git Fetch Methods
 
     static func fetchBranch(projectRoot: String) -> String {
-        let result = PPGService.shared.runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], cwd: projectRoot)
-        let branch = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return branch.isEmpty ? "main" : branch
+        PPGService.shared.currentBranch(at: projectRoot)
     }
 
     static func fetchHeatmapData(projectRoot: String) -> CommitHeatmapView.HeatmapData {
@@ -438,7 +453,10 @@ private class ProjectCardView: NSView {
     }
 
     private func addDots(count: Int, color: NSColor) {
-        for _ in 0..<count {
+        guard count > 0 else { return }
+        let maxDots = 5
+        let dotsToShow = min(count, maxDots)
+        for _ in 0..<dotsToShow {
             let dot = NSView()
             dot.wantsLayer = true
             dot.layer?.backgroundColor = color.cgColor
@@ -447,6 +465,13 @@ private class ProjectCardView: NSView {
             dot.widthAnchor.constraint(equalToConstant: 8).isActive = true
             dot.heightAnchor.constraint(equalToConstant: 8).isActive = true
             agentDotsStack.addArrangedSubview(dot)
+        }
+        if count > maxDots {
+            let overflow = NSTextField(labelWithString: "+\(count - maxDots)")
+            overflow.font = .systemFont(ofSize: 9, weight: .medium)
+            overflow.textColor = color
+            overflow.translatesAutoresizingMaskIntoConstraints = false
+            agentDotsStack.addArrangedSubview(overflow)
         }
     }
 
