@@ -83,7 +83,47 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dashboard
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          AUTO_NOTES=$(gh api repos/${{ github.repository }}/releases/generate-notes -f tag_name="$VERSION" --jq '.body')
+          cat > release-notes.md << EOF
+          ## PPG CLI Dashboard for macOS
+
+          The desktop dashboard gives you a visual control center for your parallel agent workflows — monitor status, view logs, and manage worktrees from a native macOS app.
+
+          ### Download
+
+          | Asset | Description |
+          |-------|-------------|
+          | **PPG-CLI-Dashboard.dmg** | macOS desktop dashboard (Apple signed & notarized) |
+
+          > The DMG is signed with a Developer ID certificate and notarized by Apple — it will open without Gatekeeper warnings.
+
+          ### Install via CLI
+
+          You can also install the dashboard directly from ppg:
+
+          \`\`\`bash
+          ppg install-dashboard
+          \`\`\`
+
+          ---
+
+          ### Changes
+          ${AUTO_NOTES}
+          EOF
+          sed -i 's/^          //' release-notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --generate-notes PPG-CLI-Dashboard.dmg
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_NUM="${VERSION#v}"
+          gh release create "$VERSION" \
+            --title "PPG CLI ${VERSION_NUM}" \
+            --notes-file release-notes.md \
+            PPG-CLI-Dashboard.dmg
