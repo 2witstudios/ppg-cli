@@ -146,6 +146,11 @@ class PaneGridController: NSViewController {
     /// Terminal termination callback — called to properly terminate a terminal.
     var terminalTerminator: ((NSView) -> Void)?
 
+    /// Called when a pane's split button is clicked. Parameters: leafId, direction.
+    var onSplitPane: ((String, SplitDirection) -> Void)?
+    /// Called when a pane's close button is clicked. Parameter: leafId.
+    var onClosePane: ((String) -> Void)?
+
     init() {
         let initialId = "pane-0"
         self.root = .leaf(id: initialId, entry: nil)
@@ -189,7 +194,16 @@ class PaneGridController: NSViewController {
     }
 
     /// Fill the focused pane with an entry.
+    /// If the entry is already visible in another pane, move focus there instead of duplicating.
     func fillFocusedPane(with entry: TabEntry) {
+        // Check if this entry is already visible in another pane — move focus instead of duplicating
+        for leafId in root.allLeafIds() {
+            if let existing = root.entry(forLeafId: leafId), existing.id == entry.id {
+                setFocus(leafId)
+                return
+            }
+        }
+
         root = root.settingEntry(entry, forLeafId: focusedLeafId)
         if let cell = cellViews[focusedLeafId] {
             cell.showEntry(entry, provider: terminalViewProvider)
@@ -385,6 +399,15 @@ class PaneGridController: NSViewController {
             cell.onClick = { [weak self] in
                 self?.setFocus(id)
             }
+            cell.onSplitHorizontal = { [weak self] in
+                self?.onSplitPane?(id, .horizontal)
+            }
+            cell.onSplitVertical = { [weak self] in
+                self?.onSplitPane?(id, .vertical)
+            }
+            cell.onClose = { [weak self] in
+                self?.onClosePane?(id)
+            }
             return cell
 
         case .split(let direction, let first, let second, let ratio):
@@ -463,10 +486,17 @@ class PaneCellView: NSView {
     private var placeholderView: PanePlaceholderView?
     private var entryId: String?
     var onClick: (() -> Void)?
+    var onSplitHorizontal: (() -> Void)?
+    var onSplitVertical: (() -> Void)?
+    var onClose: (() -> Void)?
 
     private let focusBorderLayer = CALayer()
     private static let focusBorderWidth: CGFloat = 2
     private static let focusBorderColor = NSColor.controlAccentColor
+
+    private var hoverOverlay: PaneHoverOverlay?
+    private var trackingArea: NSTrackingArea?
+    private var fadeOutWork: DispatchWorkItem?
 
     init(leafId: String) {
         self.leafId = leafId
@@ -489,6 +519,61 @@ class PaneCellView: NSView {
     override func layout() {
         super.layout()
         focusBorderLayer.frame = bounds
+        hoverOverlay?.updatePosition(in: bounds)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        fadeOutWork?.cancel()
+        showHoverOverlay()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        scheduleFadeOut()
+    }
+
+    private func showHoverOverlay() {
+        // Only show overlay when there's content (not placeholder)
+        guard entryId != nil else { return }
+
+        if hoverOverlay == nil {
+            let overlay = PaneHoverOverlay()
+            overlay.onSplitHorizontal = { [weak self] in self?.onSplitHorizontal?() }
+            overlay.onSplitVertical = { [weak self] in self?.onSplitVertical?() }
+            overlay.onClose = { [weak self] in self?.onClose?() }
+            addSubview(overlay)
+            overlay.updatePosition(in: bounds)
+            hoverOverlay = overlay
+        }
+        hoverOverlay?.animator().alphaValue = 1
+    }
+
+    private func scheduleFadeOut() {
+        fadeOutWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                self?.hoverOverlay?.animator().alphaValue = 0
+            }
+        }
+        fadeOutWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -541,6 +626,7 @@ class PaneCellView: NSView {
     }
 
     private func installTerminalView(_ termView: NSView) {
+        termView.isHidden = false
         termView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(termView)
 
@@ -614,6 +700,106 @@ class PaneCellView: NSView {
         currentTerminalView = nil
         entryId = nil
     }
+}
+
+// MARK: - Pane Hover Overlay
+
+class PaneHoverOverlay: NSView {
+    var onSplitHorizontal: (() -> Void)?
+    var onSplitVertical: (() -> Void)?
+    var onClose: (() -> Void)?
+
+    private static let buttonSize: CGFloat = 24
+    private static let padding: CGFloat = 6
+    private static let spacing: CGFloat = 2
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupButtons()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not supported")
+    }
+
+    private func setupButtons() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(white: 0.15, alpha: 0.85).cgColor
+        layer?.cornerRadius = 6
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor(white: 0.3, alpha: 0.5).cgColor
+
+        let splitH = makeButton(
+            icon: "rectangle.split.1x2",
+            tooltip: "Split Below",
+            action: #selector(splitHClicked)
+        )
+        let splitV = makeButton(
+            icon: "rectangle.split.2x1",
+            tooltip: "Split Right",
+            action: #selector(splitVClicked)
+        )
+        let close = makeButton(
+            icon: "xmark",
+            tooltip: "Close Pane",
+            action: #selector(closeClicked)
+        )
+
+        let stack = NSStackView(views: [splitV, splitH, close])
+        stack.orientation = .horizontal
+        stack.spacing = Self.spacing
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: Self.padding),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.padding),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.padding),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding),
+        ])
+
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    private func makeButton(icon: String, tooltip: String, action: Selector) -> NSButton {
+        let btn = NSButton()
+        btn.bezelStyle = .accessoryBarAction
+        btn.isBordered = false
+        btn.image = NSImage(systemSymbolName: icon, accessibilityDescription: tooltip)
+        btn.imagePosition = .imageOnly
+        btn.imageScaling = .scaleProportionallyDown
+        btn.contentTintColor = NSColor(white: 0.85, alpha: 1)
+        btn.toolTip = tooltip
+        btn.target = self
+        btn.action = action
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            btn.widthAnchor.constraint(equalToConstant: Self.buttonSize),
+            btn.heightAnchor.constraint(equalToConstant: Self.buttonSize),
+        ])
+        return btn
+    }
+
+    func updatePosition(in parentBounds: CGRect) {
+        guard superview != nil else { return }
+        let overlayWidth = Self.padding * 2 + Self.buttonSize * 3 + Self.spacing * 2
+        let overlayHeight = Self.padding * 2 + Self.buttonSize
+        frame = NSRect(
+            x: parentBounds.maxX - overlayWidth - 8,
+            y: parentBounds.maxY - overlayHeight - 8,
+            width: overlayWidth,
+            height: overlayHeight
+        )
+    }
+
+    // Prevent mouse events on the overlay from falling through to the terminal
+    override func mouseDown(with event: NSEvent) {
+        // no-op — absorb click
+    }
+
+    @objc private func splitHClicked() { onSplitHorizontal?() }
+    @objc private func splitVClicked() { onSplitVertical?() }
+    @objc private func closeClicked() { onClose?() }
 }
 
 // MARK: - Pane Placeholder View

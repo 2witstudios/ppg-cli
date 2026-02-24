@@ -136,14 +136,29 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     /// Collect all terminal/agent IDs across the sidebar tree for cache cleanup.
+    /// Includes compound agentGroup IDs ("id1+id2") for agents sharing a tmux window.
     private func collectAllTerminalIds() -> Set<String> {
         var ids = Set<String>()
         for projectNode in sidebar.projectNodes {
             guard case .project(let ctx) = projectNode.item else { continue }
             let worktrees = sidebar.worktrees(for: ctx)
             for wt in worktrees {
+                // Build a lookup of tmux window key -> agents sharing that window
+                var windowAgents: [String: [AgentModel]] = [:]
                 for agent in wt.agents {
                     ids.insert(agent.id)
+                    let target = agent.tmuxTarget
+                    let windowKey: String
+                    if let dotIndex = target.lastIndex(of: ".") {
+                        windowKey = String(target[target.startIndex..<dotIndex])
+                    } else {
+                        windowKey = target
+                    }
+                    windowAgents[windowKey, default: []].append(agent)
+                }
+                // Add compound IDs for agent groups sharing a tmux window
+                for (_, agents) in windowAgents where agents.count > 1 {
+                    ids.insert(agents.map(\.id).joined(separator: "+"))
                 }
                 for entry in ctx.dashboardSession.entriesForWorktree(wt.id) {
                     ids.insert(entry.id)
@@ -247,6 +262,22 @@ class DashboardSplitViewController: NSSplitViewController {
             guard let self = self else { return }
             self.sidebar.view.window?.makeFirstResponder(self.sidebar.view)
         }
+
+        grid.onSplitPane = { [weak self] leafId, direction in
+            guard let self = self, let grid = self.content.paneGrid else { return }
+            grid.setFocus(leafId)
+            grid.splitFocusedPane(direction: direction)
+        }
+
+        grid.onClosePane = { [weak self] leafId in
+            guard let self = self, let grid = self.content.paneGrid else { return }
+            grid.setFocus(leafId)
+            if grid.root.leafCount <= 1 {
+                self.content.exitGridMode()
+            } else {
+                _ = grid.closeFocusedPane()
+            }
+        }
     }
 
     /// Add agent and fill the focused grid pane.
@@ -259,7 +290,9 @@ class DashboardSplitViewController: NSSplitViewController {
             workingDir: workingDir
         )
         content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
-        sidebar.refresh()
+        // Remove from session so it doesn't appear as a duplicate sidebar entry.
+        // The grid pane owns the terminal view; the tmux window stays alive.
+        project.dashboardSession.remove(id: entry.id)
     }
 
     /// Add terminal and fill the focused grid pane.
@@ -270,7 +303,8 @@ class DashboardSplitViewController: NSSplitViewController {
             workingDir: workingDir
         )
         content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
-        sidebar.refresh()
+        // Remove from session so it doesn't appear as a duplicate sidebar entry.
+        project.dashboardSession.remove(id: entry.id)
     }
 
     // MARK: - Home Dashboard
@@ -295,16 +329,12 @@ class DashboardSplitViewController: NSSplitViewController {
             showProjectDetail(ctx: ctx, worktreeId: wt.id)
         default:
             let entry = tabEntry(for: item)
-            // In grid mode (or restorable), sidebar clicks fill the focused pane
-            if content.isGridMode {
-                if let entry = entry {
-                    content.paneGrid?.fillFocusedPane(with: entry)
-                }
-            } else if content.restoreGridIfAvailable() {
-                if let entry = entry {
-                    content.paneGrid?.fillFocusedPane(with: entry)
-                }
+            guard let entry = entry else { break }
+            // Does this entry own a saved grid? Restore it.
+            if content.restoreGrid(forEntryId: entry.id) {
+                // Grid restored — done
             } else {
+                // Normal single-pane navigation (suspendGrid happens inside showEntry)
                 content.showEntry(entry)
             }
         }
@@ -383,11 +413,17 @@ class DashboardSplitViewController: NSSplitViewController {
 
         let entry = tabEntry(for: item)
 
-        if let entry = entry, let currentId = content.currentEntryId, entry.id == currentId {
+        // In grid mode, only update status on entries already visible in the grid — never
+        // call showEntry() which would auto-fill or steal pane content.
+        if content.isGridMode {
+            if let entry = entry, let grid = content.paneGrid, grid.containsEntry(id: entry.id) {
+                grid.updateEntry(entry)
+            }
+        } else if let entry = entry, let currentId = content.currentEntryId, entry.id == currentId {
             // Same entry — just update status
             content.updateCurrentEntry(entry)
-        } else if entry != nil {
-            // Different entry or entry appeared — re-show
+        } else if entry != nil, !content.isGridMode {
+            // Different entry or entry appeared — re-show (only in single-pane mode)
             content.showEntry(entry)
         }
         // else entry is nil (container) — leave content as-is

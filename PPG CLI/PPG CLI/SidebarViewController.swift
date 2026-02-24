@@ -50,6 +50,16 @@ class SidebarNode {
     }
 }
 
+//// Holds a (ProjectContext, worktreeId) pair for NSMenuItem.representedObject.
+private class WorktreeMenuRef: NSObject {
+    let ctx: ProjectContext
+    let worktreeId: String
+    init(ctx: ProjectContext, worktreeId: String) {
+        self.ctx = ctx
+        self.worktreeId = worktreeId
+    }
+}
+
 // MARK: - SidebarViewController
 
 class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
@@ -504,6 +514,52 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         onAddTerminal?(ctx, worktreeId)
     }
 
+    // MARK: - Per-Worktree + Button
+
+    @objc private func worktreeAddButtonClicked(_ sender: NSButton) {
+        guard let worktreeId = sender.identifier?.rawValue else { return }
+
+        // Resolve the project context for this worktree
+        var ctx: ProjectContext?
+        for node in projectNodes {
+            if case .project(let projCtx) = node.item {
+                let worktrees = projectWorktrees[projCtx.projectRoot] ?? []
+                if worktrees.contains(where: { $0.id == worktreeId }) {
+                    ctx = projCtx
+                    break
+                }
+            }
+        }
+        guard let ctx else { return }
+
+        let ref = WorktreeMenuRef(ctx: ctx, worktreeId: worktreeId)
+
+        let menu = NSMenu()
+
+        let agentItem = NSMenuItem(title: "New Agent", action: #selector(menuNewAgentForWorktree(_:)), keyEquivalent: "")
+        agentItem.target = self
+        agentItem.representedObject = ref
+        menu.addItem(agentItem)
+
+        let termItem = NSMenuItem(title: "New Terminal", action: #selector(menuNewTerminalForWorktree(_:)), keyEquivalent: "")
+        termItem.target = self
+        termItem.representedObject = ref
+        menu.addItem(termItem)
+
+        let point = NSPoint(x: 0, y: sender.bounds.height)
+        menu.popUp(positioning: nil, at: point, in: sender)
+    }
+
+    @objc private func menuNewAgentForWorktree(_ sender: NSMenuItem) {
+        guard let ref = sender.representedObject as? WorktreeMenuRef else { return }
+        onAddAgent?(ref.ctx, ref.worktreeId)
+    }
+
+    @objc private func menuNewTerminalForWorktree(_ sender: NSMenuItem) {
+        guard let ref = sender.representedObject as? WorktreeMenuRef else { return }
+        onAddTerminal?(ref.ctx, ref.worktreeId)
+    }
+
     // MARK: - NSOutlineViewDataSource
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
@@ -613,8 +669,19 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         textStack.addArrangedSubview(name)
         textStack.addArrangedSubview(detail)
 
+        // Inline "+" button for adding agents/terminals to this worktree
+        let addBtn = NSButton()
+        addBtn.bezelStyle = .glass
+        addBtn.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
+        addBtn.target = self
+        addBtn.action = #selector(worktreeAddButtonClicked(_:))
+        addBtn.identifier = NSUserInterfaceItemIdentifier(worktree.id)
+        addBtn.setContentHuggingPriority(.required, for: .horizontal)
+
         stack.addArrangedSubview(icon)
         stack.addArrangedSubview(textStack)
+        stack.addArrangedSubview(NSView()) // spacer
+        stack.addArrangedSubview(addBtn)
 
         cell.addSubview(stack)
         NSLayoutConstraint.activate([
