@@ -1,0 +1,7 @@
+{
+  "name": "ppg",
+  "description": "Orchestrate parallel AI coding agents — spawn, monitor, aggregate, and merge work across isolated git worktrees",
+  "author": {
+    "name": "2witstudios"
+  }
+}

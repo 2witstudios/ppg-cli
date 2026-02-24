@@ -53,6 +53,72 @@ nonisolated class PPGService: @unchecked Sendable {
         )
     }
 
+    /// Check if ppg CLI is available in the user's PATH.
+    func checkCLIAvailable() -> (available: Bool, version: String?) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        let cmd = """
+        if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+        [ -f ~/.zprofile ] && source ~/.zprofile; \
+        [ -f ~/.zshrc ] && source ~/.zshrc; \
+        ppg --version
+        """
+        task.arguments = ["-c", cmd]
+
+        let outPipe = Pipe()
+        task.standardOutput = outPipe
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return (false, nil)
+        }
+
+        if task.terminationStatus == 0 {
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            let version = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (true, version)
+        }
+        return (false, nil)
+    }
+
+    /// Check if tmux is available in the user's PATH.
+    func checkTmuxAvailable() -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        let cmd = """
+        if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+        [ -f ~/.zprofile ] && source ~/.zprofile; \
+        [ -f ~/.zshrc ] && source ~/.zshrc; \
+        tmux -V
+        """
+        task.arguments = ["-c", cmd]
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
+    /// Check if a directory is a git repository.
+    func isGitRepo(_ path: String) -> Bool {
+        let pgDir = (path as NSString).appendingPathComponent(".git")
+        return FileManager.default.fileExists(atPath: pgDir)
+    }
+
+    /// Run `ppg init` in the given directory. Returns true on success.
+    func initProject(at projectRoot: String) -> Bool {
+        let result = runPPGCommand("init --json", projectRoot: projectRoot)
+        return result.exitCode == 0
+    }
+
     /// Convenience: refresh using ProjectState. Only call from main thread.
     func refreshStatus() -> [WorktreeModel] {
         refreshStatus(manifestPath: ProjectState.shared.manifestPath)

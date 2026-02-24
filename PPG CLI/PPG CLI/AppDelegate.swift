@@ -26,7 +26,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.toolbar = toolbar
         window.toolbarStyle = .unified
 
-        // Launch flow: restore persisted open projects, or fall back to last opened, or show picker
+        // Launch flow: check prerequisites, then restore projects or show picker
+        let cli = PPGService.shared.checkCLIAvailable()
+        let tmux = PPGService.shared.checkTmuxAvailable()
+
+        if cli.available && tmux {
+            proceedToProjects()
+        } else {
+            showSetup()
+        }
+
+        window.setFrame(screenFrame, display: true)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func proceedToProjects() {
         if !OpenProjects.shared.projects.isEmpty {
             showDashboard()
         } else if let lastProject = RecentProjects.shared.lastOpened,
@@ -36,10 +51,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             showProjectPicker()
         }
+    }
 
-        window.setFrame(screenFrame, display: true)
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    private func showSetup() {
+        let frame = window.frame
+        window.title = "ppg — Setup"
+        let setup = SetupViewController()
+        setup.onReady = { [weak self] in
+            self?.proceedToProjects()
+        }
+        window.contentViewController = setup
+        window.setFrame(frame, display: true)
     }
 
     private func showDashboard() {
@@ -189,18 +211,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Select a project directory with .pg/manifest.json"
+        panel.message = "Select a project directory"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let path = url.path
 
-        guard RecentProjects.shared.isValidProject(path) else {
+        if !RecentProjects.shared.isValidProject(path) {
+            // Not initialized — offer to run ppg init
+            guard PPGService.shared.isGitRepo(path) else {
+                let alert = NSAlert()
+                alert.messageText = "Not a Git Repository"
+                alert.informativeText = "ppg requires a git repository. Initialize one with 'git init' first."
+                alert.alertStyle = .warning
+                alert.runModal()
+                return
+            }
+
             let alert = NSAlert()
-            alert.messageText = "Not a PPG Project"
-            alert.informativeText = "The selected directory does not contain .pg/manifest.json. Run 'ppg init' in that directory first."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
+            alert.messageText = "Initialize PPG?"
+            alert.informativeText = "This directory isn't set up for ppg yet. Initialize it now?"
+            alert.addButton(withTitle: "Initialize")
+            alert.addButton(withTitle: "Cancel")
+
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+            guard PPGService.shared.initProject(at: path) else {
+                let errAlert = NSAlert()
+                errAlert.messageText = "Initialization Failed"
+                errAlert.informativeText = "ppg init failed. Make sure ppg CLI and tmux are installed."
+                errAlert.alertStyle = .critical
+                errAlert.runModal()
+                return
+            }
         }
 
         OpenProjects.shared.add(root: path)

@@ -1,0 +1,17 @@
+{
+  "name": "ppg-cli",
+  "owner": {
+    "name": "2witstudios"
+  },
+  "plugins": [
+    {
+      "name": "ppg",
+      "source": "./",
+      "description": "Orchestrate parallel AI coding agents — spawn, monitor, aggregate, and merge work across isolated git worktrees",
+      "version": "1.0.0",
+      "author": {
+        "name": "2witstudios"
+      }
+    }
+  ]
+}

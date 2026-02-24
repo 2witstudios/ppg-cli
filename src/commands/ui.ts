@@ -69,7 +69,7 @@ export async function uiCommand(): Promise<void> {
   const binaryPath = await findDashboardBinary(projectRoot);
   if (!binaryPath) {
     throw new PgError(
-      `Dashboard app not found. Build it with:\n  cd "PPG CLI" && xcodebuild -scheme "PPG CLI" -configuration Release -derivedDataPath build build`,
+      `Dashboard app not found. Install it with:\n  ppg install-dashboard\n\nOr build from source:\n  cd "PPG CLI" && xcodebuild -scheme "PPG CLI" -configuration Release -derivedDataPath build build`,
       'DASHBOARD_NOT_FOUND',
     );
   }

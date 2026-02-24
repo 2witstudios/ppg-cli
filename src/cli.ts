@@ -206,6 +206,16 @@ program
     await uiCommand();
   });
 
+program
+  .command('install-dashboard')
+  .description('Download and install the macOS dashboard app')
+  .option('--dir <path>', 'Install directory', '/Applications')
+  .option('--json', 'JSON output')
+  .action(async (options) => {
+    const { installDashboardCommand } = await import('./commands/install-dashboard.js');
+    await installDashboardCommand(options);
+  });
+
 // Error handling
 program.exitOverride();
 

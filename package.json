@@ -8,6 +8,8 @@
   },
   "files": [
     "dist",
+    "skills",
+    ".claude-plugin",
     "CHANGELOG.md"
   ],
   "scripts": {

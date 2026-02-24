@@ -110,15 +110,66 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   await fs.writeFile(conductorPath, CONDUCTOR_CONTEXT, 'utf-8');
   info('Wrote conductor-context.md');
 
+  // 9. Register Claude Code plugin
+  const pluginRegistered = await registerClaudePlugin();
+  if (pluginRegistered) {
+    info('Registered ppg Claude Code plugin');
+  }
+
   if (options.json) {
     console.log(JSON.stringify({
       success: true,
       projectRoot,
       sessionName,
       pgDir: pgDir(projectRoot),
+      pluginRegistered,
     }));
   } else {
     success(`Point Guard initialized in ${projectRoot}`);
+  }
+}
+
+async function registerClaudePlugin(): Promise<boolean> {
+  try {
+    const home = process.env.HOME;
+    if (!home) return false;
+
+    const skillsDir = path.join(home, '.claude', 'skills');
+
+    // Find this package's skills directory
+    const pkgRoot = new URL('../../', import.meta.url);
+    const srcSkillsDir = new URL('skills/', pkgRoot).pathname;
+
+    // Verify source skills exist
+    try {
+      await fs.access(srcSkillsDir);
+    } catch {
+      return false;
+    }
+
+    // Copy skills to ~/.claude/skills/
+    const skillFolders = ['ppg', 'ppg-conductor'];
+    let copied = false;
+
+    for (const folder of skillFolders) {
+      const srcDir = path.join(srcSkillsDir, folder);
+      const destDir = path.join(skillsDir, folder);
+
+      try {
+        await fs.access(srcDir);
+      } catch {
+        continue;
+      }
+
+      // Copy recursively (overwrite existing)
+      await fs.cp(srcDir, destDir, { recursive: true, force: true });
+      copied = true;
+    }
+
+    return copied;
+  } catch {
+    // Non-fatal — skill installation is best-effort
+    return false;
   }
 }
 

@@ -18,14 +18,32 @@ It works with any CLI agent (Claude Code, Codex, custom scripts) and is designed
 
 - **Node.js** >= 20
 - **git** (with worktree support)
-- **tmux**
+- **tmux** (`brew install tmux`)
 - **macOS** (Terminal.app auto-open uses AppleScript; tmux features work anywhere)
 
 ## Install
 
+### CLI
+
 ```bash
 npm install -g ppg-cli
 ```
+
+### Claude Code Integration
+
+Running `ppg init` in any project automatically installs the `/ppg` skill for Claude Code. This gives Claude the ability to orchestrate parallel agents — just type `/ppg` in any Claude Code session.
+
+### Dashboard (optional)
+
+The native macOS dashboard app provides a visual interface for monitoring agents and worktrees.
+
+**Via CLI:**
+
+```bash
+ppg install-dashboard
+```
+
+**Or download directly** from [GitHub Releases](https://github.com/2witstudios/ppg-cli/releases/latest) — grab the `.dmg` file.
 
 ## Quick Start
 
@@ -55,6 +73,9 @@ ppg aggregate --all
 
 # Merge a completed worktree back
 ppg merge wt-xxxxxx
+
+# Open the dashboard
+ppg ui
 ```
 
 Each `ppg spawn` creates a git worktree, opens a tmux pane, launches the agent, and pops open a Terminal.app window so you can watch it work.
@@ -85,7 +106,7 @@ your-project/
 
 ### `ppg init`
 
-Initialize ppg in the current git repository. Creates `.pg/` directory with default config and a sample template.
+Initialize ppg in the current git repository. Creates `.pg/` directory with default config and a sample template. Also installs the `/ppg` Claude Code skill if Claude Code is available.
 
 ```bash
 ppg init
@@ -266,6 +287,15 @@ ppg worktree create --name my-branch --base develop
 ### `ppg list templates`
 
 List available prompt templates from `.pg/templates/`.
+
+### `ppg install-dashboard`
+
+Download and install the native macOS dashboard app from GitHub Releases.
+
+```bash
+ppg install-dashboard                    # Install to /Applications
+ppg install-dashboard --dir ~/Apps       # Custom install directory
+```
 
 ### `ppg ui`
 

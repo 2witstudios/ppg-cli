@@ -17,3 +17,6 @@ DerivedData/
 **/xcuserdata/
 *.xcuserstate
 *.profraw
+
+# Point Guard
+.pg/conductor-context.md
