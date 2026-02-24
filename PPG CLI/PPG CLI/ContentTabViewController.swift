@@ -154,7 +154,6 @@ class ContentViewController: NSViewController {
         switch tab {
         case .manifestAgent(let agent, _):
             let pane = TerminalPane(agent: agent, sessionName: sessionName)
-            pane.startTmux()
             termView = pane
 
         case .agentGroup(let agents, let tmuxTarget, _):
@@ -169,7 +168,6 @@ class ContentViewController: NSViewController {
                 startedAt: lead.startedAt
             )
             let pane = TerminalPane(agent: groupAgent, sessionName: sessionName)
-            pane.startTmux()
             termView = pane
 
         case .sessionEntry(let entry, _):
@@ -185,7 +183,6 @@ class ContentViewController: NSViewController {
                     sessionId: entry.sessionId
                 )
                 let pane = TerminalPane(agent: agentModel, sessionName: sessionName)
-                pane.startTmux()
                 termView = pane
             } else {
                 let localTerm = ScrollableTerminalView(frame: containerView.bounds)
