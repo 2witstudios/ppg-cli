@@ -42,6 +42,7 @@ ppg spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `-n, --name <name>` | Worktree/task name (default: auto-generated ID) |
@@ -214,6 +215,7 @@ ppg swarm code-review --worktree feature-auth --var CONTEXT="Review auth feature
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `-w, --worktree <ref>` | Target existing worktree by ID, name, or branch |
@@ -310,6 +312,7 @@ ppg wait --all --interval 10 --json      # Poll every 10s (default: 5s)
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--all` | Wait for all agents across all worktrees |
@@ -330,6 +333,7 @@ ppg send <agent-id> "C-c" --keys         # Send raw tmux keys (e.g., Ctrl-C)
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--keys` | Send raw tmux key names instead of literal text |
@@ -347,6 +351,7 @@ ppg restart <agent-id> --agent codex --json           # Override agent type
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `-p, --prompt <text>` | Override the original prompt |
@@ -367,6 +372,7 @@ ppg diff <wt-id> --name-only             # Changed file names only
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--stat` | Show diffstat summary |
@@ -387,6 +393,7 @@ ppg clean --prune                        # Also run git worktree prune
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--all` | Also clean failed worktrees |

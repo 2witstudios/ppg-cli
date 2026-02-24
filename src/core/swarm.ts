@@ -25,7 +25,8 @@ export async function listSwarms(projectRoot: string): Promise<string[]> {
     const files = await fs.readdir(dir);
     return files
       .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
-      .map((f) => f.replace(/\.ya?ml$/, ''));
+      .map((f) => f.replace(/\.ya?ml$/, ''))
+      .sort();
   } catch {
     return [];
   }
@@ -56,6 +57,10 @@ export async function loadSwarm(projectRoot: string, name: string): Promise<Swar
 
   const raw = await fs.readFile(filePath, 'utf-8');
   const parsed = YAML.parse(raw) as SwarmTemplate;
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new PgError(`Invalid swarm template: ${name} (empty or malformed YAML)`, 'INVALID_ARGS');
+  }
 
   if (!parsed.name || !parsed.agents || !Array.isArray(parsed.agents)) {
     throw new PgError(`Invalid swarm template: ${name} (missing name or agents)`, 'INVALID_ARGS');

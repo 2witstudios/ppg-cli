@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, swarmsDir, manifestPath } from '../lib/paths.js';
+import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath } from '../lib/paths.js';
 import { NotGitRepoError, TmuxNotFoundError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
@@ -111,7 +111,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
 
   // 8. Write bundled prompt files
   for (const [name, content] of Object.entries(bundledPrompts)) {
-    const pPath = path.join(promptsDir(projectRoot), `${name}.md`);
+    const pPath = promptFile(projectRoot, name);
     try {
       await fs.access(pPath);
     } catch {
@@ -211,6 +211,7 @@ async function updateGitignore(projectRoot: string): Promise<void> {
     '.pg/logs/',
     '.pg/manifest.json',
     '.pg/prompts/',
+    '.pg/swarms/',
     '.pg/conductor-context.md',
   ];
 

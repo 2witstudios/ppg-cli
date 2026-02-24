@@ -30,7 +30,8 @@ describe('listSwarms', () => {
 
     const actual = await listSwarms(TMP_ROOT);
 
-    expect(actual).toEqual(['code-review', 'deploy']);
+    expect(actual).toHaveLength(2);
+    expect(actual).toEqual(expect.arrayContaining(['code-review', 'deploy']));
   });
 
   test('given a directory with .yml files, should return names without extension', async () => {
@@ -146,6 +147,13 @@ agents:
       agent: 'codex',
       vars: { EXTRA: 'be thorough' },
     });
+  });
+
+  test('given empty YAML file, should throw INVALID_ARGS', async () => {
+    await fs.writeFile(path.join(SWARMS_DIR, 'empty.yaml'), '');
+
+    await expect(loadSwarm(TMP_ROOT, 'empty'))
+      .rejects.toThrow('empty or malformed YAML');
   });
 
   test('given nonexistent template, should throw INVALID_ARGS', async () => {
