@@ -37,6 +37,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FB6FFC062F4C81C600C8D98B /* PPG CLI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8AF4C8BA6C0F4BED8B6A7661 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
 			path = "PPG CLI";
 			sourceTree = "<group>";
 		};
@@ -51,6 +54,16 @@
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8AF4C8BA6C0F4BED8B6A7661 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FB6FFC032F4C81C600C8D98B /* PPG CLI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		FB6FFC012F4C81C600C8D98B /* Frameworks */ = {

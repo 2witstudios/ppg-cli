@@ -35,6 +35,10 @@ class ScrollableTerminalView: NSView {
             self.terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
+        // Disable mouse reporting so click/drag does native text selection.
+        // Scroll-wheel forwarding to tmux is handled separately by handleScrollEvent.
+        self.terminalView.allowMouseReporting = false
+
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self else { return event }
             return self.handleScrollEvent(event)
@@ -71,10 +75,10 @@ class ScrollableTerminalView: NSView {
 
         let term = terminalView.getTerminal()
 
-        // Only intercept when: mouse reporting is on, mouse mode is active,
-        // and we're on the alternate screen buffer (i.e. tmux/vim/less).
-        guard terminalView.allowMouseReporting,
-              term.mouseMode != .off,
+        // Only intercept when: mouse mode is active and we're on the alternate
+        // screen buffer (i.e. tmux/vim/less). allowMouseReporting is off for
+        // native text selection, but we still forward scroll events here.
+        guard term.mouseMode != .off,
               term.isCurrentBufferAlternate else {
             // Let SwiftTerm handle it (normal scrollback)
             return event

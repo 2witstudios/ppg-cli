@@ -33,4 +33,9 @@ final class TerminalPaneTests: XCTestCase {
         let pane = TerminalPane(agent: makeAgent(), sessionName: "test")
         pane.terminate()
     }
+
+    func testMouseReportingDisabledForTextSelection() {
+        let pane = TerminalPane(agent: makeAgent(), sessionName: "test")
+        XCTAssertFalse(pane.terminalView.allowMouseReporting)
+    }
 }

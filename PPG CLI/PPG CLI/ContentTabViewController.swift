@@ -301,16 +301,42 @@ class ContentViewController: NSViewController {
 class WorktreeDetailView: NSView {
 
     struct DiffData {
-        let statusLines: [StatusLine]
-        let diffText: String
+        let files: [FileDiff]
 
-        struct StatusLine {
-            let code: String   // M, A, D, ??, etc.
-            let file: String
-            let added: String  // from --numstat
-            let removed: String
+        struct FileDiff {
+            let filename: String
+            let statusCode: String   // M, A, D, ??
+            let added: Int
+            let removed: Int
+            let hunks: [Hunk]
+        }
+
+        struct Hunk {
+            let header: String       // e.g. "@@ -10,6 +10,8 @@ func login()"
+            let lines: [DiffLine]
+        }
+
+        struct DiffLine {
+            let type: LineType
+            let content: String      // code without +/- prefix
+            let oldLineNo: Int?
+            let newLineNo: Int?
+        }
+
+        enum LineType {
+            case context, addition, deletion
         }
     }
+
+    // MARK: - Colors
+
+    static let cardBackground = NSColor(srgbRed: 0.14, green: 0.14, blue: 0.15, alpha: 1.0)
+    static let cardHeaderBackground = NSColor(srgbRed: 0.16, green: 0.16, blue: 0.17, alpha: 1.0)
+    static let additionBackground = NSColor(srgbRed: 0.13, green: 0.22, blue: 0.15, alpha: 1.0)
+    static let deletionBackground = NSColor(srgbRed: 0.25, green: 0.13, blue: 0.13, alpha: 1.0)
+    static let additionText = NSColor(srgbRed: 0.55, green: 0.85, blue: 0.55, alpha: 1.0)
+    static let deletionText = NSColor(srgbRed: 0.90, green: 0.55, blue: 0.55, alpha: 1.0)
+    static let hunkSeparatorColor = NSColor(white: 0.22, alpha: 1.0)
 
     private(set) var currentWorktreePath = ""
 
@@ -326,7 +352,8 @@ class WorktreeDetailView: NSView {
 
     // Diff area
     private let scrollView = NSScrollView()
-    private let textView = NSTextView()
+    private let diffStackView = NSStackView()
+    private let emptyLabel = NSTextField(labelWithString: "No unstaged changes")
 
     var onNewAgent: (() -> Void)?
     var onNewTerminal: (() -> Void)?
@@ -358,95 +385,28 @@ class WorktreeDetailView: NSView {
     }
 
     func updateDiff(_ data: DiffData) {
-        let attributed = NSMutableAttributedString()
-        let monoFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        let defaultAttrs: [NSAttributedString.Key: Any] = [
-            .font: monoFont,
-            .foregroundColor: terminalForeground,
-        ]
+        // Remove existing cards
+        for view in diffStackView.arrangedSubviews {
+            diffStackView.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
 
-        if data.statusLines.isEmpty {
-            let emptyAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 14),
-                .foregroundColor: NSColor.tertiaryLabelColor,
-            ]
-            attributed.append(NSAttributedString(string: "No unstaged changes", attributes: emptyAttrs))
-            textView.textStorage?.setAttributedString(attributed)
+        if data.files.isEmpty {
+            emptyLabel.isHidden = false
+            diffStackView.isHidden = true
             return
         }
 
-        // Section header
-        let headerAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-            .foregroundColor: terminalForeground,
-        ]
-        attributed.append(NSAttributedString(
-            string: "Unstaged Changes (\(data.statusLines.count) file\(data.statusLines.count == 1 ? "" : "s"))\n\n",
-            attributes: headerAttrs
-        ))
+        emptyLabel.isHidden = true
+        diffStackView.isHidden = false
 
-        // File status list
-        for line in data.statusLines {
-            let codeColor: NSColor
-            switch line.code {
-            case "M": codeColor = .systemYellow
-            case "A": codeColor = .systemGreen
-            case "D": codeColor = .systemRed
-            default:  codeColor = .systemGray
-            }
-            attributed.append(NSAttributedString(
-                string: " \(line.code.padding(toLength: 3, withPad: " ", startingAt: 0))",
-                attributes: [.font: monoFont, .foregroundColor: codeColor]
-            ))
-            attributed.append(NSAttributedString(
-                string: line.file,
-                attributes: defaultAttrs
-            ))
-            // Stats
-            var stats = ""
-            if !line.added.isEmpty && line.added != "-" { stats += "  +\(line.added)" }
-            if !line.removed.isEmpty && line.removed != "-" { stats += "  -\(line.removed)" }
-            if !stats.isEmpty {
-                let statColor: NSColor = .secondaryLabelColor
-                attributed.append(NSAttributedString(
-                    string: stats,
-                    attributes: [.font: monoFont, .foregroundColor: statColor]
-                ))
-            }
-            attributed.append(NSAttributedString(string: "\n", attributes: defaultAttrs))
+        for file in data.files {
+            let card = DiffCardView(fileDiff: file)
+            diffStackView.addArrangedSubview(card)
+            card.translatesAutoresizingMaskIntoConstraints = false
+            card.leadingAnchor.constraint(equalTo: diffStackView.leadingAnchor).isActive = true
+            card.trailingAnchor.constraint(equalTo: diffStackView.trailingAnchor).isActive = true
         }
-
-        // Diff output
-        if !data.diffText.isEmpty {
-            attributed.append(NSAttributedString(string: "\n", attributes: defaultAttrs))
-            let lines = data.diffText.components(separatedBy: "\n")
-            for line in lines {
-                let color: NSColor
-                let font: NSFont
-                if line.hasPrefix("+++") || line.hasPrefix("---") || line.hasPrefix("diff --git") {
-                    color = .secondaryLabelColor
-                    font = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
-                } else if line.hasPrefix("@@") {
-                    color = .systemCyan
-                    font = monoFont
-                } else if line.hasPrefix("+") {
-                    color = .systemGreen
-                    font = monoFont
-                } else if line.hasPrefix("-") {
-                    color = .systemRed
-                    font = monoFont
-                } else {
-                    color = terminalForeground
-                    font = monoFont
-                }
-                attributed.append(NSAttributedString(
-                    string: line + "\n",
-                    attributes: [.font: font, .foregroundColor: color]
-                ))
-            }
-        }
-
-        textView.textStorage?.setAttributedString(attributed)
     }
 
     // MARK: - Static Helpers
@@ -462,30 +422,157 @@ class WorktreeDetailView: NSView {
         let diffResult = service.runGitCommand(["diff"], cwd: worktreePath)
 
         // Parse numstat into a lookup: filename -> (added, removed)
-        var numstatMap: [String: (String, String)] = [:]
+        var numstatMap: [String: (Int, Int)] = [:]
         for line in numstatResult.stdout.components(separatedBy: "\n") where !line.isEmpty {
             let parts = line.split(separator: "\t", maxSplits: 2)
             if parts.count >= 3 {
-                numstatMap[String(parts[2])] = (String(parts[0]), String(parts[1]))
+                numstatMap[String(parts[2])] = (Int(parts[0]) ?? 0, Int(parts[1]) ?? 0)
             }
         }
 
-        // Parse status --porcelain
-        var statusLines: [DiffData.StatusLine] = []
+        // Parse status --porcelain into a lookup: filename -> statusCode
+        var statusMap: [String: String] = [:]
         for line in statusResult.stdout.components(separatedBy: "\n") where !line.isEmpty {
             guard line.count >= 3 else { continue }
-            // Porcelain format: XY filename
             let index = line.index(line.startIndex, offsetBy: 3)
             let file = String(line[index...])
-            // Use the working-tree status (Y column), fall back to index status (X column)
             let x = String(line[line.startIndex...line.startIndex])
             let y = String(line[line.index(line.startIndex, offsetBy: 1)...line.index(line.startIndex, offsetBy: 1)])
             let code = (y == " " || y == "?") ? (x == "?" ? "??" : x) : y
-            let stats = numstatMap[file] ?? ("", "")
-            statusLines.append(DiffData.StatusLine(code: code, file: file, added: stats.0, removed: stats.1))
+            statusMap[file] = code
         }
 
-        return DiffData(statusLines: statusLines, diffText: diffResult.stdout)
+        // Parse diff output into per-file sections
+        let diffOutput = diffResult.stdout
+        var files: [DiffData.FileDiff] = []
+
+        // Split by "diff --git" boundaries
+        let fileSections = diffOutput.components(separatedBy: "diff --git ")
+        for section in fileSections {
+            guard !section.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+
+            let sectionLines = section.components(separatedBy: "\n")
+            guard !sectionLines.isEmpty else { continue }
+
+            // First line is "a/path b/path"
+            let headerLine = sectionLines[0]
+            let headerParts = headerLine.split(separator: " ", maxSplits: 1)
+            var filename = ""
+            if headerParts.count >= 2 {
+                // Extract from "b/path"
+                let bPath = String(headerParts[1])
+                filename = bPath.hasPrefix("b/") ? String(bPath.dropFirst(2)) : bPath
+            } else if headerParts.count == 1 {
+                let aPath = String(headerParts[0])
+                filename = aPath.hasPrefix("a/") ? String(aPath.dropFirst(2)) : aPath
+            }
+
+            // Parse hunks
+            var hunks: [DiffData.Hunk] = []
+            var currentHunkHeader = ""
+            var currentHunkLines: [DiffData.DiffLine] = []
+            var oldLineNo = 0
+            var newLineNo = 0
+            var inHunk = false
+
+            for lineIdx in 1..<sectionLines.count {
+                let line = sectionLines[lineIdx]
+
+                if line.hasPrefix("@@") {
+                    // Save previous hunk if any
+                    if inHunk && !currentHunkLines.isEmpty {
+                        hunks.append(DiffData.Hunk(header: currentHunkHeader, lines: currentHunkLines))
+                    }
+
+                    currentHunkHeader = line
+                    currentHunkLines = []
+                    inHunk = true
+
+                    // Parse line numbers from "@@ -old,count +new,count @@"
+                    let scanner = line.dropFirst(3) // drop "@@ "
+                    if let plusIdx = scanner.firstIndex(of: "+") {
+                        let newPart = scanner[plusIdx...].dropFirst() // drop "+"
+                        if let commaOrSpace = newPart.firstIndex(where: { $0 == "," || $0 == " " }) {
+                            newLineNo = Int(newPart[newPart.startIndex..<commaOrSpace]) ?? 1
+                        } else {
+                            newLineNo = Int(newPart) ?? 1
+                        }
+                    }
+                    if let minusIdx = scanner.firstIndex(of: "-") {
+                        let oldPart = scanner[scanner.index(after: minusIdx)...]
+                        if let commaOrSpace = oldPart.firstIndex(where: { $0 == "," || $0 == " " }) {
+                            oldLineNo = Int(oldPart[oldPart.startIndex..<commaOrSpace]) ?? 1
+                        } else {
+                            oldLineNo = Int(oldPart) ?? 1
+                        }
+                    }
+
+                    continue
+                }
+
+                // Skip metadata lines (index, ---, +++)
+                if !inHunk { continue }
+
+                if line.hasPrefix("+") {
+                    let content = String(line.dropFirst())
+                    currentHunkLines.append(DiffData.DiffLine(
+                        type: .addition, content: content,
+                        oldLineNo: nil, newLineNo: newLineNo
+                    ))
+                    newLineNo += 1
+                } else if line.hasPrefix("-") {
+                    let content = String(line.dropFirst())
+                    currentHunkLines.append(DiffData.DiffLine(
+                        type: .deletion, content: content,
+                        oldLineNo: oldLineNo, newLineNo: nil
+                    ))
+                    oldLineNo += 1
+                } else if line.hasPrefix(" ") {
+                    let content = String(line.dropFirst())
+                    currentHunkLines.append(DiffData.DiffLine(
+                        type: .context, content: content,
+                        oldLineNo: oldLineNo, newLineNo: newLineNo
+                    ))
+                    oldLineNo += 1
+                    newLineNo += 1
+                } else if line.hasPrefix("\\") {
+                    // "\ No newline at end of file" — skip
+                    continue
+                }
+            }
+
+            // Save last hunk
+            if inHunk && !currentHunkLines.isEmpty {
+                hunks.append(DiffData.Hunk(header: currentHunkHeader, lines: currentHunkLines))
+            }
+
+            let stats = numstatMap[filename] ?? (0, 0)
+            let statusCode = statusMap[filename] ?? "M"
+
+            files.append(DiffData.FileDiff(
+                filename: filename,
+                statusCode: statusCode,
+                added: stats.0,
+                removed: stats.1,
+                hunks: hunks
+            ))
+        }
+
+        // Include files from status that have no diff (e.g. untracked files)
+        for (file, code) in statusMap {
+            if !files.contains(where: { $0.filename == file }) {
+                let stats = numstatMap[file] ?? (0, 0)
+                files.append(DiffData.FileDiff(
+                    filename: file,
+                    statusCode: code,
+                    added: stats.0,
+                    removed: stats.1,
+                    hunks: []
+                ))
+            }
+        }
+
+        return DiffData(files: files)
     }
 
     // MARK: - Setup
@@ -561,26 +648,28 @@ class WorktreeDetailView: NSView {
         separator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(separator)
 
-        // Scroll view + text view
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.drawsBackground = true
-        textView.backgroundColor = terminalBackground
-        textView.textContainerInset = NSSize(width: 12, height: 8)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        textView.autoresizingMask = [.width]
-        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.textColor = terminalForeground
+        // Empty state label
+        emptyLabel.font = .systemFont(ofSize: 14)
+        emptyLabel.textColor = .tertiaryLabelColor
+        emptyLabel.alignment = .center
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyLabel.isHidden = true
 
-        scrollView.documentView = textView
+        // Diff card stack inside scroll view
+        diffStackView.orientation = .vertical
+        diffStackView.spacing = 12
+        diffStackView.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        diffStackView.translatesAutoresizingMaskIntoConstraints = false
+        diffStackView.setHuggingPriority(.defaultLow, for: .horizontal)
+
+        scrollView.documentView = diffStackView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = true
         scrollView.backgroundColor = terminalBackground
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
+        addSubview(emptyLabel)
 
         NSLayoutConstraint.activate([
             headerStack.topAnchor.constraint(equalTo: topAnchor),
@@ -595,6 +684,13 @@ class WorktreeDetailView: NSView {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            // Stack view width tracks the scroll view's clip view
+            diffStackView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            diffStackView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+
+            emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
 
             iconView.widthAnchor.constraint(equalToConstant: 32),
             iconView.heightAnchor.constraint(equalToConstant: 32),
@@ -615,4 +711,267 @@ class WorktreeDetailView: NSView {
     @objc private func agentButtonClicked() { onNewAgent?() }
     @objc private func terminalButtonClicked() { onNewTerminal?() }
     @objc private func worktreeButtonClicked() { onNewWorktree?() }
+}
+
+// MARK: - DiffCardView
+
+class DiffCardView: NSView {
+
+    private let fileDiff: WorktreeDetailView.DiffData.FileDiff
+
+    init(fileDiff: WorktreeDetailView.DiffData.FileDiff) {
+        self.fileDiff = fileDiff
+        super.init(frame: .zero)
+        setupCard()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not supported")
+    }
+
+    private func setupCard() {
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = true
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
+        layer?.backgroundColor = WorktreeDetailView.cardBackground.cgColor
+
+        // Header bar
+        let headerView = NSView()
+        headerView.wantsLayer = true
+        headerView.layer?.backgroundColor = WorktreeDetailView.cardHeaderBackground.cgColor
+        headerView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(headerView)
+
+        // File icon
+        let iconName: String
+        let iconTint: NSColor
+        switch fileDiff.statusCode {
+        case "A": iconName = "doc.badge.plus"; iconTint = .systemGreen
+        case "D": iconName = "doc.badge.minus"; iconTint = .systemRed
+        case "M": iconName = "doc.text"; iconTint = .systemYellow
+        default:  iconName = "doc.text"; iconTint = .systemGray
+        }
+        let fileIcon = NSImageView()
+        fileIcon.image = NSImage(systemSymbolName: iconName, accessibilityDescription: fileDiff.statusCode)
+        fileIcon.contentTintColor = iconTint
+        fileIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+        fileIcon.translatesAutoresizingMaskIntoConstraints = false
+
+        // Filename label — directory in secondary, last component bold
+        let filenameLabel = NSTextField(labelWithString: "")
+        filenameLabel.allowsDefaultTighteningForTruncation = true
+        filenameLabel.lineBreakMode = .byTruncatingMiddle
+        filenameLabel.translatesAutoresizingMaskIntoConstraints = false
+        filenameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let pathComponents = fileDiff.filename.split(separator: "/")
+        let filenameAttr = NSMutableAttributedString()
+        let monoFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let monoBold = NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
+        if pathComponents.count > 1 {
+            let dir = pathComponents.dropLast().joined(separator: "/") + "/"
+            filenameAttr.append(NSAttributedString(string: dir, attributes: [
+                .font: monoFont,
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]))
+            filenameAttr.append(NSAttributedString(string: String(pathComponents.last!), attributes: [
+                .font: monoBold,
+                .foregroundColor: terminalForeground,
+            ]))
+        } else {
+            filenameAttr.append(NSAttributedString(string: fileDiff.filename, attributes: [
+                .font: monoBold,
+                .foregroundColor: terminalForeground,
+            ]))
+        }
+        filenameLabel.attributedStringValue = filenameAttr
+
+        // Status badge
+        let badgeLabel = NSTextField(labelWithString: "")
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        let badgeText: String
+        let badgeColor: NSColor
+        switch fileDiff.statusCode {
+        case "M": badgeText = "Modified"; badgeColor = .systemYellow
+        case "A": badgeText = "Added"; badgeColor = .systemGreen
+        case "D": badgeText = "Deleted"; badgeColor = .systemRed
+        case "??": badgeText = "Untracked"; badgeColor = .systemGray
+        default: badgeText = fileDiff.statusCode; badgeColor = .systemGray
+        }
+        badgeLabel.attributedStringValue = NSAttributedString(string: " \(badgeText) ", attributes: [
+            .font: NSFont.systemFont(ofSize: 10, weight: .medium),
+            .foregroundColor: NSColor.white,
+            .backgroundColor: badgeColor.withAlphaComponent(0.6),
+        ])
+        badgeLabel.wantsLayer = true
+        badgeLabel.layer?.cornerRadius = 3
+        badgeLabel.layer?.masksToBounds = true
+        badgeLabel.layer?.backgroundColor = badgeColor.withAlphaComponent(0.6).cgColor
+
+        // Stats label
+        let statsAttr = NSMutableAttributedString()
+        let statsFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        if fileDiff.added > 0 {
+            statsAttr.append(NSAttributedString(string: "+\(fileDiff.added)", attributes: [
+                .font: statsFont,
+                .foregroundColor: WorktreeDetailView.additionText,
+            ]))
+        }
+        if fileDiff.removed > 0 {
+            if statsAttr.length > 0 { statsAttr.append(NSAttributedString(string: "  ")) }
+            statsAttr.append(NSAttributedString(string: "-\(fileDiff.removed)", attributes: [
+                .font: statsFont,
+                .foregroundColor: WorktreeDetailView.deletionText,
+            ]))
+        }
+        let statsLabel = NSTextField(labelWithString: "")
+        statsLabel.attributedStringValue = statsAttr
+        statsLabel.translatesAutoresizingMaskIntoConstraints = false
+        statsLabel.setContentHuggingPriority(.required, for: .horizontal)
+        statsLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        // Header layout
+        headerView.addSubview(fileIcon)
+        headerView.addSubview(filenameLabel)
+        headerView.addSubview(badgeLabel)
+        headerView.addSubview(statsLabel)
+
+        NSLayoutConstraint.activate([
+            headerView.topAnchor.constraint(equalTo: topAnchor),
+            headerView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            headerView.heightAnchor.constraint(equalToConstant: 32),
+
+            fileIcon.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 10),
+            fileIcon.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            fileIcon.widthAnchor.constraint(equalToConstant: 16),
+            fileIcon.heightAnchor.constraint(equalToConstant: 16),
+
+            filenameLabel.leadingAnchor.constraint(equalTo: fileIcon.trailingAnchor, constant: 6),
+            filenameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            badgeLabel.leadingAnchor.constraint(equalTo: filenameLabel.trailingAnchor, constant: 8),
+            badgeLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            statsLabel.leadingAnchor.constraint(greaterThanOrEqualTo: badgeLabel.trailingAnchor, constant: 8),
+            statsLabel.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -10),
+            statsLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+        ])
+
+        // Body — diff lines
+        if fileDiff.hunks.isEmpty {
+            // No diff content (e.g. untracked file) — just show header
+            bottomAnchor.constraint(equalTo: headerView.bottomAnchor).isActive = true
+            return
+        }
+
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = true
+        textView.backgroundColor = WorktreeDetailView.cardBackground
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainerInset = NSSize(width: 4, height: 6)
+        textView.autoresizingMask = [.width]
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(textView)
+
+        let attributed = buildDiffAttributedString()
+        textView.textStorage?.setAttributedString(attributed)
+
+        // Compute height from attributed string
+        let tempContainer = NSTextContainer(size: NSSize(width: 600, height: CGFloat.greatestFiniteMagnitude))
+        let tempLayout = NSLayoutManager()
+        let tempStorage = NSTextStorage(attributedString: attributed)
+        tempLayout.addTextContainer(tempContainer)
+        tempStorage.addLayoutManager(tempLayout)
+        tempLayout.ensureLayout(for: tempContainer)
+        let textHeight = tempLayout.usedRect(for: tempContainer).height + 12 // padding
+
+        NSLayoutConstraint.activate([
+            textView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            textView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            textView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            textView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            textView.heightAnchor.constraint(equalToConstant: textHeight),
+        ])
+    }
+
+    private func buildDiffAttributedString() -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let monoFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let lineNoFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+
+        // Tab stops for gutter: old line no at 0, new line no at 40, code at 90
+        let tabStops = [
+            NSTextTab(textAlignment: .right, location: 36),
+            NSTextTab(textAlignment: .right, location: 72),
+            NSTextTab(textAlignment: .left, location: 82),
+        ]
+
+        for (hunkIdx, hunk) in fileDiff.hunks.enumerated() {
+            // Hunk separator (between hunks, not before the first)
+            if hunkIdx > 0 {
+                let sepPara = NSMutableParagraphStyle()
+                sepPara.alignment = .center
+                sepPara.paragraphSpacingBefore = 4
+                sepPara.paragraphSpacing = 4
+                result.append(NSAttributedString(string: "···\n", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .foregroundColor: NSColor.tertiaryLabelColor,
+                    .paragraphStyle: sepPara,
+                    .backgroundColor: WorktreeDetailView.hunkSeparatorColor,
+                ]))
+            }
+
+            for line in hunk.lines {
+                let para = NSMutableParagraphStyle()
+                para.tabStops = tabStops
+
+                let bgColor: NSColor
+                let fgColor: NSColor
+                switch line.type {
+                case .addition:
+                    bgColor = WorktreeDetailView.additionBackground
+                    fgColor = WorktreeDetailView.additionText
+                case .deletion:
+                    bgColor = WorktreeDetailView.deletionBackground
+                    fgColor = WorktreeDetailView.deletionText
+                case .context:
+                    bgColor = WorktreeDetailView.cardBackground
+                    fgColor = terminalForeground
+                }
+
+                // Old line number
+                let oldNo = line.oldLineNo.map { String($0) } ?? ""
+                result.append(NSAttributedString(string: "\t\(oldNo)", attributes: [
+                    .font: lineNoFont,
+                    .foregroundColor: NSColor.tertiaryLabelColor,
+                    .backgroundColor: bgColor,
+                    .paragraphStyle: para,
+                ]))
+
+                // New line number
+                let newNo = line.newLineNo.map { String($0) } ?? ""
+                result.append(NSAttributedString(string: "\t\(newNo)", attributes: [
+                    .font: lineNoFont,
+                    .foregroundColor: NSColor.tertiaryLabelColor,
+                    .backgroundColor: bgColor,
+                ]))
+
+                // Code content
+                result.append(NSAttributedString(string: "\t\(line.content)\n", attributes: [
+                    .font: monoFont,
+                    .foregroundColor: fgColor,
+                    .backgroundColor: bgColor,
+                ]))
+            }
+        }
+
+        return result
+    }
 }
