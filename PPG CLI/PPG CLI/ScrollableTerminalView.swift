@@ -76,6 +76,9 @@ class ScrollableTerminalView: NSView {
             guard let self else { return event }
             return self.handleScrollEvent(event)
         }
+
+        // Accept file drops — sends shell-escaped paths to the terminal PTY
+        registerForDraggedTypes([.fileURL])
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -215,6 +218,48 @@ class ScrollableTerminalView: NSView {
         rgb.getRed(&r, green: &g, blue: &b, alpha: &a)
         return makeTerminalColor(red: r, green: g, blue: b)
     }
+
+    // MARK: - Drag & Drop (file paths into terminal)
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) else {
+            return []
+        }
+        layer?.borderWidth = 2
+        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        layer?.borderWidth = 0
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        return sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        layer?.borderWidth = 0
+
+        guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+              !urls.isEmpty else {
+            return false
+        }
+
+        let escaped = urls.map { shellEscapedPath($0.path) }.joined(separator: " ")
+        terminalView.send(txt: escaped)
+        return true
+    }
+
+    private func shellEscapedPath(_ path: String) -> String {
+        return "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    // MARK: - Scroll Interception
 
     private func handleScrollEvent(_ event: NSEvent) -> NSEvent? {
         // Only intercept events targeting our inner terminal view
