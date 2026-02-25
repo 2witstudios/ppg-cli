@@ -33,7 +33,13 @@ program
   .option('--var <key=value...>', 'Template variables', collectVars, [])
   .option('-b, --base <branch>', 'Base branch for the worktree')
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
-  .option('-c, --count <n>', 'Number of agents to spawn', (v: string) => Number(v), 1)
+  .option('-c, --count <n>', 'Number of agents to spawn', (v: string) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1) {
+      throw new Error('--count must be a positive integer');
+    }
+    return n;
+  }, 1)
   .option('--split', 'Put all agents in one window as split panes')
   .option('--open', 'Open a Terminal window for the spawned agents')
   .option('--json', 'Output as JSON')
@@ -219,8 +225,20 @@ program
   .description('Wait for agents to reach terminal state')
   .argument('[worktree-id]', 'Worktree ID or name')
   .option('--all', 'Wait for all agents across all worktrees')
-  .option('--timeout <seconds>', 'Timeout in seconds', parseInt)
-  .option('--interval <seconds>', 'Poll interval in seconds', parseInt)
+  .option('--timeout <seconds>', 'Timeout in seconds', (v: string) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1) {
+      throw new Error('--timeout must be a positive integer');
+    }
+    return n;
+  })
+  .option('--interval <seconds>', 'Poll interval in seconds', (v: string) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1) {
+      throw new Error('--interval must be a positive integer');
+    }
+    return n;
+  })
   .option('--json', 'Output as JSON')
   .action(async (worktreeId, options) => {
     const { waitCommand } = await import('./commands/wait.js');

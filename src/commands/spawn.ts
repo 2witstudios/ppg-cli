@@ -81,8 +81,11 @@ async function resolvePrompt(options: SpawnOptions, projectRoot: string): Promis
     const templateContent = await loadTemplate(projectRoot, options.template);
     const vars: Record<string, string> = {};
     for (const v of options.var ?? []) {
-      const [key, ...rest] = v.split('=');
-      vars[key] = rest.join('=');
+      const eqIdx = v.indexOf('=');
+      if (eqIdx < 1) {
+        throw new PgError(`Invalid --var format: "${v}" — expected KEY=value`, 'INVALID_ARGS');
+      }
+      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
     }
     // Template will be fully rendered later with worktree context
     return templateContent;
@@ -153,8 +156,11 @@ async function spawnNewWorktree(
 
     // Parse user vars
     for (const v of options.var ?? []) {
-      const [key, ...rest] = v.split('=');
-      ctx[key] = rest.join('=');
+      const eqIdx = v.indexOf('=');
+      if (eqIdx < 1) {
+        throw new PgError(`Invalid --var format: "${v}" — expected KEY=value`, 'INVALID_ARGS');
+      }
+      ctx[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
     }
 
     const renderedPrompt = renderTemplate(promptText, ctx);
@@ -271,8 +277,11 @@ async function spawnIntoExistingWorktree(
     };
 
     for (const v of options.var ?? []) {
-      const [key, ...rest] = v.split('=');
-      ctx[key] = rest.join('=');
+      const eqIdx = v.indexOf('=');
+      if (eqIdx < 1) {
+        throw new PgError(`Invalid --var format: "${v}" — expected KEY=value`, 'INVALID_ARGS');
+      }
+      ctx[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
     }
 
     const renderedPrompt = renderTemplate(promptText, ctx);
