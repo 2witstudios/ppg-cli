@@ -52,13 +52,20 @@ export async function loadConfig(projectRoot: string): Promise<Config> {
 }
 
 function mergeConfig(defaults: Config, overrides: Partial<Config>): Config {
+  const mergedAgents: Record<string, AgentConfig> = { ...defaults.agents };
+  if (overrides.agents) {
+    for (const [key, override] of Object.entries(overrides.agents)) {
+      if (mergedAgents[key]) {
+        mergedAgents[key] = { ...mergedAgents[key], ...override };
+      } else {
+        mergedAgents[key] = override;
+      }
+    }
+  }
   return {
     ...defaults,
     ...overrides,
-    agents: {
-      ...defaults.agents,
-      ...(overrides.agents ?? {}),
-    },
+    agents: mergedAgents,
   };
 }
 
