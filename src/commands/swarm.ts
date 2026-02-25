@@ -13,6 +13,7 @@ import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSes
 import { resultFile, promptsDir, manifestPath } from '../lib/paths.js';
 import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
+import { normalizeName } from '../lib/name.js';
 import type { Config } from '../types/config.js';
 import type { WorktreeEntry, AgentEntry } from '../types/manifest.js';
 
@@ -122,7 +123,7 @@ async function swarmShared(
 ): Promise<void> {
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
-  const name = options.name ?? swarm.name;
+  const name = options.name ? normalizeName(options.name, swarm.name) : swarm.name;
   const branchName = `ppg/${name}`;
 
   info(`Creating worktree ${wtId} on branch ${branchName}`);
@@ -186,7 +187,7 @@ async function swarmIsolated(
   userVars: Record<string, string>,
 ): Promise<void> {
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
-  const baseName = options.name ?? swarm.name;
+  const baseName = options.name ? normalizeName(options.name, swarm.name) : swarm.name;
   const sessionName = config.sessionName;
   await tmux.ensureSession(sessionName);
 

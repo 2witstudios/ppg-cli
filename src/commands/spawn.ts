@@ -11,6 +11,7 @@ import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSes
 import { resultFile, manifestPath } from '../lib/paths.js';
 import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
+import { normalizeName } from '../lib/name.js';
 import type { WorktreeEntry, AgentEntry } from '../types/manifest.js';
 
 export interface SpawnOptions {
@@ -100,7 +101,7 @@ async function spawnNewWorktree(
 ): Promise<void> {
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
-  const name = options.name ?? wtId;
+  const name = options.name ? normalizeName(options.name, wtId) : wtId;
   const branchName = `ppg/${name}`;
 
   // Create git worktree
