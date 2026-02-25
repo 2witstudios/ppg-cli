@@ -29,10 +29,6 @@ const DEFAULT_CONFIG: Config = {
       ].join('\n'),
     },
   },
-  worktreeBase: '.worktrees',
-  templateDir: '.pg/templates',
-  resultDir: '.pg/results',
-  logDir: '.pg/logs',
   envFiles: ['.env', '.env.local'],
   symlinkNodeModules: true,
 };

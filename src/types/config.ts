@@ -11,10 +11,6 @@ export interface Config {
   sessionName: string;
   defaultAgent: string;
   agents: Record<string, AgentConfig>;
-  worktreeBase: string;
-  templateDir: string;
-  resultDir: string;
-  logDir: string;
   envFiles: string[];
   symlinkNodeModules: boolean;
 }
