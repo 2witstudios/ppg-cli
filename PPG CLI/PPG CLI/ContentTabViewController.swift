@@ -852,6 +852,8 @@ class HoverableContainerView: NSView {
             overlay.updatePosition(in: bounds)
             hoverOverlay = overlay
         }
+        // Ensure overlay is above terminal views that may have been added after it
+        hoverOverlay!.superview?.addSubview(hoverOverlay!, positioned: .above, relativeTo: nil)
         hoverOverlay?.updateSplitAvailability(canSplitH: true, canSplitV: true)
         hoverOverlay?.animator().alphaValue = 1
     }
