@@ -65,6 +65,7 @@ class ContentViewController: NSViewController {
     var onGridDestroyed: ((String) -> Void)?
     /// Called when a grid is suspended (navigate away). Parameters: owner entry ID, layout snapshot.
     var onGridSuspended: ((String, GridLayoutNode) -> Void)?
+    var onCloseEntry: (() -> Void)?
     var isGridMode: Bool {
         guard let grid = paneGrid else { return false }
         return grid.view.superview != nil && !grid.view.isHidden
@@ -118,7 +119,7 @@ class ContentViewController: NSViewController {
         // Wire hover overlay callbacks on the container
         containerView.onSplitHorizontal = { [weak self] in self?.splitPaneBelow() }
         containerView.onSplitVertical = { [weak self] in self?.splitPaneRight() }
-        containerView.onClose = { [weak self] in self?.showEntry(nil) }
+        containerView.onClose = { [weak self] in self?.onCloseEntry?() }
     }
 
     deinit {

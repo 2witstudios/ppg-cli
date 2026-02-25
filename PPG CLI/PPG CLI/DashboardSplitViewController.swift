@@ -115,6 +115,8 @@ class DashboardSplitViewController: NSSplitViewController {
             }
         }
 
+        content.onCloseEntry = { [weak self] in self?.closeCurrentEntry() }
+
         // Clean up persisted grid-owned session entries when a grid is destroyed
         content.onGridDestroyed = { [weak self] ownerEntryId in
             guard let self = self else { return }
