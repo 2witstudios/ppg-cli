@@ -44,6 +44,9 @@ export async function spawnCommand(options: SpawnOptions): Promise<void> {
   const agentConfig = resolveAgentConfig(config, options.agent);
   const count = options.count ?? 1;
 
+  // Validate vars early — before any side effects (worktree/tmux creation)
+  const userVars = parseVars(options.var ?? []);
+
   // Resolve prompt
   const promptText = await resolvePrompt(options, projectRoot);
 
@@ -57,6 +60,7 @@ export async function spawnCommand(options: SpawnOptions): Promise<void> {
       promptText,
       count,
       options,
+      userVars,
     );
   } else {
     // Create new worktree + agent(s)
@@ -67,6 +71,7 @@ export async function spawnCommand(options: SpawnOptions): Promise<void> {
       promptText,
       count,
       options,
+      userVars,
     );
   }
 }
@@ -79,10 +84,7 @@ async function resolvePrompt(options: SpawnOptions, projectRoot: string): Promis
   }
 
   if (options.template) {
-    const templateContent = await loadTemplate(projectRoot, options.template);
-    // Validate vars early; actual rendering happens later with worktree context
-    parseVars(options.var ?? []);
-    return templateContent;
+    return loadTemplate(projectRoot, options.template);
   }
 
   throw new PgError('One of --prompt, --prompt-file, or --template is required', 'INVALID_ARGS');
@@ -95,6 +97,7 @@ async function spawnNewWorktree(
   promptText: string,
   count: number,
   options: SpawnOptions,
+  userVars: Record<string, string>,
 ): Promise<void> {
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
@@ -148,8 +151,7 @@ async function spawnNewWorktree(
       PROMPT: promptText,
     };
 
-    // Parse user vars
-    Object.assign(ctx, parseVars(options.var ?? []));
+    Object.assign(ctx, userVars);
 
     const renderedPrompt = renderTemplate(promptText, ctx);
 
@@ -223,6 +225,7 @@ async function spawnIntoExistingWorktree(
   promptText: string,
   count: number,
   options: SpawnOptions,
+  userVars: Record<string, string>,
 ): Promise<void> {
   const manifest = await readManifest(projectRoot);
   const wt = resolveWorktree(manifest, worktreeRef);
@@ -264,7 +267,7 @@ async function spawnIntoExistingWorktree(
       PROMPT: promptText,
     };
 
-    Object.assign(ctx, parseVars(options.var ?? []));
+    Object.assign(ctx, userVars);
 
     const renderedPrompt = renderTemplate(promptText, ctx);
 

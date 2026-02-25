@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { parseVars } from './vars.js';
+import { PgError } from './errors.js';
 
 describe('parseVars', () => {
   test('given valid KEY=value pairs, should return a record', () => {
@@ -16,12 +17,26 @@ describe('parseVars', () => {
     expect(parseVars(['KEY='])).toEqual({ KEY: '' });
   });
 
-  test('given no = sign, should throw INVALID_ARGS', () => {
-    expect(() => parseVars(['NOEQUALS'])).toThrow('Invalid --var format');
+  test('given no = sign, should throw PgError with INVALID_ARGS', () => {
+    try {
+      parseVars(['NOEQUALS']);
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(PgError);
+      expect((err as PgError).code).toBe('INVALID_ARGS');
+      expect((err as PgError).message).toContain('Invalid --var format');
+    }
   });
 
-  test('given empty key (=value), should throw INVALID_ARGS', () => {
-    expect(() => parseVars(['=value'])).toThrow('Invalid --var format');
+  test('given empty key (=value), should throw PgError with INVALID_ARGS', () => {
+    try {
+      parseVars(['=value']);
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(PgError);
+      expect((err as PgError).code).toBe('INVALID_ARGS');
+      expect((err as PgError).message).toContain('Invalid --var format');
+    }
   });
 
   test('given empty array, should return empty record', () => {
