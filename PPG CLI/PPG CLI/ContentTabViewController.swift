@@ -732,10 +732,11 @@ class ContentViewController: NSViewController {
                 termView = pane
             } else {
                 let localTerm = ScrollableTerminalView(frame: containerView.bounds)
+                // The cd/exec wrapper uses Bourne syntax — always run under /bin/zsh.
+                // The inner command (entry.command) may itself be the user's preferred shell.
+                let initScript = shellProfileScript(for: "/bin/zsh")
                 let cmd = """
-                if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
-                [ -f ~/.zprofile ] && source ~/.zprofile; \
-                [ -f ~/.zshrc ] && source ~/.zshrc; \
+                \(initScript) \
                 cd \(shellEscape(entry.workingDirectory)) && exec \(entry.command)
                 """
                 localTerm.startProcess(

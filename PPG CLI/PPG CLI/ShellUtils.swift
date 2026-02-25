@@ -4,3 +4,30 @@ import Foundation
 nonisolated func shellEscape(_ s: String) -> String {
     "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
+
+/// Returns a shell init script that sources the appropriate profile files for the given shell.
+/// Used for interactive terminals — not for internal ppg/tmux commands (those always use /bin/zsh).
+nonisolated func shellProfileScript(for shellPath: String) -> String {
+    let name = (shellPath as NSString).lastPathComponent
+    switch name {
+    case "zsh":
+        return """
+        if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+        [ -f ~/.zprofile ] && source ~/.zprofile; \
+        [ -f ~/.zshrc ] && source ~/.zshrc;
+        """
+    case "bash":
+        return """
+        if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+        [ -f ~/.bash_profile ] && source ~/.bash_profile; \
+        [ -f ~/.bashrc ] && source ~/.bashrc;
+        """
+    case "fish":
+        // fish sources its own config automatically; path_helper outputs
+        // Bourne syntax which fish can't parse, so skip it entirely.
+        return ""
+    default:
+        // Unknown shell — skip profile sourcing rather than assume Bourne-compatible syntax.
+        return ""
+    }
+}

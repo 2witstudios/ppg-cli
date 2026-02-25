@@ -15,6 +15,7 @@ import SwiftTerm
 class ScrollableTerminalView: NSView {
     let terminalView: LocalProcessTerminalView
     private var scrollMonitor: Any?
+    private var settingsObserver: NSObjectProtocol?
 
     /// Accumulated scroll delta since last frame flush.
     private var accumulatedDelta: CGFloat = 0
@@ -47,9 +48,21 @@ class ScrollableTerminalView: NSView {
             self.terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
+        // Apply configured font
+        applyFont()
+
         // Disable mouse reporting so click/drag does native text selection.
         // Scroll-wheel forwarding to tmux is handled separately by handleScrollEvent.
         self.terminalView.allowMouseReporting = false
+
+        // Live-update font when font settings change
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .appSettingsDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let key = notification.userInfo?[AppSettingsManager.changedKeyUserInfoKey] as? AppSettingsKey,
+                  key == .terminalFont || key == .terminalFontSize else { return }
+            self?.applyFont()
+        }
 
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self else { return event }
@@ -74,7 +87,18 @@ class ScrollableTerminalView: NSView {
             NSEvent.removeMonitor(scrollMonitor)
             self.scrollMonitor = nil
         }
+        if let settingsObserver {
+            NotificationCenter.default.removeObserver(settingsObserver)
+        }
         terminalView.process?.terminate()
+    }
+
+    private func applyFont() {
+        let name = AppSettingsManager.shared.terminalFontName
+        let size = AppSettingsManager.shared.terminalFontSize
+        if let font = NSFont(name: name, size: size) {
+            terminalView.font = font
+        }
     }
 
     // Forward process management to the inner terminal view

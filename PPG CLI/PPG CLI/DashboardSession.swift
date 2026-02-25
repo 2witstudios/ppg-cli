@@ -117,7 +117,7 @@ class DashboardSession {
             kind: .terminal,
             parentWorktreeId: parentWorktreeId,
             workingDirectory: workingDir,
-            command: "/bin/zsh",
+            command: AppSettingsManager.shared.shell,
             tmuxTarget: nil,
             sessionId: nil
         )
@@ -319,7 +319,7 @@ class DashboardSession {
             guard createResult.exitCode == 0 else { return nil }
         }
         runTmux("set-option -t \(escapedSession) mouse on")
-        runTmux("set-option -t \(escapedSession) history-limit 50000")
+        runTmux("set-option -t \(escapedSession) history-limit \(AppSettingsManager.shared.historyLimit)")
 
         let result = runTmux("new-window -t \(escapedSession) -n \(escapedName) -c \(escapedCwd) -P -F '#{window_index}'")
         guard result.exitCode == 0, !result.stdout.isEmpty else { return nil }

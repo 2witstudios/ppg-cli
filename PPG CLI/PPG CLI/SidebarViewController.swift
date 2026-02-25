@@ -109,6 +109,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onPromptsClicked: (() -> Void)?
 
     private var safetyTimer: Timer?
+    private var settingsObserver: NSObjectProtocol?
     private var manifestWatchers: [String: ManifestWatcher] = [:]  // projectRoot -> watcher
     private var debounceWorkItem: DispatchWorkItem?
     /// Prevents overlapping background refreshes from piling up.
@@ -315,8 +316,21 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private func startRefreshTimer() {
         refresh()
         syncManifestWatchers()
-        // Safety poll every 5s in case FSEvents misses a write
-        safetyTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        scheduleSafetyTimer()
+
+        // Restart safety timer when refresh interval changes
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .appSettingsDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let key = notification.userInfo?[AppSettingsManager.changedKeyUserInfoKey] as? AppSettingsKey,
+                  key == .refreshInterval else { return }
+            self?.scheduleSafetyTimer()
+        }
+    }
+
+    private func scheduleSafetyTimer() {
+        safetyTimer?.invalidate()
+        safetyTimer = Timer.scheduledTimer(withTimeInterval: AppSettingsManager.shared.refreshInterval, repeats: true) { [weak self] _ in
             self?.refresh()
             self?.syncManifestWatchers()
         }
@@ -585,6 +599,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     deinit {
         safetyTimer?.invalidate()
         debounceWorkItem?.cancel()
+        if let settingsObserver {
+            NotificationCenter.default.removeObserver(settingsObserver)
+        }
         for watcher in manifestWatchers.values {
             watcher.stop()
         }
