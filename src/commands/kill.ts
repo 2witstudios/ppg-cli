@@ -90,6 +90,15 @@ async function killSingleAgent(
       success(`Deleted agent ${agentId}`);
     }
   } else {
+    if (isTerminal) {
+      if (options.json) {
+        output({ success: true, killed: [], message: `Agent ${agentId} already ${agent.status}` }, true);
+      } else {
+        info(`Agent ${agentId} already ${agent.status}, skipping kill`);
+      }
+      return;
+    }
+
     info(`Killing agent ${agentId}`);
     await killAgent(agent);
 
