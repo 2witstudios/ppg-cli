@@ -1010,7 +1010,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let cell = NSTableCellView()
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 6
+        stack.spacing = 5
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let symbolName: String
@@ -1027,12 +1027,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let kindDesc = entry.kind == .agent ? "Agent" : "Terminal"
         let icon = NSImageView(image: NSImage(systemSymbolName: symbolName, accessibilityDescription: kindDesc)!)
         icon.contentTintColor = tintColor
-        if entry.kind == .agent {
-            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 6, weight: .regular)
-            icon.translatesAutoresizingMaskIntoConstraints = false
-            icon.widthAnchor.constraint(equalToConstant: 8).isActive = true
-            icon.heightAnchor.constraint(equalToConstant: 8).isActive = true
-        }
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 6, weight: .regular)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 8).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 8).isActive = true
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
         let label = NSTextField(labelWithString: entry.label)
