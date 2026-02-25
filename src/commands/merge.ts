@@ -1,7 +1,7 @@
 import { execa } from 'execa';
 import { readManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
-import { getRepoRoot } from '../core/worktree.js';
+import { getRepoRoot, getCurrentBranch } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId } from '../core/self.js';
 import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
@@ -65,6 +65,12 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
   const strategy = options.strategy ?? 'squash';
 
   try {
+    const currentBranch = await getCurrentBranch(projectRoot);
+    if (currentBranch !== wt.baseBranch) {
+      info(`Switching to base branch ${wt.baseBranch}`);
+      await execa('git', ['checkout', wt.baseBranch], { ...execaEnv, cwd: projectRoot });
+    }
+
     info(`Merging ${wt.branch} into ${wt.baseBranch} (${strategy})`);
 
     if (strategy === 'squash') {
