@@ -73,11 +73,11 @@ export async function updateManifest(
   }
 }
 
-export function getWorktree(manifest: Manifest, id: string): WorktreeEntry | undefined {
+function getWorktree(manifest: Manifest, id: string): WorktreeEntry | undefined {
   return manifest.worktrees[id];
 }
 
-export function findWorktreeByName(manifest: Manifest, name: string): WorktreeEntry | undefined {
+function findWorktreeByName(manifest: Manifest, name: string): WorktreeEntry | undefined {
   return Object.values(manifest.worktrees).find(
     (wt) => wt.name === name || wt.branch === name,
   );

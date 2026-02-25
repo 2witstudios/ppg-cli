@@ -96,13 +96,3 @@ export class UnmergedWorkError extends PgError {
     this.name = 'UnmergedWorkError';
   }
 }
-
-export class SelfKillPreventedError extends PgError {
-  constructor(target: string) {
-    super(
-      `Refusing to kill tmux target ${target} — it contains the current ppg process`,
-      'SELF_KILL_PREVENTED',
-    );
-    this.name = 'SelfKillPreventedError';
-  }
-}

@@ -62,7 +62,7 @@ export async function removeWorktree(
   }
 }
 
-export async function listWorktrees(repoRoot: string): Promise<string[]> {
+async function listWorktrees(repoRoot: string): Promise<string[]> {
   const result = await execa('git', ['worktree', 'list', '--porcelain'], { ...execaEnv, cwd: repoRoot });
   return result.stdout
     .split('\n')
