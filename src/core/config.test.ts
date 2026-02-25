@@ -31,7 +31,6 @@ describe('loadConfig', () => {
     expect(config.defaultAgent).toBe('claude');
     expect(config.agents.claude).toBeDefined();
     expect(config.agents.claude.command).toBe('claude --dangerously-skip-permissions');
-    expect(config.worktreeBase).toBe('.worktrees');
     expect(config.symlinkNodeModules).toBe(true);
   });
 
@@ -47,7 +46,7 @@ defaultAgent: claude
     expect(config.sessionName).toBe('custom-session');
     // Defaults should still be present
     expect(config.agents.claude).toBeDefined();
-    expect(config.worktreeBase).toBe('.worktrees');
+    expect(config.symlinkNodeModules).toBe(true);
   });
 
   test('given override agents, should merge with default agents', async () => {
@@ -94,10 +93,6 @@ describe('resolveAgentConfig', () => {
         interactive: false,
       },
     },
-    worktreeBase: '.worktrees',
-    templateDir: '.pg/templates',
-    resultDir: '.pg/results',
-    logDir: '.pg/logs',
     envFiles: ['.env'],
     symlinkNodeModules: true,
   };
