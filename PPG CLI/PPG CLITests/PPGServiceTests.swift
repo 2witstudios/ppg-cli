@@ -12,7 +12,7 @@ final class PPGServiceTests: XCTestCase {
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempDir)
-        LaunchConfig.shared = LaunchConfig(manifestPath: "", sessionName: "", projectName: "", projectRoot: "", agentCommand: "")
+        LaunchConfig.shared = LaunchConfig(manifestPath: "", sessionName: "", projectName: "", projectRoot: "")
         super.tearDown()
     }
 
@@ -49,7 +49,7 @@ final class PPGServiceTests: XCTestCase {
 
     func testReadManifestWithValidJSON() {
         let path = writeFixture(validJSON)
-        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "ppg-test", projectName: "test", projectRoot: "", agentCommand: "")
+        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "ppg-test", projectName: "test", projectRoot: "")
         let manifest = PPGService.shared.readManifest()
         XCTAssertNotNil(manifest)
         XCTAssertEqual(manifest?.version, 1)
@@ -57,13 +57,13 @@ final class PPGServiceTests: XCTestCase {
     }
 
     func testReadManifestReturnsNilForNonexistentPath() {
-        LaunchConfig.shared = LaunchConfig(manifestPath: "/nonexistent/path.json", sessionName: "", projectName: "", projectRoot: "", agentCommand: "")
+        LaunchConfig.shared = LaunchConfig(manifestPath: "/nonexistent/path.json", sessionName: "", projectName: "", projectRoot: "")
         XCTAssertNil(PPGService.shared.readManifest())
     }
 
     func testReadManifestReturnsNilForMalformedJSON() {
         let path = writeFixture("{ not valid json }")
-        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "", projectName: "", projectRoot: "", agentCommand: "")
+        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "", projectName: "", projectRoot: "")
         XCTAssertNil(PPGService.shared.readManifest())
     }
 
@@ -87,7 +87,7 @@ final class PPGServiceTests: XCTestCase {
         }
         """
         let path = writeFixture(json)
-        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "s", projectName: "test", projectRoot: "", agentCommand: "")
+        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "s", projectName: "test", projectRoot: "")
         let worktrees = PPGService.shared.refreshStatus()
         XCTAssertEqual(worktrees.count, 2)
         XCTAssertEqual(worktrees[0].name, "first")
@@ -121,7 +121,7 @@ final class PPGServiceTests: XCTestCase {
         }
         """
         let path = writeFixture(json)
-        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "s", projectName: "test", projectRoot: "", agentCommand: "")
+        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "s", projectName: "test", projectRoot: "")
         let worktrees = PPGService.shared.refreshStatus()
         XCTAssertEqual(worktrees[0].agents.count, 2)
         XCTAssertEqual(worktrees[0].agents[0].id, "ag-a")
@@ -129,7 +129,7 @@ final class PPGServiceTests: XCTestCase {
     }
 
     func testRefreshStatusReturnsEmptyWhenMissing() {
-        LaunchConfig.shared = LaunchConfig(manifestPath: "/nonexistent", sessionName: "", projectName: "", projectRoot: "", agentCommand: "")
+        LaunchConfig.shared = LaunchConfig(manifestPath: "/nonexistent", sessionName: "", projectName: "", projectRoot: "")
         XCTAssertEqual(PPGService.shared.refreshStatus().count, 0)
     }
 }

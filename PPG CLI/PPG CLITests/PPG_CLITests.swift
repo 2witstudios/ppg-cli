@@ -137,13 +137,4 @@ final class LaunchConfigTests: XCTestCase {
         XCTAssertEqual(config.projectName, "root")
     }
 
-    func testAgentCommandDefaultIsEmpty() {
-        let config = LaunchConfig.parse(["app"])
-        XCTAssertEqual(config.agentCommand, "")
-    }
-
-    func testAgentCommandOverride() {
-        let config = LaunchConfig.parse(["app", "--agent-command", "my-agent --flag"])
-        XCTAssertEqual(config.agentCommand, "my-agent --flag")
-    }
 }

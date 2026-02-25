@@ -5,7 +5,7 @@ extension Notification.Name {
 }
 
 enum AppSettingsKey: String {
-    case agentCommand, refreshInterval
+    case refreshInterval
     case terminalFont, terminalFontSize, shell, historyLimit
 }
 
@@ -17,7 +17,6 @@ final class AppSettingsManager {
     // MARK: - Keys
 
     private enum Key {
-        static let agentCommand = "PPGAgentCommand"
         static let refreshInterval = "PPGRefreshInterval"
         static let terminalFont = "PPGTerminalFont"
         static let terminalFontSize = "PPGTerminalFontSize"
@@ -27,7 +26,6 @@ final class AppSettingsManager {
 
     // MARK: - Defaults
 
-    static let defaultAgentCommand = "claude --dangerously-skip-permissions"
     static let defaultRefreshInterval: Double = 2.0
     static let defaultTerminalFont = "Menlo"
     static let defaultTerminalFontSize: CGFloat = 13.0
@@ -37,11 +35,6 @@ final class AppSettingsManager {
     private init() {}
 
     // MARK: - Properties
-
-    var agentCommand: String {
-        get { defaults.string(forKey: Key.agentCommand) ?? Self.defaultAgentCommand }
-        set { defaults.set(newValue, forKey: Key.agentCommand); notify(.agentCommand) }
-    }
 
     var refreshInterval: Double {
         get {

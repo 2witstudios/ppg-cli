@@ -7,7 +7,6 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
     private var currentTabView: NSView?
 
     // Cached tab views (built once, reused)
-    private var generalView: NSView?
     private var terminalView: NSView?
     private var shortcutsView: NSView?
 
@@ -17,9 +16,6 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
     private let actions = BindableAction.allCases
     private var recordingRow: Int? = nil
     private var eventMonitor: Any? = nil
-
-    // General tab controls (retained for commitTextFields / live-update)
-    private var agentCommandField: NSTextField?
 
     // Terminal tab controls (retained for commitTextFields / live-update)
     private var fontSizeField: NSTextField?
@@ -39,10 +35,9 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         view.layer?.backgroundColor = terminalBackground.cgColor
 
         // Segmented control
-        segmentedControl.segmentCount = 3
-        segmentedControl.setLabel("General", forSegment: 0)
-        segmentedControl.setLabel("Terminal", forSegment: 1)
-        segmentedControl.setLabel("Shortcuts", forSegment: 2)
+        segmentedControl.segmentCount = 2
+        segmentedControl.setLabel("Terminal", forSegment: 0)
+        segmentedControl.setLabel("Shortcuts", forSegment: 1)
         segmentedControl.segmentStyle = .texturedRounded
         segmentedControl.selectedSegment = 0
         segmentedControl.target = self
@@ -98,12 +93,9 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         let tabView: NSView
         switch index {
         case 0:
-            if generalView == nil { generalView = makeGeneralView() }
-            tabView = generalView!
-        case 1:
             if terminalView == nil { terminalView = makeTerminalView() }
             tabView = terminalView!
-        case 2:
+        case 1:
             if shortcutsView == nil { shortcutsView = makeShortcutsView() }
             tabView = shortcutsView!
         default: return
@@ -118,47 +110,6 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
             tabView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
         ])
         currentTabView = tabView
-    }
-
-    // MARK: - General Tab
-
-    private func makeGeneralView() -> NSView {
-        let container = NSView()
-        let settings = AppSettingsManager.shared
-
-        // Agent Command
-        let cmdLabel = makeLabel("Agent Command:")
-        let cmdField = NSTextField()
-        cmdField.stringValue = settings.agentCommand
-        cmdField.placeholderString = "claude --dangerously-skip-permissions"
-        cmdField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        cmdField.translatesAutoresizingMaskIntoConstraints = false
-        cmdField.target = self
-        cmdField.action = #selector(agentCommandChanged(_:))
-        agentCommandField = cmdField
-
-        for v in [cmdLabel, cmdField] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(v)
-        }
-
-        NSLayoutConstraint.activate([
-            cmdLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-            cmdLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-
-            cmdField.topAnchor.constraint(equalTo: cmdLabel.bottomAnchor, constant: 6),
-            cmdField.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            cmdField.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
-
-        return container
-    }
-
-    @objc private func agentCommandChanged(_ sender: NSTextField) {
-        let value = sender.stringValue.trimmingCharacters(in: .whitespaces)
-        AppSettingsManager.shared.agentCommand = value.isEmpty
-            ? AppSettingsManager.defaultAgentCommand
-            : value
     }
 
     // MARK: - Terminal Tab
@@ -370,9 +321,6 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
 
     private func commitTextFields() {
         // Commit any in-flight text field edits
-        if let field = agentCommandField {
-            agentCommandChanged(field)
-        }
         if let field = shellField {
             shellChanged(field)
         }

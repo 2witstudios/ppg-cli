@@ -111,19 +111,17 @@ nonisolated class AgentModel: @unchecked Sendable {
 // MARK: - LaunchConfig
 
 nonisolated struct LaunchConfig: Sendable {
-    nonisolated(unsafe) static var shared = LaunchConfig(manifestPath: "", sessionName: "", projectName: "", projectRoot: "", agentCommand: "")
+    nonisolated(unsafe) static var shared = LaunchConfig(manifestPath: "", sessionName: "", projectName: "", projectRoot: "")
 
     let manifestPath: String
     let sessionName: String
     let projectName: String
     let projectRoot: String
-    let agentCommand: String
 
     static func parse(_ args: [String]) -> LaunchConfig {
         var manifestPath = ""
         var sessionName = ""
         var projectRoot = ""
-        var agentCommand = ""
 
         var i = 0
         while i < args.count {
@@ -135,9 +133,6 @@ nonisolated struct LaunchConfig: Sendable {
                 i += 2
             } else if args[i] == "--project-root", i + 1 < args.count {
                 projectRoot = args[i + 1]
-                i += 2
-            } else if args[i] == "--agent-command", i + 1 < args.count {
-                agentCommand = args[i + 1]
                 i += 2
             } else {
                 i += 1
@@ -160,7 +155,7 @@ nonisolated struct LaunchConfig: Sendable {
             projectName = ""
         }
 
-        return LaunchConfig(manifestPath: manifestPath, sessionName: sessionName, projectName: projectName, projectRoot: projectRoot, agentCommand: agentCommand)
+        return LaunchConfig(manifestPath: manifestPath, sessionName: sessionName, projectName: projectName, projectRoot: projectRoot)
     }
 }
 
@@ -177,7 +172,6 @@ nonisolated class ProjectState: @unchecked Sendable {
     private(set) var manifestPath: String = ""
     private(set) var sessionName: String = ""
     private(set) var projectName: String = ""
-    private(set) var agentCommand: String = ""
 
     var isConfigured: Bool {
         !projectRoot.isEmpty && projectRoot != "/"
@@ -188,7 +182,6 @@ nonisolated class ProjectState: @unchecked Sendable {
         manifestPath = config.manifestPath
         sessionName = config.sessionName
         projectName = config.projectName
-        agentCommand = config.agentCommand
     }
 
     func switchProject(root: String) {
@@ -259,22 +252,9 @@ class ProjectContext {
     var sessionName: String
     let dashboardSession: DashboardSession
 
-    /// CLI --agent-command override takes priority, then AppSettingsManager, then hardcoded default.
-    /// Computed so settings changes take effect immediately without reopening the project.
-    var agentCommand: String {
-        agentCommand(for: .claude)
-    }
-
-    /// Variant-aware command resolution.
-    /// CLI --agent-command and settings override only apply to Claude (backward compat).
+    /// Each variant defines its own default command in AgentVariant.
     func agentCommand(for variant: AgentVariant) -> String {
-        if variant.id == "claude" {
-            let cliCommand = ProjectState.shared.agentCommand
-            if !cliCommand.isEmpty { return cliCommand }
-            let settingsCommand = AppSettingsManager.shared.agentCommand
-            if !settingsCommand.isEmpty { return settingsCommand }
-        }
-        return variant.defaultCommand
+        variant.defaultCommand
     }
 
     init(projectRoot: String) {
