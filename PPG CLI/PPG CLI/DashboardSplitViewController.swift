@@ -592,7 +592,8 @@ class DashboardSplitViewController: NSSplitViewController {
 
         // In grid mode, only update status on entries already visible in the grid — never
         // call showEntry() which would auto-fill or steal pane content.
-        // Grid updates bypass dedup; single-pane deduplicates on status+label fingerprint.
+        // Both grid and single-pane updates route through updateCurrentEntry,
+        // which deduplicates on status+label fingerprint.
         if content.isGridMode {
             if let entry = entry {
                 content.updateCurrentEntry(entry)

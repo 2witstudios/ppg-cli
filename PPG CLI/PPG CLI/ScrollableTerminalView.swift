@@ -26,6 +26,8 @@ class ScrollableTerminalView: NSView {
     private var scrollFlushTimer: DispatchSourceTimer?
     /// Whether tearDown() has been called.
     private var tornDown = false
+    /// Approximate pixels of trackpad scroll delta per terminal scroll tick.
+    private static let pixelsPerScrollTick: CGFloat = 30
 
     init(frame: NSRect, terminalView: LocalProcessTerminalView? = nil) {
         self.terminalView = terminalView ?? LocalProcessTerminalView(frame: frame)
@@ -170,9 +172,9 @@ class ScrollableTerminalView: NSView {
         let x = max(0, min(Int(localPoint.x / cellWidth), term.cols - 1))
         let y = max(0, min(Int((terminalView.bounds.height - localPoint.y) / cellHeight), term.rows - 1))
 
-        // Send proportional number of scroll events (1 per ~30px of accumulated delta).
+        // Send proportional number of scroll events based on accumulated delta.
         // This preserves scroll speed while batching to one frame.
-        let ticks = max(1, Int(abs(delta) / 30.0))
+        let ticks = max(1, Int(abs(delta) / Self.pixelsPerScrollTick))
         for _ in 0..<ticks {
             term.sendEvent(buttonFlags: flags, x: x, y: y)
         }

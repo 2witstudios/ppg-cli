@@ -111,7 +111,7 @@ class ContentViewController: NSViewController {
         ])
 
         // Start the periodic eviction timer for idle completed-agent terminals
-        evictionTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+        evictionTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             self?.evictStaleTerminals()
         }
     }
@@ -130,13 +130,17 @@ class ContentViewController: NSViewController {
             return Set(grid.root.allLeafIds().compactMap { grid.root.entry(forLeafId: $0)?.id })
         }()
 
+        // Collect IDs before mutating to avoid dictionary-mutation-during-iteration crash
+        var toEvict: [String] = []
         for (id, state) in terminalTracking {
             let status = state.evictionStatus
             guard status == .completed || status == .killed || status == .failed else { continue }
             guard id != visibleId, !gridVisibleIds.contains(id) else { continue }
             guard now.timeIntervalSince(state.lastAccess) > Self.evictionDelay else { continue }
+            toEvict.append(id)
+        }
 
-            // Evict: explicitly tear down and remove cached view
+        for id in toEvict {
             if let termView = terminalViews[id] {
                 tearDownTerminal(termView)
                 termView.removeFromSuperview()

@@ -162,7 +162,8 @@ class PaneGridController: NSViewController {
 
     /// Caches: leafId -> PaneCellView
     private(set) var cellViews: [String: PaneCellView] = [:]
-    /// Caches: re-usable NSSplitViews keyed by a structural path
+    /// Caches: re-usable NSSplitViews keyed by a structural path.
+    /// Only populated/used by rebuild(). Incremental split/close paths bypass this cache.
     private var splitViews: [String: NSSplitView] = [:]
     /// Local event monitor for tracking focus via mouse clicks inside terminal views
     private var mouseMonitor: Any?
