@@ -11,7 +11,8 @@ const program = new Command();
 program
   .name('ppg')
   .description('Pure Point Guard — local orchestration runtime for parallel CLI coding agents')
-  .version(pkg.version);
+  .version(pkg.version)
+  .option('--json', 'Output as JSON');
 
 program
   .command('init')
@@ -280,7 +281,7 @@ async function main() {
         process.exit(0);
       }
     }
-    outputError(err, false);
+    outputError(err, program.opts().json ?? false);
     process.exit(1);
   }
 }
