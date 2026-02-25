@@ -20,8 +20,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isOpaque = false
         window.isRestorable = false
 
-        AppSettingsManager.shared.applyAppearance()
-
         let toolbar = NSToolbar(identifier: "MainToolbar")
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar

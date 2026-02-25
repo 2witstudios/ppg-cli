@@ -9,6 +9,7 @@ dist/
 .pg/logs/
 .pg/manifest.json
 .pg/prompts/
+.pg/agent-prompts/
 .pg/dashboard-sessions.json
 
 # Xcode

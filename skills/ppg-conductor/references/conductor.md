@@ -1,6 +1,6 @@
 # Conductor Loop Protocol
 
-The conductor loop has 5 phases: Spawn, Poll, Aggregate, Merge, Summary.
+The conductor loop has 5 phases: Spawn, Poll, Aggregate, Present, Summary.
 
 ## Phase 1: Spawn
 
@@ -129,40 +129,42 @@ Returns:
 - For failed agents, show what went wrong
 - Keep individual results available for the user to drill into
 
-## Phase 4: Merge (Batch Mode Only)
+## Phase 4: Present Results
 
-Swarm mode typically skips merge — the output is advisory. Only merge in swarm mode if agents were explicitly asked to make code changes AND the user confirms.
+**Stop here and let the user decide.** Do NOT auto-merge or auto-PR.
+
+**For swarm mode:**
+- Present synthesized findings
+- The output is advisory — typically no further action needed
+- If agents made code changes, ask the user what to do with them
 
 **For batch mode:**
 
-Present a merge checklist:
+Present a results table:
 ```
-Ready to merge:
-  [1] fix-auth-bug (wt-abc123) — ppg/fix-auth-bug — completed
-  [2] add-dark-mode (wt-def456) — ppg/add-dark-mode — completed
+Completed:
+  [1] fix-auth-bug (wt-abc123) — ppg/fix-auth-bug
+  [2] add-dark-mode (wt-def456) — ppg/add-dark-mode
 
-Cannot merge:
-  [3] issue-15 (wt-ghi789) — ppg/issue-15 — failed
+Failed:
+  [3] issue-15 (wt-ghi789) — ppg/issue-15
 
-Which would you like to merge? (e.g., "1,2" or "all" or "none")
+What would you like to do?
+  - Create PRs: "pr 1,2" or "pr all"
+  - Merge directly: "merge 1,2" or "merge all"
+  - Review diffs first: "diff 1"
+  - Do nothing for now
 ```
 
-Wait for user confirmation, then merge each confirmed worktree:
+**When the user chooses PRs:**
+```bash
+ppg pr <wt-id> --json
+```
+This pushes the branch and creates a GitHub PR. The worktree stays alive for the PR lifecycle.
 
+**When the user chooses direct merge:**
 ```bash
 ppg merge <wt-id> --json
-```
-
-Returns:
-```json
-{
-  "success": true,
-  "worktreeId": "wt-abc123",
-  "branch": "ppg/fix-auth-bug",
-  "baseBranch": "main",
-  "strategy": "squash",
-  "cleaned": true
-}
 ```
 
 **Merge conflict handling:**
@@ -171,11 +173,12 @@ Returns:
 - Offer options: "resolve manually", "skip this merge", "force merge"
 - **Never auto-resolve conflicts** — the user must decide
 
-**PR alternative:** If the user prefers PRs over direct merges, use `gh pr create` instead:
+**Cleanup after PRs are merged externally:**
 ```bash
-gh pr create --head ppg/<name> --title "<title>" --body "<description from agent results>"
+ppg reset --json        # Refuses if unmerged work exists
+ppg reset --force --json  # Force cleanup
+ppg clean --json        # Clean only terminal-state worktrees
 ```
-Do NOT run `ppg merge` if creating PRs — the worktree and branch need to stay alive.
 
 ## Phase 5: Summary
 

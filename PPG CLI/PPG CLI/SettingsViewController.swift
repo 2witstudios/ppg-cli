@@ -20,7 +20,6 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
 
     // General tab controls (retained for commitTextFields / live-update)
     private var agentCommandField: NSTextField?
-    private var refreshValueLabel: NSTextField?
 
     // Terminal tab controls (retained for commitTextFields / live-update)
     private var fontSizeField: NSTextField?
@@ -138,36 +137,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         cmdField.action = #selector(agentCommandChanged(_:))
         agentCommandField = cmdField
 
-        // Appearance
-        let appLabel = makeLabel("Appearance:")
-        let appControl = NSSegmentedControl()
-        appControl.segmentCount = 3
-        appControl.setLabel("System", forSegment: 0)
-        appControl.setLabel("Light", forSegment: 1)
-        appControl.setLabel("Dark", forSegment: 2)
-        appControl.segmentStyle = .texturedRounded
-        switch settings.appearance {
-        case "system": appControl.selectedSegment = 0
-        case "light": appControl.selectedSegment = 1
-        default: appControl.selectedSegment = 2  // dark
-        }
-        appControl.target = self
-        appControl.action = #selector(appearanceChanged(_:))
-        appControl.translatesAutoresizingMaskIntoConstraints = false
-
-        // Refresh Interval
-        let refLabel = makeLabel("Refresh Interval:")
-        let slider = NSSlider(value: settings.refreshInterval, minValue: 0.5, maxValue: 10.0, target: self, action: #selector(refreshSliderChanged(_:)))
-        slider.isContinuous = true
-        slider.translatesAutoresizingMaskIntoConstraints = false
-
-        let valLabel = NSTextField(labelWithString: String(format: "%.1fs", settings.refreshInterval))
-        valLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        valLabel.textColor = terminalForeground
-        valLabel.translatesAutoresizingMaskIntoConstraints = false
-        refreshValueLabel = valLabel
-
-        for v in [cmdLabel, cmdField, appLabel, appControl, refLabel, slider, valLabel] {
+        for v in [cmdLabel, cmdField] {
             v.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(v)
         }
@@ -179,23 +149,6 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
             cmdField.topAnchor.constraint(equalTo: cmdLabel.bottomAnchor, constant: 6),
             cmdField.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             cmdField.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-
-            appLabel.topAnchor.constraint(equalTo: cmdField.bottomAnchor, constant: 20),
-            appLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-
-            appControl.topAnchor.constraint(equalTo: appLabel.bottomAnchor, constant: 6),
-            appControl.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-
-            refLabel.topAnchor.constraint(equalTo: appControl.bottomAnchor, constant: 20),
-            refLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-
-            slider.topAnchor.constraint(equalTo: refLabel.bottomAnchor, constant: 6),
-            slider.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            slider.trailingAnchor.constraint(equalTo: valLabel.leadingAnchor, constant: -8),
-
-            valLabel.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
-            valLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            valLabel.widthAnchor.constraint(equalToConstant: 50),
         ])
 
         return container
@@ -206,20 +159,6 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         AppSettingsManager.shared.agentCommand = value.isEmpty
             ? AppSettingsManager.defaultAgentCommand
             : value
-    }
-
-    @objc private func appearanceChanged(_ sender: NSSegmentedControl) {
-        let values = ["system", "light", "dark"]
-        AppSettingsManager.shared.appearance = values[sender.selectedSegment]
-    }
-
-    @objc private func refreshSliderChanged(_ sender: NSSlider) {
-        let value = round(sender.doubleValue * 2) / 2  // snap to 0.5 increments
-        refreshValueLabel?.stringValue = String(format: "%.1fs", value)
-
-        // Only persist on mouse-up to avoid timer churn during drag
-        guard let event = NSApp.currentEvent, event.type != .leftMouseDragged else { return }
-        AppSettingsManager.shared.refreshInterval = value
     }
 
     // MARK: - Terminal Tab

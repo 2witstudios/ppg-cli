@@ -166,6 +166,30 @@ program
   });
 
 program
+  .command('pr')
+  .description('Create a GitHub PR from a worktree branch')
+  .argument('<worktree-id>', 'Worktree ID or name')
+  .option('--title <text>', 'PR title (default: worktree name)')
+  .option('--body <text>', 'PR body (default: agent result content)')
+  .option('--draft', 'Create as draft PR')
+  .option('--json', 'Output as JSON')
+  .action(async (worktreeId, options) => {
+    const { prCommand } = await import('./commands/pr.js');
+    await prCommand(worktreeId, options);
+  });
+
+program
+  .command('reset')
+  .description('Kill all agents, remove all worktrees, and wipe manifest')
+  .option('--force', 'Reset even if worktrees have unmerged/un-PR\'d work')
+  .option('--prune', 'Also run git worktree prune')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { resetCommand } = await import('./commands/reset.js');
+    await resetCommand(options);
+  });
+
+program
   .command('clean')
   .description('Remove worktrees in terminal states (merged/cleaned/failed)')
   .option('--all', 'Also clean failed worktrees')

@@ -5,7 +5,7 @@ extension Notification.Name {
 }
 
 enum AppSettingsKey: String {
-    case agentCommand, refreshInterval, appearance
+    case agentCommand, refreshInterval
     case terminalFont, terminalFontSize, shell, historyLimit
 }
 
@@ -19,7 +19,6 @@ final class AppSettingsManager {
     private enum Key {
         static let agentCommand = "PPGAgentCommand"
         static let refreshInterval = "PPGRefreshInterval"
-        static let appearance = "PPGAppearance"
         static let terminalFont = "PPGTerminalFont"
         static let terminalFontSize = "PPGTerminalFontSize"
         static let shell = "PPGShell"
@@ -30,7 +29,6 @@ final class AppSettingsManager {
 
     static let defaultAgentCommand = "claude --dangerously-skip-permissions"
     static let defaultRefreshInterval: Double = 2.0
-    static let defaultAppearance = "dark"
     static let defaultTerminalFont = "Menlo"
     static let defaultTerminalFontSize: CGFloat = 13.0
     static let defaultShell = "/bin/zsh"
@@ -51,11 +49,6 @@ final class AppSettingsManager {
             return val > 0 ? val : Self.defaultRefreshInterval
         }
         set { defaults.set(newValue, forKey: Key.refreshInterval); notify(.refreshInterval) }
-    }
-
-    var appearance: String {
-        get { defaults.string(forKey: Key.appearance) ?? Self.defaultAppearance }
-        set { defaults.set(newValue, forKey: Key.appearance); notify(.appearance); applyAppearance() }
     }
 
     var terminalFontName: String {
@@ -82,22 +75,6 @@ final class AppSettingsManager {
             return val > 0 ? val : Self.defaultHistoryLimit
         }
         set { defaults.set(newValue, forKey: Key.historyLimit); notify(.historyLimit) }
-    }
-
-    // MARK: - Appearance
-
-    func applyAppearance() {
-        let appearanceName: NSAppearance.Name?
-        switch appearance {
-        case "light": appearanceName = .aqua
-        case "dark": appearanceName = .darkAqua
-        default: appearanceName = nil  // system
-        }
-
-        let resolved = appearanceName.flatMap { NSAppearance(named: $0) }
-        for window in NSApp.windows {
-            window.appearance = resolved
-        }
     }
 
     // MARK: - Notification

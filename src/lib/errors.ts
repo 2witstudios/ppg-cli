@@ -75,3 +75,34 @@ export class MergeFailedError extends PgError {
     this.name = 'MergeFailedError';
   }
 }
+
+export class GhNotFoundError extends PgError {
+  constructor() {
+    super(
+      'GitHub CLI (gh) is not installed or not in PATH. Install it with: brew install gh',
+      'GH_NOT_FOUND',
+    );
+    this.name = 'GhNotFoundError';
+  }
+}
+
+export class UnmergedWorkError extends PgError {
+  constructor(names: string[]) {
+    const list = names.map((n) => `  ${n}`).join('\n');
+    super(
+      `${names.length} worktree(s) have completed work that hasn't been merged or PR'd:\n${list}\n\nUse --force to reset anyway, or create PRs first with: ppg pr <worktree-id>`,
+      'UNMERGED_WORK',
+    );
+    this.name = 'UnmergedWorkError';
+  }
+}
+
+export class SelfKillPreventedError extends PgError {
+  constructor(target: string) {
+    super(
+      `Refusing to kill tmux target ${target} — it contains the current ppg process`,
+      'SELF_KILL_PREVENTED',
+    );
+    this.name = 'SelfKillPreventedError';
+  }
+}

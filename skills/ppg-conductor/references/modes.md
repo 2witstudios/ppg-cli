@@ -81,11 +81,14 @@ Each command creates a separate worktree on its own `ppg/<name>` branch.
 **Post-completion:**
 1. Aggregate results: `ppg aggregate --all --json`
 2. Present a summary table: task name, status, branch, key findings
-3. Present a **merge checklist** — list each worktree with its status and ask which to merge
-4. Merge confirmed ones: `ppg merge <wt-id> --json` (squash by default)
-5. Optionally create PRs: `gh pr create --head ppg/<name> --title "..." --body "..."` (if user wants PRs instead of direct merges)
+3. **Stop and ask the user what to do next.** Options:
+   - Create PRs: `ppg pr <wt-id> --json` (pushes branch, creates GitHub PR)
+   - Merge directly: `ppg merge <wt-id> --json` (squash by default)
+   - Review diffs first: `ppg diff <wt-id> --json`
+   - Do nothing — leave worktrees for manual review
+4. After PRs are merged externally: `ppg reset --json` to clean up
 
-**Important:** In batch mode, always surface results and get user confirmation before merging. The user may want to review diffs, skip some tasks, or create PRs instead.
+**Important:** Never auto-merge or auto-PR. Always present results and let the user choose the next step.
 
 ## GitHub Issue Integration
 

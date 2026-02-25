@@ -92,17 +92,34 @@ export async function capturePane(target: string, lines?: number): Promise<strin
 export async function killPane(target: string): Promise<void> {
   try {
     await execa('tmux', ['kill-pane', '-t', target], execaEnv);
-  } catch {
-    // Pane may already be dead
+  } catch (err) {
+    if (isTmuxNotFoundError(err)) return;
+    throw err;
   }
 }
 
 export async function killWindow(target: string): Promise<void> {
   try {
     await execa('tmux', ['kill-window', '-t', target], execaEnv);
-  } catch {
-    // Window may already be dead
+  } catch (err) {
+    if (isTmuxNotFoundError(err)) return;
+    throw err;
   }
+}
+
+/**
+ * Check if a tmux error is a benign "not found" error (target already dead/gone).
+ * Returns true for errors that should be silently ignored.
+ */
+function isTmuxNotFoundError(err: unknown): boolean {
+  if (!(err instanceof ExecaError)) return false;
+  const msg = (String(err.stderr ?? '')).toLowerCase();
+  return msg.includes("can't find") ||
+    msg.includes('not found') ||
+    msg.includes('no such') ||
+    msg.includes('session not found') ||
+    msg.includes('window not found') ||
+    msg.includes('pane not found');
 }
 
 export interface PaneInfo {

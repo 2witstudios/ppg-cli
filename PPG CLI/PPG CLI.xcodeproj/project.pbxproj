@@ -35,7 +35,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		8AF4C8BA6C0F4BED8B6A7661 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		8AF4C8BA6C0F4BED8B6A7661 /* Exceptions for "PPG CLI" folder in "PPG CLI" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -48,7 +48,7 @@
 		FB6FFC062F4C81C600C8D98B /* PPG CLI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				8AF4C8BA6C0F4BED8B6A7661 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+				8AF4C8BA6C0F4BED8B6A7661 /* Exceptions for "PPG CLI" folder in "PPG CLI" target */,
 			);
 			path = "PPG CLI";
 			sourceTree = "<group>";

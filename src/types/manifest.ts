@@ -37,6 +37,7 @@ export interface WorktreeEntry {
   baseBranch: string;
   status: WorktreeStatus;
   tmuxWindow: string;
+  prUrl?: string;
   agents: Record<string, AgentEntry>;
   createdAt: string;
   mergedAt?: string;

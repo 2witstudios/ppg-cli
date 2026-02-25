@@ -168,6 +168,77 @@ ppg aggregate <worktree-id> --json      # Specific worktree
 
 Results come from `.pg/results/<agentId>.md`. If no result file exists, falls back to tmux pane capture.
 
+## ppg pr
+
+Create a GitHub PR from a worktree's branch. Pushes the branch to origin and runs `gh pr create`.
+
+```bash
+ppg pr <wt-id> --json                          # Create PR (title = worktree name, body = agent results)
+ppg pr <wt-id> --title "Fix auth bug" --json   # Custom title
+ppg pr <wt-id> --body "Description" --json     # Custom body
+ppg pr <wt-id> --draft --json                  # Create as draft PR
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--title <text>` | PR title (default: worktree name) |
+| `--body <text>` | PR body (default: agent result file content) |
+| `--draft` | Create as draft PR |
+| `--json` | JSON output |
+
+**JSON output:**
+```json
+{
+  "success": true,
+  "worktreeId": "wt-abc123",
+  "branch": "ppg/fix-auth-bug",
+  "baseBranch": "main",
+  "prUrl": "https://github.com/user/repo/pull/42"
+}
+```
+
+**Errors:** `WORKTREE_NOT_FOUND`, `INVALID_ARGS` (gh not installed, push failed, PR creation failed)
+
+**Notes:**
+- Requires GitHub CLI (`gh`) to be installed and authenticated
+- Stores the PR URL in the manifest (`prUrl` field on the worktree entry)
+- Does NOT merge or clean up the worktree — the branch stays alive for the PR lifecycle
+
+## ppg reset
+
+Nuclear cleanup: kill all agents, remove all worktrees, wipe manifest entries. Includes safety checks.
+
+```bash
+ppg reset --json                    # Reset (refuses if unmerged/un-PR'd work exists)
+ppg reset --force --json            # Force reset even with unmerged work
+ppg reset --force --prune --json    # Force reset + git worktree prune
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Reset even if worktrees have completed work that hasn't been merged or PR'd |
+| `--prune` | Also run `git worktree prune` |
+| `--json` | JSON output |
+
+**JSON output:**
+```json
+{
+  "success": true,
+  "killed": ["ag-xyz12345", "ag-abc67890"],
+  "removed": ["wt-abc123", "wt-def456"],
+  "warned": ["fix-auth-bug"],
+  "pruned": false
+}
+```
+
+**Safety:** Without `--force`, refuses to reset if any worktree has completed agents but no PR URL and isn't merged. This prevents accidental loss of work.
+
+**Errors:** `NOT_INITIALIZED`, `AGENTS_RUNNING` (without `--force`, when unmerged work exists)
+
 ## ppg merge
 
 Merge a worktree's branch back into its base branch. Default strategy is squash.

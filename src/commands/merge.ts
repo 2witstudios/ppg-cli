@@ -3,6 +3,8 @@ import { readManifest, updateManifest, resolveWorktree } from '../core/manifest.
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
+import { getCurrentPaneId } from '../core/self.js';
+import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
 import { PgError, NotInitializedError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import { execaEnv } from '../lib/env.js';
@@ -100,10 +102,23 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
     return m;
   });
 
-  // Cleanup
+  // Cleanup with self-protection
+  let selfProtected = false;
   if (options.cleanup !== false) {
     info('Cleaning up...');
-    await cleanupWorktree(projectRoot, wt);
+
+    const selfPaneId = getCurrentPaneId();
+    let paneMap: Map<string, PaneInfo> | undefined;
+    if (selfPaneId) {
+      paneMap = await listSessionPanes(manifest.sessionName);
+    }
+
+    const cleanupResult = await cleanupWorktree(projectRoot, wt, { selfPaneId, paneMap });
+    selfProtected = cleanupResult.selfProtected;
+
+    if (selfProtected) {
+      warn(`Some tmux targets skipped during cleanup — contains current ppg process`);
+    }
     success(`Cleaned up worktree ${wt.id}`);
   }
 
@@ -115,6 +130,7 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
       baseBranch: wt.baseBranch,
       strategy,
       cleaned: options.cleanup !== false,
+      selfProtected: selfProtected || undefined,
     }, true);
   }
 }

@@ -38,7 +38,7 @@ After classifying the mode:
 2. Read the CLI command reference at `~/.claude/skills/ppg-conductor/references/commands.md`
 3. Decompose the user's request into concrete tasks (names + prompts)
 4. **Spawn immediately** — do not ask for confirmation. The user invoked `/ppg` which signals intent to run.
-5. Drive the full spawn -> poll -> aggregate -> merge loop
+5. Drive the full spawn -> poll -> aggregate -> present loop
 
 ## Core Principles
 
@@ -46,7 +46,8 @@ After classifying the mode:
 - **Always use `--no-open`** to suppress Terminal.app windows (you're driving programmatically, not watching panes)
 - **Poll every 5 seconds** — `ppg status --json` in a loop until all agents reach a terminal state
 - **One concern per worktree** — in batch mode, each task gets its own isolated worktree for clean merges
-- **Surface results before merging** — always show the user what agents produced before offering to merge
+- **Surface results and let the user decide next steps** — present what agents produced, then ask: create PRs, merge directly, review diffs, or do nothing
+- **Never auto-merge or auto-PR** — always stop after presenting results and wait for the user to choose
 - **Report failures clearly** — if an agent fails, show its ID, the error, and offer to re-spawn or skip
 - **Never auto-resolve merge conflicts** — escalate to the user with the conflict details
 - **Prompt quality matters** — each agent prompt must be self-contained with full context. The agent has no memory of this conversation.

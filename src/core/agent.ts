@@ -239,11 +239,20 @@ export async function resumeAgent(options: ResumeAgentOptions): Promise<string> 
 }
 
 export async function killAgent(agent: AgentEntry): Promise<void> {
-  // Send Ctrl-C first
-  await tmux.sendCtrlC(agent.tmuxTarget);
+  // Check if pane exists before attempting to kill
+  const initialInfo = await getPaneInfo(agent.tmuxTarget);
+  if (!initialInfo || initialInfo.isDead) return;
 
-  // Wait a moment
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  // Send Ctrl-C first (pane may die between check and send)
+  try {
+    await tmux.sendCtrlC(agent.tmuxTarget);
+  } catch {
+    // Pane died between check and send — already gone
+    return;
+  }
+
+  // Wait for graceful shutdown (Claude Code needs more time)
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Check if still alive
   const paneInfo = await getPaneInfo(agent.tmuxTarget);
@@ -259,14 +268,22 @@ export async function killAgent(agent: AgentEntry): Promise<void> {
 export async function killAgents(agents: AgentEntry[]): Promise<void> {
   if (agents.length === 0) return;
 
-  // Send Ctrl-C to all agents in parallel
-  await Promise.all(agents.map((a) => tmux.sendCtrlC(a.tmuxTarget).catch(() => {})));
+  // Filter to only agents with live panes
+  const alive: AgentEntry[] = [];
+  await Promise.all(agents.map(async (a) => {
+    const info = await getPaneInfo(a.tmuxTarget);
+    if (info && !info.isDead) alive.push(a);
+  }));
+  if (alive.length === 0) return;
 
-  // Single wait
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  // Send Ctrl-C to all live agents in parallel (catch pane-died-between-check-and-send)
+  await Promise.all(alive.map((a) => tmux.sendCtrlC(a.tmuxTarget).catch(() => {})));
+
+  // Wait for graceful shutdown (Claude Code needs more time)
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Check and force-kill survivors in parallel
-  await Promise.all(agents.map(async (a) => {
+  await Promise.all(alive.map(async (a) => {
     const paneInfo = await getPaneInfo(a.tmuxTarget);
     if (paneInfo && !paneInfo.isDead) {
       await tmux.killPane(a.tmuxTarget);

@@ -23,15 +23,21 @@ You are operating on the master branch of a ppg-managed project.
 - \`ppg spawn --name <name> --prompt "<task>" --json --no-open\` — Spawn worktree + agent
 - \`ppg status --json\` — Check statuses
 - \`ppg aggregate --all --json\` — Collect results
-- \`ppg merge <wt-id> --json\` — Merge completed work
+- \`ppg pr <wt-id> --json\` — Create PR from worktree branch
 - \`ppg kill --agent <id> --json\` — Kill agent
+- \`ppg reset --json\` — Clean up all worktrees
 
 ## Workflow
 1. Break request into parallelizable tasks
 2. Spawn each: \`ppg spawn --name <name> --prompt "<self-contained prompt>" --json --no-open\`
 3. Poll: \`ppg status --json\` every 5s
 4. Aggregate: \`ppg aggregate --all --json\`
-5. Present results, then merge confirmed worktrees
+5. Present results to the user and ask what they'd like to do next
+6. If the user wants PRs: \`ppg pr <wt-id> --json\`
+7. If the user wants direct merge: \`ppg merge <wt-id> --json\`
+8. Cleanup when done: \`ppg reset --json\` or \`ppg clean --json\`
+
+**Stop at step 5** — do not auto-merge or auto-PR. Let the user decide.
 
 Each agent prompt must be self-contained — agents have no memory of this conversation.
 Always use \`--json --no-open\`.
