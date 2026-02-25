@@ -33,7 +33,7 @@ enum TabEntry {
 
 class ContentViewController: NSViewController {
     let placeholderLabel = NSTextField(labelWithString: "Select an item from the sidebar")
-    private let containerView = NSView()
+    private let containerView = HoverableContainerView()
     private(set) var currentEntry: TabEntry?
     private var terminalViews: [String: NSView] = [:]
     private var worktreeDetailView: WorktreeDetailView?
@@ -114,6 +114,11 @@ class ContentViewController: NSViewController {
         evictionTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             self?.evictStaleTerminals()
         }
+
+        // Wire hover overlay callbacks on the container
+        containerView.onSplitHorizontal = { [weak self] in self?.splitPaneBelow() }
+        containerView.onSplitVertical = { [weak self] in self?.splitPaneRight() }
+        containerView.onClose = { [weak self] in self?.showEntry(nil) }
     }
 
     deinit {
@@ -788,6 +793,78 @@ class ContentViewController: NSViewController {
         } else if let localTerm = view as? LocalProcessTerminalView {
             localTerm.process?.terminate()
         }
+    }
+}
+
+// MARK: - Hoverable Container View
+
+/// A container view that shows a PaneHoverOverlay on mouse hover.
+/// Used in single-pane mode to provide split/close buttons without
+/// overriding the view controller's responder chain.
+class HoverableContainerView: NSView {
+    var onSplitHorizontal: (() -> Void)?
+    var onSplitVertical: (() -> Void)?
+    var onClose: (() -> Void)?
+
+    private var hoverOverlay: PaneHoverOverlay?
+    private var hoverTrackingArea: NSTrackingArea?
+    private var fadeOutWork: DispatchWorkItem?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = hoverTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        fadeOutWork?.cancel()
+        showOverlay()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        scheduleHide()
+    }
+
+    override func layout() {
+        super.layout()
+        hoverOverlay?.updatePosition(in: bounds)
+    }
+
+    private func showOverlay() {
+        if hoverOverlay == nil {
+            let overlay = PaneHoverOverlay()
+            overlay.onSplitHorizontal = { [weak self] in self?.onSplitHorizontal?() }
+            overlay.onSplitVertical = { [weak self] in self?.onSplitVertical?() }
+            overlay.onClose = { [weak self] in self?.onClose?() }
+            addSubview(overlay)
+            overlay.updatePosition(in: bounds)
+            hoverOverlay = overlay
+        }
+        hoverOverlay?.updateSplitAvailability(canSplitH: true, canSplitV: true)
+        hoverOverlay?.animator().alphaValue = 1
+    }
+
+    private func scheduleHide() {
+        fadeOutWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                self?.hoverOverlay?.animator().alphaValue = 0
+            }
+        }
+        fadeOutWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 }
 

@@ -19,19 +19,11 @@
 			remoteGlobalIDString = FB6FFC032F4C81C600C8D98B;
 			remoteInfo = "PPG CLI";
 		};
-		FB6FFC1C2F4C81C800C8D98B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = FB6FFBFC2F4C81C600C8D98B /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = FB6FFC032F4C81C600C8D98B;
-			remoteInfo = "PPG CLI";
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		FB6FFC042F4C81C600C8D98B /* PPG CLI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PPG CLI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FB6FFC112F4C81C800C8D98B /* PPG CLITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PPG CLITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		FB6FFC1B2F4C81C800C8D98B /* PPG CLIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PPG CLIUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -58,11 +50,6 @@
 			path = "PPG CLITests";
 			sourceTree = "<group>";
 		};
-		FB6FFC1E2F4C81C800C8D98B /* PPG CLIUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "PPG CLIUITests";
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,13 +69,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FB6FFC182F4C81C800C8D98B /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -97,7 +77,6 @@
 			children = (
 				FB6FFC062F4C81C600C8D98B /* PPG CLI */,
 				FB6FFC142F4C81C800C8D98B /* PPG CLITests */,
-				FB6FFC1E2F4C81C800C8D98B /* PPG CLIUITests */,
 				FB6FFC052F4C81C600C8D98B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -107,7 +86,6 @@
 			children = (
 				FB6FFC042F4C81C600C8D98B /* PPG CLI.app */,
 				FB6FFC112F4C81C800C8D98B /* PPG CLITests.xctest */,
-				FB6FFC1B2F4C81C800C8D98B /* PPG CLIUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -162,29 +140,6 @@
 			productReference = FB6FFC112F4C81C800C8D98B /* PPG CLITests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		FB6FFC1A2F4C81C800C8D98B /* PPG CLIUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = FB6FFC2B2F4C81C800C8D98B /* Build configuration list for PBXNativeTarget "PPG CLIUITests" */;
-			buildPhases = (
-				FB6FFC172F4C81C800C8D98B /* Sources */,
-				FB6FFC182F4C81C800C8D98B /* Frameworks */,
-				FB6FFC192F4C81C800C8D98B /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				FB6FFC1D2F4C81C800C8D98B /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				FB6FFC1E2F4C81C800C8D98B /* PPG CLIUITests */,
-			);
-			name = "PPG CLIUITests";
-			packageProductDependencies = (
-			);
-			productName = "PPG CLIUITests";
-			productReference = FB6FFC1B2F4C81C800C8D98B /* PPG CLIUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -202,11 +157,7 @@
 						CreatedOnToolsVersion = 26.1.1;
 						TestTargetID = FB6FFC032F4C81C600C8D98B;
 					};
-					FB6FFC1A2F4C81C800C8D98B = {
-						CreatedOnToolsVersion = 26.1.1;
-						TestTargetID = FB6FFC032F4C81C600C8D98B;
 					};
-				};
 			};
 			buildConfigurationList = FB6FFBFF2F4C81C600C8D98B /* Build configuration list for PBXProject "PPG CLI" */;
 			developmentRegion = en;
@@ -228,7 +179,6 @@
 			targets = (
 				FB6FFC032F4C81C600C8D98B /* PPG CLI */,
 				FB6FFC102F4C81C800C8D98B /* PPG CLITests */,
-				FB6FFC1A2F4C81C800C8D98B /* PPG CLIUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -242,13 +192,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FB6FFC0F2F4C81C800C8D98B /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		FB6FFC192F4C81C800C8D98B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -272,13 +215,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FB6FFC172F4C81C800C8D98B /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -286,11 +222,6 @@
 			isa = PBXTargetDependency;
 			target = FB6FFC032F4C81C600C8D98B /* PPG CLI */;
 			targetProxy = FB6FFC122F4C81C800C8D98B /* PBXContainerItemProxy */;
-		};
-		FB6FFC1D2F4C81C800C8D98B /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = FB6FFC032F4C81C600C8D98B /* PPG CLI */;
-			targetProxy = FB6FFC1C2F4C81C800C8D98B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -513,50 +444,6 @@
 			};
 			name = Release;
 		};
-		FB6FFC2C2F4C81C800C8D98B /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = M96WTV3CKX;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.1.9;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.2wit.PPG-CLIUITests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = "PPG CLI";
-			};
-			name = Debug;
-		};
-		FB6FFC2D2F4C81C800C8D98B /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = M96WTV3CKX;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.1.9;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.2wit.PPG-CLIUITests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = "PPG CLI";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -583,15 +470,6 @@
 			buildConfigurations = (
 				FB6FFC292F4C81C800C8D98B /* Debug */,
 				FB6FFC2A2F4C81C800C8D98B /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		FB6FFC2B2F4C81C800C8D98B /* Build configuration list for PBXNativeTarget "PPG CLIUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				FB6FFC2C2F4C81C800C8D98B /* Debug */,
-				FB6FFC2D2F4C81C800C8D98B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
