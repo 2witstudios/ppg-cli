@@ -553,9 +553,13 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         for newNode in newChildren {
             guard let oldNode = oldMap[newNode.item.id] else { continue }
 
-            // Update the SidebarItem in-place if content changed
-            if oldNode.item.contentSignature != newNode.item.contentSignature {
-                oldNode.item = newNode.item
+            // Always keep the backing model fresh (non-visual fields like
+            // tmuxTarget / sessionId may change without affecting the signature)
+            let oldSig = oldNode.item.contentSignature
+            oldNode.item = newNode.item
+
+            // Only reload the cell view when visible content changed
+            if oldSig != newNode.item.contentSignature {
                 outlineView.reloadItem(oldNode, reloadChildren: false)
             }
 
