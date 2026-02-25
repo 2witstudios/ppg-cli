@@ -104,6 +104,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onDataRefreshed: ((SidebarItem?) -> Void)?
     var onSettingsClicked: (() -> Void)?
     var onAddProject: (() -> Void)?
+    var onProjectAddClicked: ((ProjectContext) -> Void)?
     var onDashboardClicked: (() -> Void)?
     var onSwarmsClicked: (() -> Void)?
     var onPromptsClicked: (() -> Void)?
@@ -724,45 +725,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     @objc private func projectAddButtonClicked(_ sender: NSButton) {
         let projectIndex = sender.tag
         guard let ctx = OpenProjects.shared.project(at: projectIndex) else { return }
-
-        let menu = NSMenu()
-
-        let worktreeItem = NSMenuItem(title: "New Worktree", action: #selector(menuNewWorktreeForProject(_:)), keyEquivalent: "")
-        worktreeItem.target = self
-        worktreeItem.representedObject = ctx
-        menu.addItem(worktreeItem)
-
-        menu.addItem(.separator())
-
-        let agentItem = NSMenuItem(title: "New Agent", action: #selector(menuNewAgentForProject(_:)), keyEquivalent: "")
-        agentItem.target = self
-        agentItem.representedObject = ctx
-        menu.addItem(agentItem)
-
-        let termItem = NSMenuItem(title: "New Terminal", action: #selector(menuNewTerminalForProject(_:)), keyEquivalent: "")
-        termItem.target = self
-        termItem.representedObject = ctx
-        menu.addItem(termItem)
-
-        let point = NSPoint(x: 0, y: sender.bounds.height)
-        menu.popUp(positioning: nil, at: point, in: sender)
-    }
-
-    @objc private func menuNewWorktreeForProject(_ sender: NSMenuItem) {
-        guard let ctx = sender.representedObject as? ProjectContext else { return }
-        onAddWorktree?(ctx)
-    }
-
-    @objc private func menuNewAgentForProject(_ sender: NSMenuItem) {
-        guard let ctx = sender.representedObject as? ProjectContext else { return }
-        let worktreeId = selectedWorktreeId()
-        onAddAgent?(ctx, worktreeId)
-    }
-
-    @objc private func menuNewTerminalForProject(_ sender: NSMenuItem) {
-        guard let ctx = sender.representedObject as? ProjectContext else { return }
-        let worktreeId = selectedWorktreeId()
-        onAddTerminal?(ctx, worktreeId)
+        onProjectAddClicked?(ctx)
     }
 
     // MARK: - Per-Worktree + Button

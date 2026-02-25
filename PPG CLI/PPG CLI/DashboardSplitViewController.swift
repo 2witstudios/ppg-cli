@@ -91,6 +91,10 @@ class DashboardSplitViewController: NSSplitViewController {
             delegate.openProject()
         }
 
+        sidebar.onProjectAddClicked = { [weak self] ctx in
+            self?.showCreationMenuForProject(ctx)
+        }
+
         sidebar.onDashboardClicked = { [weak self] in
             self?.showHomeDashboard()
         }
@@ -846,6 +850,14 @@ class DashboardSplitViewController: NSSplitViewController {
         CommandPalettePanel.show(relativeTo: view.window) { [weak self] variant, prompt in
             self?.handlePaletteSelection(variant: variant, prompt: prompt,
                                           project: ctx, worktreeId: worktreeId, isGrid: false)
+        }
+    }
+
+    /// Show command palette scoped to a specific project (per-project + button).
+    func showCreationMenuForProject(_ ctx: ProjectContext) {
+        CommandPalettePanel.show(relativeTo: view.window) { [weak self] variant, prompt in
+            self?.handlePaletteSelection(variant: variant, prompt: prompt,
+                                          project: ctx, worktreeId: nil, isGrid: false)
         }
     }
 
