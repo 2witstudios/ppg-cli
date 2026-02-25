@@ -12,6 +12,7 @@ import { resultFile, manifestPath } from '../lib/paths.js';
 import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
+import { parseVars } from '../lib/vars.js';
 import type { WorktreeEntry, AgentEntry } from '../types/manifest.js';
 
 export interface SpawnOptions {
@@ -79,15 +80,8 @@ async function resolvePrompt(options: SpawnOptions, projectRoot: string): Promis
 
   if (options.template) {
     const templateContent = await loadTemplate(projectRoot, options.template);
-    const vars: Record<string, string> = {};
-    for (const v of options.var ?? []) {
-      const eqIdx = v.indexOf('=');
-      if (eqIdx < 1) {
-        throw new PgError(`Invalid --var format: "${v}" — expected KEY=value`, 'INVALID_ARGS');
-      }
-      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
-    }
-    // Template will be fully rendered later with worktree context
+    // Validate vars early; actual rendering happens later with worktree context
+    parseVars(options.var ?? []);
     return templateContent;
   }
 
@@ -155,13 +149,7 @@ async function spawnNewWorktree(
     };
 
     // Parse user vars
-    for (const v of options.var ?? []) {
-      const eqIdx = v.indexOf('=');
-      if (eqIdx < 1) {
-        throw new PgError(`Invalid --var format: "${v}" — expected KEY=value`, 'INVALID_ARGS');
-      }
-      ctx[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
-    }
+    Object.assign(ctx, parseVars(options.var ?? []));
 
     const renderedPrompt = renderTemplate(promptText, ctx);
 
@@ -276,13 +264,7 @@ async function spawnIntoExistingWorktree(
       PROMPT: promptText,
     };
 
-    for (const v of options.var ?? []) {
-      const eqIdx = v.indexOf('=');
-      if (eqIdx < 1) {
-        throw new PgError(`Invalid --var format: "${v}" — expected KEY=value`, 'INVALID_ARGS');
-      }
-      ctx[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
-    }
+    Object.assign(ctx, parseVars(options.var ?? []));
 
     const renderedPrompt = renderTemplate(promptText, ctx);
 

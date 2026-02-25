@@ -14,6 +14,7 @@ import { resultFile, promptsDir, manifestPath } from '../lib/paths.js';
 import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
+import { parseVars } from '../lib/vars.js';
 import type { Config } from '../types/config.js';
 import type { WorktreeEntry, AgentEntry } from '../types/manifest.js';
 
@@ -50,18 +51,6 @@ export async function swarmCommand(templateName: string, options: SwarmOptions):
   } else {
     await swarmShared(projectRoot, config, swarm, options, userVars);
   }
-}
-
-function parseVars(vars: string[]): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const v of vars) {
-    const eqIdx = v.indexOf('=');
-    if (eqIdx < 1) {
-      throw new PgError(`Invalid --var format: "${v}" — expected KEY=value`, 'INVALID_ARGS');
-    }
-    result[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
-  }
-  return result;
 }
 
 async function loadPromptFile(projectRoot: string, promptName: string): Promise<string> {
