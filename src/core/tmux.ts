@@ -130,7 +130,7 @@ export interface PaneInfo {
   deadStatus?: number;
 }
 
-export async function listPanes(target: string): Promise<PaneInfo[]> {
+async function listPanes(target: string): Promise<PaneInfo[]> {
   try {
     const result = await execa('tmux', [
       'list-panes',
@@ -209,18 +209,8 @@ export async function listSessionPanes(session: string): Promise<Map<string, Pan
   return map;
 }
 
-export async function selectPane(target: string): Promise<void> {
-  await execa('tmux', ['select-pane', '-t', target], execaEnv);
-}
-
 export async function selectWindow(target: string): Promise<void> {
   await execa('tmux', ['select-window', '-t', target], execaEnv);
-}
-
-export async function attachSession(session: string): Promise<void> {
-  // This replaces the current process, so it should be used from a non-tmux terminal
-  // Use '=' prefix for exact session name matching
-  await execa('tmux', ['attach-session', '-t', `=${session}`], { ...execaEnv, stdio: 'inherit' });
 }
 
 export async function isInsideTmux(): Promise<boolean> {
