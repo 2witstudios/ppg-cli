@@ -76,12 +76,14 @@ function buildAgentCommand(agentConfig: AgentConfig, promptFilePath: string, ses
   const { command, promptFlag } = agentConfig;
   // Inject --session-id for Claude-based commands
   const sessionFlag = sessionId && command.includes('claude') ? ` --session-id ${sessionId}` : '';
+  // Single-quote the path inside $(cat ...) to handle spaces safely
+  const catExpr = `"$(cat '${promptFilePath}')"`;
   if (promptFlag) {
-    // Use explicit flag: command --flag "$(cat prompt-file)"
-    return `${envPrefix} ${command}${sessionFlag} ${promptFlag} "$(cat ${promptFilePath})"`;
+    // Use explicit flag: command --flag "$(cat 'prompt-file')"
+    return `${envPrefix} ${command}${sessionFlag} ${promptFlag} ${catExpr}`;
   }
-  // Pass prompt as positional argument: command "$(cat prompt-file)"
-  return `${envPrefix} ${command}${sessionFlag} "$(cat ${promptFilePath})"`;
+  // Pass prompt as positional argument: command "$(cat 'prompt-file')"
+  return `${envPrefix} ${command}${sessionFlag} ${catExpr}`;
 }
 
 /**
