@@ -19,7 +19,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.backgroundColor = chromeBackground
         window.isOpaque = false
         window.isRestorable = false
-        window.appearance = NSAppearance(named: .darkAqua)
+
+        AppSettingsManager.shared.applyAppearance()
 
         let toolbar = NSToolbar(identifier: "MainToolbar")
         toolbar.displayMode = .iconOnly

@@ -644,17 +644,18 @@ class ContentViewController: NSViewController {
                 termView = pane
             } else {
                 let localTerm = ScrollableTerminalView(frame: containerView.bounds)
+                let shellPath = AppSettingsManager.shared.shell
+                let shellName = (shellPath as NSString).lastPathComponent
+                let initScript = shellProfileScript(for: shellPath)
                 let cmd = """
-                if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
-                [ -f ~/.zprofile ] && source ~/.zprofile; \
-                [ -f ~/.zshrc ] && source ~/.zshrc; \
+                \(initScript) \
                 cd \(shellEscape(entry.workingDirectory)) && exec \(entry.command)
                 """
                 localTerm.startProcess(
-                    executable: "/bin/zsh",
+                    executable: shellPath,
                     args: ["-c", cmd],
                     environment: nil,
-                    execName: "zsh"
+                    execName: shellName
                 )
                 termView = localTerm
             }

@@ -111,7 +111,7 @@ nonisolated class AgentModel: @unchecked Sendable {
 // MARK: - LaunchConfig
 
 nonisolated struct LaunchConfig: Sendable {
-    nonisolated(unsafe) static var shared = LaunchConfig(manifestPath: "", sessionName: "", projectName: "", projectRoot: "", agentCommand: "claude --dangerously-skip-permissions")
+    nonisolated(unsafe) static var shared = LaunchConfig(manifestPath: "", sessionName: "", projectName: "", projectRoot: "", agentCommand: "")
 
     let manifestPath: String
     let sessionName: String
@@ -123,7 +123,7 @@ nonisolated struct LaunchConfig: Sendable {
         var manifestPath = ""
         var sessionName = ""
         var projectRoot = ""
-        var agentCommand = "claude --dangerously-skip-permissions"
+        var agentCommand = ""
 
         var i = 0
         while i < args.count {
@@ -177,7 +177,7 @@ nonisolated class ProjectState: @unchecked Sendable {
     private(set) var manifestPath: String = ""
     private(set) var sessionName: String = ""
     private(set) var projectName: String = ""
-    private(set) var agentCommand: String = "claude --dangerously-skip-permissions"
+    private(set) var agentCommand: String = ""
 
     var isConfigured: Bool {
         !projectRoot.isEmpty && projectRoot != "/"
@@ -257,8 +257,17 @@ class ProjectContext {
     let projectName: String
     let manifestPath: String
     var sessionName: String
-    var agentCommand: String
     let dashboardSession: DashboardSession
+
+    /// CLI --agent-command override takes priority, then AppSettingsManager, then hardcoded default.
+    /// Computed so settings changes take effect immediately without reopening the project.
+    var agentCommand: String {
+        let cliCommand = ProjectState.shared.agentCommand
+        if !cliCommand.isEmpty { return cliCommand }
+        let settingsCommand = AppSettingsManager.shared.agentCommand
+        if !settingsCommand.isEmpty { return settingsCommand }
+        return AppSettingsManager.defaultAgentCommand
+    }
 
     init(projectRoot: String) {
         self.projectRoot = projectRoot
@@ -275,9 +284,6 @@ class ProjectContext {
             self.sessionName = "ppg"
         }
 
-        self.agentCommand = ProjectState.shared.agentCommand.isEmpty
-            ? "claude --dangerously-skip-permissions"
-            : ProjectState.shared.agentCommand
         self.dashboardSession = DashboardSession(projectRoot: projectRoot)
     }
 }

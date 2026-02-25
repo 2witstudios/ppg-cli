@@ -2,15 +2,33 @@ import AppKit
 
 class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
+    private let segmentedControl = NSSegmentedControl()
+    private let contentContainer = NSView()
+    private var currentTabView: NSView?
+
+    // Cached tab views (built once, reused)
+    private var generalView: NSView?
+    private var terminalView: NSView?
+    private var shortcutsView: NSView?
+
+    // Shortcuts tab state
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let actions = BindableAction.allCases
     private var recordingRow: Int? = nil
     private var eventMonitor: Any? = nil
 
+    // General tab controls (retained for commitTextFields / live-update)
+    private var agentCommandField: NSTextField?
+    private var refreshValueLabel: NSTextField?
+
+    // Terminal tab controls (retained for commitTextFields / live-update)
+    private var fontSizeField: NSTextField?
+    private var shellField: NSTextField?
+    private var historyField: NSTextField?
+
     override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 440))
-        container.appearance = NSAppearance(named: .darkAqua)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 520))
         view = container
     }
 
@@ -21,27 +39,352 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         view.wantsLayer = true
         view.layer?.backgroundColor = terminalBackground.cgColor
 
-        // Header label
-        let header = NSTextField(labelWithString: "Keyboard Shortcuts")
-        header.font = .boldSystemFont(ofSize: 16)
-        header.textColor = terminalForeground
-        header.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(header)
+        // Segmented control
+        segmentedControl.segmentCount = 3
+        segmentedControl.setLabel("General", forSegment: 0)
+        segmentedControl.setLabel("Terminal", forSegment: 1)
+        segmentedControl.setLabel("Shortcuts", forSegment: 2)
+        segmentedControl.segmentStyle = .texturedRounded
+        segmentedControl.selectedSegment = 0
+        segmentedControl.target = self
+        segmentedControl.action = #selector(segmentChanged(_:))
+        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(segmentedControl)
+
+        // Content container
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(contentContainer)
+
+        // Done button
+        let doneButton = NSButton(title: "Done", target: self, action: #selector(dismissSettings))
+        doneButton.bezelStyle = .rounded
+        doneButton.keyEquivalent = "\r"
+        doneButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(doneButton)
+
+        NSLayoutConstraint.activate([
+            segmentedControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            segmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+
+            contentContainer.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
+            contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            contentContainer.bottomAnchor.constraint(equalTo: doneButton.topAnchor, constant: -16),
+
+            doneButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            doneButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+        ])
+
+        showTab(0)
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        cancelRecording()
+        commitTextFields()
+        applyAndRefreshMenu()
+    }
+
+    // MARK: - Tab Switching
+
+    @objc private func segmentChanged(_ sender: NSSegmentedControl) {
+        cancelRecording()
+        commitTextFields()
+        showTab(sender.selectedSegment)
+    }
+
+    private func showTab(_ index: Int) {
+        currentTabView?.removeFromSuperview()
+
+        let tabView: NSView
+        switch index {
+        case 0:
+            if generalView == nil { generalView = makeGeneralView() }
+            tabView = generalView!
+        case 1:
+            if terminalView == nil { terminalView = makeTerminalView() }
+            tabView = terminalView!
+        case 2:
+            if shortcutsView == nil { shortcutsView = makeShortcutsView() }
+            tabView = shortcutsView!
+        default: return
+        }
+
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.addSubview(tabView)
+        NSLayoutConstraint.activate([
+            tabView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            tabView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            tabView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            tabView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+        ])
+        currentTabView = tabView
+    }
+
+    // MARK: - General Tab
+
+    private func makeGeneralView() -> NSView {
+        let container = NSView()
+        let settings = AppSettingsManager.shared
+
+        // Agent Command
+        let cmdLabel = makeLabel("Agent Command:")
+        let cmdField = NSTextField()
+        cmdField.stringValue = settings.agentCommand
+        cmdField.placeholderString = "claude --dangerously-skip-permissions"
+        cmdField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        cmdField.translatesAutoresizingMaskIntoConstraints = false
+        cmdField.target = self
+        cmdField.action = #selector(agentCommandChanged(_:))
+        agentCommandField = cmdField
+
+        // Appearance
+        let appLabel = makeLabel("Appearance:")
+        let appControl = NSSegmentedControl()
+        appControl.segmentCount = 3
+        appControl.setLabel("System", forSegment: 0)
+        appControl.setLabel("Light", forSegment: 1)
+        appControl.setLabel("Dark", forSegment: 2)
+        appControl.segmentStyle = .texturedRounded
+        switch settings.appearance {
+        case "system": appControl.selectedSegment = 0
+        case "light": appControl.selectedSegment = 1
+        default: appControl.selectedSegment = 2  // dark
+        }
+        appControl.target = self
+        appControl.action = #selector(appearanceChanged(_:))
+        appControl.translatesAutoresizingMaskIntoConstraints = false
+
+        // Refresh Interval
+        let refLabel = makeLabel("Refresh Interval:")
+        let slider = NSSlider(value: settings.refreshInterval, minValue: 0.5, maxValue: 10.0, target: self, action: #selector(refreshSliderChanged(_:)))
+        slider.isContinuous = true
+        slider.translatesAutoresizingMaskIntoConstraints = false
+
+        let valLabel = NSTextField(labelWithString: String(format: "%.1fs", settings.refreshInterval))
+        valLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        valLabel.textColor = terminalForeground
+        valLabel.translatesAutoresizingMaskIntoConstraints = false
+        refreshValueLabel = valLabel
+
+        for v in [cmdLabel, cmdField, appLabel, appControl, refLabel, slider, valLabel] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(v)
+        }
+
+        NSLayoutConstraint.activate([
+            cmdLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            cmdLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            cmdField.topAnchor.constraint(equalTo: cmdLabel.bottomAnchor, constant: 6),
+            cmdField.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            cmdField.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+
+            appLabel.topAnchor.constraint(equalTo: cmdField.bottomAnchor, constant: 20),
+            appLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            appControl.topAnchor.constraint(equalTo: appLabel.bottomAnchor, constant: 6),
+            appControl.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            refLabel.topAnchor.constraint(equalTo: appControl.bottomAnchor, constant: 20),
+            refLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            slider.topAnchor.constraint(equalTo: refLabel.bottomAnchor, constant: 6),
+            slider.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            slider.trailingAnchor.constraint(equalTo: valLabel.leadingAnchor, constant: -8),
+
+            valLabel.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
+            valLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            valLabel.widthAnchor.constraint(equalToConstant: 50),
+        ])
+
+        return container
+    }
+
+    @objc private func agentCommandChanged(_ sender: NSTextField) {
+        let value = sender.stringValue.trimmingCharacters(in: .whitespaces)
+        AppSettingsManager.shared.agentCommand = value.isEmpty
+            ? AppSettingsManager.defaultAgentCommand
+            : value
+    }
+
+    @objc private func appearanceChanged(_ sender: NSSegmentedControl) {
+        let values = ["system", "light", "dark"]
+        AppSettingsManager.shared.appearance = values[sender.selectedSegment]
+    }
+
+    @objc private func refreshSliderChanged(_ sender: NSSlider) {
+        let value = round(sender.doubleValue * 2) / 2  // snap to 0.5 increments
+        refreshValueLabel?.stringValue = String(format: "%.1fs", value)
+
+        // Only persist on mouse-up to avoid timer churn during drag
+        guard let event = NSApp.currentEvent, event.type != .leftMouseDragged else { return }
+        AppSettingsManager.shared.refreshInterval = value
+    }
+
+    // MARK: - Terminal Tab
+
+    private func makeTerminalView() -> NSView {
+        let container = NSView()
+        let settings = AppSettingsManager.shared
+
+        // Font
+        let fontLabel = makeLabel("Font:")
+        let popup = NSPopUpButton()
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        let monoFonts = monospaceFontFamilies()
+        popup.addItems(withTitles: monoFonts)
+        if let idx = monoFonts.firstIndex(of: settings.terminalFontName) {
+            popup.selectItem(at: idx)
+        }
+        popup.target = self
+        popup.action = #selector(fontChanged(_:))
+
+        // Font Size
+        let sizeLabel = makeLabel("Font Size:")
+        let sizeField = NSTextField(labelWithString: "\(Int(settings.terminalFontSize))")
+        sizeField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        sizeField.textColor = terminalForeground
+        sizeField.translatesAutoresizingMaskIntoConstraints = false
+        fontSizeField = sizeField
+
+        let stepper = NSStepper()
+        stepper.minValue = 8
+        stepper.maxValue = 24
+        stepper.integerValue = Int(settings.terminalFontSize)
+        stepper.increment = 1
+        stepper.target = self
+        stepper.action = #selector(fontSizeStepperChanged(_:))
+        stepper.translatesAutoresizingMaskIntoConstraints = false
+
+        // Shell
+        let shellLabel = makeLabel("Shell:")
+        let shellF = NSTextField()
+        shellF.stringValue = settings.shell
+        shellF.placeholderString = "/bin/zsh"
+        shellF.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        shellF.translatesAutoresizingMaskIntoConstraints = false
+        shellF.target = self
+        shellF.action = #selector(shellChanged(_:))
+        shellField = shellF
+
+        // History Limit
+        let histLabel = makeLabel("Tmux History Limit:")
+        let histF = NSTextField()
+        histF.stringValue = "\(settings.historyLimit)"
+        histF.placeholderString = "50000"
+        histF.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        histF.translatesAutoresizingMaskIntoConstraints = false
+        histF.target = self
+        histF.action = #selector(historyLimitChanged(_:))
+        historyField = histF
+
+        for v: NSView in [fontLabel, popup, sizeLabel, sizeField, stepper, shellLabel, shellF, histLabel, histF] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(v)
+        }
+
+        NSLayoutConstraint.activate([
+            fontLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            fontLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            popup.topAnchor.constraint(equalTo: fontLabel.bottomAnchor, constant: 6),
+            popup.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            popup.widthAnchor.constraint(equalToConstant: 240),
+
+            sizeLabel.topAnchor.constraint(equalTo: popup.bottomAnchor, constant: 20),
+            sizeLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            sizeField.topAnchor.constraint(equalTo: sizeLabel.bottomAnchor, constant: 6),
+            sizeField.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            stepper.centerYAnchor.constraint(equalTo: sizeField.centerYAnchor),
+            stepper.leadingAnchor.constraint(equalTo: sizeField.trailingAnchor, constant: 8),
+
+            shellLabel.topAnchor.constraint(equalTo: sizeField.bottomAnchor, constant: 20),
+            shellLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            shellF.topAnchor.constraint(equalTo: shellLabel.bottomAnchor, constant: 6),
+            shellF.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            shellF.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+
+            histLabel.topAnchor.constraint(equalTo: shellF.bottomAnchor, constant: 20),
+            histLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            histF.topAnchor.constraint(equalTo: histLabel.bottomAnchor, constant: 6),
+            histF.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            histF.widthAnchor.constraint(equalToConstant: 120),
+        ])
+
+        return container
+    }
+
+    @objc private func fontChanged(_ sender: NSPopUpButton) {
+        guard let name = sender.titleOfSelectedItem else { return }
+        AppSettingsManager.shared.terminalFontName = name
+    }
+
+    @objc private func fontSizeStepperChanged(_ sender: NSStepper) {
+        fontSizeField?.stringValue = "\(sender.integerValue)"
+        AppSettingsManager.shared.terminalFontSize = CGFloat(sender.integerValue)
+    }
+
+    @objc private func shellChanged(_ sender: NSTextField) {
+        let value = sender.stringValue.trimmingCharacters(in: .whitespaces)
+        if value.isEmpty {
+            AppSettingsManager.shared.shell = AppSettingsManager.defaultShell
+        } else if FileManager.default.isExecutableFile(atPath: value) {
+            AppSettingsManager.shared.shell = value
+        } else {
+            showAlert("Invalid Shell", "'\(value)' is not an executable file.")
+            sender.stringValue = AppSettingsManager.shared.shell
+        }
+    }
+
+    @objc private func historyLimitChanged(_ sender: NSTextField) {
+        if let value = Int(sender.stringValue), value > 0 {
+            AppSettingsManager.shared.historyLimit = value
+        } else {
+            sender.stringValue = "\(AppSettingsManager.shared.historyLimit)"
+        }
+    }
+
+    private func monospaceFontFamilies() -> [String] {
+        let fm = NSFontManager.shared
+        let all = fm.availableFontFamilies
+        return all.filter { family in
+            guard let members = fm.availableMembers(ofFontFamily: family),
+                  let first = members.first,
+                  let fontName = first[0] as? String,
+                  let font = NSFont(name: fontName, size: 13) else { return false }
+            return font.isFixedPitch
+        }.sorted()
+    }
+
+    // MARK: - Shortcuts Tab
+
+    private func makeShortcutsView() -> NSView {
+        let container = NSView()
 
         // Table setup
         let actionColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("action"))
         actionColumn.title = "Action"
         actionColumn.width = 180
-        tableView.addTableColumn(actionColumn)
 
         let shortcutColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("shortcut"))
         shortcutColumn.title = "Shortcut"
         shortcutColumn.width = 120
-        tableView.addTableColumn(shortcutColumn)
 
         let recordColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("record"))
         recordColumn.title = ""
         recordColumn.width = 100
+
+        // Remove old columns and add fresh ones
+        for col in tableView.tableColumns {
+            tableView.removeTableColumn(col)
+        }
+        tableView.addTableColumn(actionColumn)
+        tableView.addTableColumn(shortcutColumn)
         tableView.addTableColumn(recordColumn)
 
         tableView.dataSource = self
@@ -50,47 +393,53 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         tableView.backgroundColor = terminalBackground
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.headerView?.wantsLayer = true
+        tableView.reloadData()
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scrollView)
+        container.addSubview(scrollView)
 
-        // Bottom button bar
+        // Reset button at bottom of shortcuts tab
         let resetButton = NSButton(title: "Reset to Defaults", target: self, action: #selector(resetAllDefaults))
         resetButton.bezelStyle = .rounded
         resetButton.translatesAutoresizingMaskIntoConstraints = false
-
-        let doneButton = NSButton(title: "Done", target: self, action: #selector(dismissSettings))
-        doneButton.bezelStyle = .rounded
-        doneButton.keyEquivalent = "\r"
-        doneButton.translatesAutoresizingMaskIntoConstraints = false
-
-        view.addSubview(resetButton)
-        view.addSubview(doneButton)
+        container.addSubview(resetButton)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: resetButton.topAnchor, constant: -8),
 
-            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            scrollView.bottomAnchor.constraint(equalTo: resetButton.topAnchor, constant: -12),
-
-            resetButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            resetButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
-
-            doneButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            doneButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+            resetButton.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            resetButton.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
+
+        return container
     }
 
-    override func viewWillDisappear() {
-        super.viewWillDisappear()
-        cancelRecording()
-        applyAndRefreshMenu()
+    // MARK: - Helpers
+
+    private func makeLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = terminalForeground
+        return label
+    }
+
+    private func commitTextFields() {
+        // Commit any in-flight text field edits
+        if let field = agentCommandField {
+            agentCommandChanged(field)
+        }
+        if let field = shellField {
+            shellChanged(field)
+        }
+        if let field = historyField {
+            historyLimitChanged(field)
+        }
     }
 
     // MARK: - Actions
@@ -104,7 +453,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
 
     @objc private func dismissSettings() {
         cancelRecording()
-        applyAndRefreshMenu()
+        // commitTextFields + applyAndRefreshMenu handled by viewWillDisappear
         dismiss(nil)
     }
 
@@ -116,7 +465,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         if action == .quit {
             let alert = NSAlert()
             alert.messageText = "Cannot Rebind Quit"
-            alert.informativeText = "⌘Q is reserved and cannot be changed."
+            alert.informativeText = "\u{2318}Q is reserved and cannot be changed."
             alert.alertStyle = .informational
             alert.runModal()
             return
@@ -124,7 +473,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
 
         cancelRecording()
         recordingRow = row
-        sender.title = "Press key…"
+        sender.title = "Press key\u{2026}"
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleRecordedKey(event)
@@ -150,7 +499,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         // Must include at least Cmd or Ctrl
         guard mods.contains(.command) || mods.contains(.control) else {
             cancelRecording()
-            showAlert("Invalid Shortcut", "Shortcuts must include ⌘ or ⌃.")
+            showAlert("Invalid Shortcut", "Shortcuts must include \u{2318} or \u{2303}.")
             return
         }
 
@@ -261,7 +610,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
                 button.title = "Locked"
                 button.isEnabled = false
             } else if recordingRow == row {
-                button.title = "Press key…"
+                button.title = "Press key\u{2026}"
             } else {
                 button.title = "Record"
             }

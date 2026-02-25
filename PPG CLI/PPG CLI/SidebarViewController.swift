@@ -91,6 +91,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onPromptsClicked: (() -> Void)?
 
     private var refreshTimer: Timer?
+    private var settingsObserver: NSObjectProtocol?
     private(set) var activeTab: SidebarTab?
     var isDashboardSelected: Bool { activeTab == .dashboard }
     private var dashboardRow: SidebarNavRow!
@@ -291,7 +292,21 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     private func startRefreshTimer() {
         refresh()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        scheduleRefreshTimer()
+
+        // Restart timer when refresh interval changes
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .appSettingsDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let key = notification.userInfo?[AppSettingsManager.changedKeyUserInfoKey] as? AppSettingsKey,
+                  key == .refreshInterval else { return }
+            self?.scheduleRefreshTimer()
+        }
+    }
+
+    private func scheduleRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: AppSettingsManager.shared.refreshInterval, repeats: true) { [weak self] _ in
             self?.refresh()
         }
     }
@@ -415,6 +430,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     deinit {
         refreshTimer?.invalidate()
+        if let settingsObserver {
+            NotificationCenter.default.removeObserver(settingsObserver)
+        }
     }
 
     // MARK: - Project Helpers

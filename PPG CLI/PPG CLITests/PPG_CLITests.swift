@@ -137,9 +137,9 @@ final class LaunchConfigTests: XCTestCase {
         XCTAssertEqual(config.projectName, "root")
     }
 
-    func testAgentCommandDefault() {
+    func testAgentCommandDefaultIsEmpty() {
         let config = LaunchConfig.parse(["app"])
-        XCTAssertEqual(config.agentCommand, "claude --dangerously-skip-permissions")
+        XCTAssertEqual(config.agentCommand, "")
     }
 
     func testAgentCommandOverride() {

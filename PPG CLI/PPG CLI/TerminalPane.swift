@@ -90,11 +90,13 @@ class TerminalPane: NSView {
             cmd += " \\; select-window -t :\(shellEscape(win))"
         }
 
+        let shellPath = AppSettingsManager.shared.shell
+        let shellName = (shellPath as NSString).lastPathComponent
         terminalView.startProcess(
-            executable: "/bin/zsh",
+            executable: shellPath,
             args: ["-c", cmd],
             environment: nil,
-            execName: "zsh"
+            execName: shellName
         )
     }
 
