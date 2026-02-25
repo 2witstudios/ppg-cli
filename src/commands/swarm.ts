@@ -171,7 +171,7 @@ async function swarmShared(
     });
   }
 
-  if (options.open !== false) {
+  if (options.open === true) {
     openTerminalWindow(sessionName, windowTarget, name).catch(() => {});
   }
 
@@ -236,7 +236,7 @@ async function swarmIsolated(
       return m;
     });
 
-    if (options.open !== false) {
+    if (options.open === true) {
       openTerminalWindow(sessionName, windowTarget, wtName).catch(() => {});
     }
 
@@ -309,7 +309,7 @@ async function swarmIntoExistingWorktree(
     });
   }
 
-  if (options.open !== false) {
+  if (options.open === true) {
     openTerminalWindow(sessionName, windowTarget, wt.name).catch(() => {});
   }
 
