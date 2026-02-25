@@ -7,6 +7,19 @@ extension Notification.Name {
 enum AppSettingsKey: String {
     case refreshInterval
     case terminalFont, terminalFontSize, shell, historyLimit
+    case appearanceMode
+}
+
+enum AppearanceMode: String {
+    case system, light, dark
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light:  return NSAppearance(named: .aqua)
+        case .dark:   return NSAppearance(named: .darkAqua)
+        }
+    }
 }
 
 final class AppSettingsManager {
@@ -22,6 +35,7 @@ final class AppSettingsManager {
         static let terminalFontSize = "PPGTerminalFontSize"
         static let shell = "PPGShell"
         static let historyLimit = "PPGHistoryLimit"
+        static let appearanceMode = "PPGAppearanceMode"
     }
 
     // MARK: - Defaults
@@ -68,6 +82,35 @@ final class AppSettingsManager {
             return val > 0 ? val : Self.defaultHistoryLimit
         }
         set { defaults.set(newValue, forKey: Key.historyLimit); notify(.historyLimit) }
+    }
+
+    var appearanceMode: AppearanceMode {
+        get {
+            guard let raw = defaults.string(forKey: Key.appearanceMode) else { return .system }
+            return AppearanceMode(rawValue: raw) ?? .system
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.appearanceMode)
+            applyAppearance(newValue)
+            notify(.appearanceMode)
+        }
+    }
+
+    func applyAppearance(_ mode: AppearanceMode? = nil) {
+        let resolved = (mode ?? appearanceMode).nsAppearance
+        NSApp.appearance = resolved
+        for window in NSApp.windows {
+            window.appearance = resolved
+            if window.backgroundColor.alphaComponent == 0 {
+                window.backgroundColor = .clear
+            } else if window.isOpaque {
+                window.backgroundColor = Theme.contentBackground
+            } else {
+                window.backgroundColor = Theme.chromeBackground
+            }
+            window.invalidateShadow()
+            window.display()  // force full redraw — liquid glass re-samples content
+        }
     }
 
     // MARK: - Notification

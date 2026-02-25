@@ -253,7 +253,7 @@ class PaneGridController: NSViewController {
     override func loadView() {
         view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = terminalBackground.cgColor
+        view.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: view.effectiveAppearance)
     }
 
     override func viewDidLoad() {
@@ -726,11 +726,11 @@ class PaneCellView: NSView {
         self.leafId = leafId
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = terminalBackground.cgColor
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
         translatesAutoresizingMaskIntoConstraints = false
 
         // Focus indicator — thin accent bar at top edge
-        focusBarLayer.backgroundColor = Self.focusBarColor.cgColor
+        focusBarLayer.backgroundColor = Self.focusBarColor.resolvedCGColor(for: effectiveAppearance)
         focusBarLayer.isHidden = true
         focusBarLayer.zPosition = 1000
         layer?.addSublayer(focusBarLayer)
@@ -804,6 +804,12 @@ class PaneCellView: NSView {
         super.mouseDown(with: event)
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
+        focusBarLayer.backgroundColor = Self.focusBarColor.resolvedCGColor(for: effectiveAppearance)
+    }
+
     func updateFocusIndicator(focused: Bool) {
         if focused {
             focusBarLayer.isHidden = false
@@ -874,12 +880,13 @@ class PaneCellView: NSView {
         termView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(termView)
 
-        // TerminalPane has its own 8px leading inset; other views need it from the cell.
+        // TerminalPane has its own horizontal insets; other views need them from the cell.
         let leadingPadding: CGFloat = (termView is TerminalPane) ? 0 : 8
+        let trailingPadding: CGFloat = (termView is TerminalPane) ? 0 : -8
         NSLayoutConstraint.activate([
             termView.topAnchor.constraint(equalTo: topAnchor),
             termView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leadingPadding),
-            termView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            termView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: trailingPadding),
             termView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
@@ -973,10 +980,10 @@ class PaneHoverOverlay: NSView {
 
     private func setupButtons() {
         wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.15, alpha: 0.85).cgColor
+        layer?.backgroundColor = Theme.paneOverlayBackground.resolvedCGColor(for: effectiveAppearance)
         layer?.cornerRadius = 6
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor(white: 0.3, alpha: 0.5).cgColor
+        layer?.borderColor = Theme.paneOverlayBorder.resolvedCGColor(for: effectiveAppearance)
 
         splitHButton = makeButton(
             icon: "rectangle.split.1x2",
@@ -1022,7 +1029,7 @@ class PaneHoverOverlay: NSView {
         btn.image = NSImage(systemSymbolName: icon, accessibilityDescription: tooltip)
         btn.imagePosition = .imageOnly
         btn.imageScaling = .scaleProportionallyDown
-        btn.contentTintColor = NSColor(white: 0.85, alpha: 1)
+        btn.contentTintColor = Theme.paneOverlayButtonTint
         btn.toolTip = tooltip
         btn.target = self
         btn.action = action
@@ -1055,6 +1062,12 @@ class PaneHoverOverlay: NSView {
         // no-op — absorb click
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.paneOverlayBackground.resolvedCGColor(for: effectiveAppearance)
+        layer?.borderColor = Theme.paneOverlayBorder.resolvedCGColor(for: effectiveAppearance)
+    }
+
     @objc private func splitHClicked() { onSplitHorizontal?() }
     @objc private func splitVClicked() { onSplitVertical?() }
     @objc private func closeClicked() { onClose?() }
@@ -1080,11 +1093,11 @@ class PanePlaceholderView: NSView {
 
     private func setupUI() {
         wantsLayer = true
-        layer?.backgroundColor = terminalBackground.cgColor
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
 
         let titleLabel = NSTextField(labelWithString: "New Pane")
         titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        titleLabel.textColor = terminalForeground
+        titleLabel.textColor = Theme.primaryText
         titleLabel.alignment = .center
 
         let subtitleLabel = NSTextField(labelWithString: "Choose what to display")
@@ -1127,11 +1140,16 @@ class PanePlaceholderView: NSView {
         button.title = title
         button.imagePosition = .imageLeading
         button.font = .systemFont(ofSize: 12)
-        button.contentTintColor = terminalForeground
+        button.contentTintColor = Theme.primaryText
         button.target = self
         button.action = action
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
     }
 
     @objc private func agentClicked() { onNewAgent?() }

@@ -2,6 +2,7 @@ import Foundation
 
 nonisolated class PPGService: @unchecked Sendable {
     static let shared = PPGService()
+    static let minimumTmuxVersionForCodexInputTheme = "3.5"
 
     /// Read manifest from the given path. Thread-safe: does not access shared mutable state.
     func readManifest(at path: String) -> ManifestModel? {
@@ -84,8 +85,9 @@ nonisolated class PPGService: @unchecked Sendable {
         return (false, nil)
     }
 
-    /// Check if tmux is available in the user's PATH.
-    func checkTmuxAvailable() -> Bool {
+    /// Check if tmux is available in the user's PATH and whether its version
+    /// supports Codex input theming inside tmux.
+    func checkTmuxAvailable() -> (available: Bool, version: String?, supportsCodexInputTheme: Bool) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/zsh")
         let cmd = """
@@ -101,10 +103,66 @@ nonisolated class PPGService: @unchecked Sendable {
         do {
             try task.run()
             task.waitUntilExit()
-            return task.terminationStatus == 0
+            guard task.terminationStatus == 0 else {
+                return (false, nil, false)
+            }
+            let data = (task.standardOutput as? Pipe)?.fileHandleForReading.readDataToEndOfFile() ?? Data()
+            let stdout = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let version = extractTmuxVersion(from: stdout)
+            let supports = version.map {
+                isVersion($0, atLeast: Self.minimumTmuxVersionForCodexInputTheme)
+            } ?? false
+            return (true, version, supports)
         } catch {
-            return false
+            return (false, nil, false)
         }
+    }
+
+    private func extractTmuxVersion(from output: String) -> String? {
+        // Match the "tmux X.Y" line specifically to avoid false positives
+        // from shell startup scripts that may print version-like numbers.
+        guard let range = output.range(
+            of: #"tmux\s+([0-9]+(?:\.[0-9]+)*[a-z]?)"#,
+            options: .regularExpression
+        ) else {
+            return nil
+        }
+        let match = output[range]
+        // Extract just the version number after "tmux "
+        guard let versionRange = match.range(
+            of: #"[0-9]+(?:\.[0-9]+)*[a-z]?"#,
+            options: .regularExpression
+        ) else {
+            return nil
+        }
+        return String(match[versionRange])
+    }
+
+    private func isVersion(_ version: String, atLeast minimum: String) -> Bool {
+        guard let lhs = versionComponents(version),
+              let rhs = versionComponents(minimum) else { return false }
+        let count = max(lhs.count, rhs.count)
+        for idx in 0..<count {
+            let l = idx < lhs.count ? lhs[idx] : 0
+            let r = idx < rhs.count ? rhs[idx] : 0
+            if l != r { return l > r }
+        }
+        return true
+    }
+
+    private func versionComponents(_ version: String) -> [Int]? {
+        let parts = version.split(separator: ".")
+        guard !parts.isEmpty else { return nil }
+        var ints: [Int] = []
+        for part in parts {
+            let numericPrefix = part.prefix { $0.isNumber }
+            guard !numericPrefix.isEmpty, let value = Int(numericPrefix) else {
+                return nil
+            }
+            ints.append(value)
+        }
+        return ints
     }
 
     /// Run a git command directly in a specific directory. Faster than runPPGCommand

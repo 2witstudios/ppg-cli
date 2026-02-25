@@ -4,9 +4,9 @@
 [![npm version](https://img.shields.io/npm/v/pure-point-guard.svg)](https://www.npmjs.com/package/pure-point-guard)
 [![license](https://img.shields.io/npm/l/pure-point-guard.svg)](https://github.com/2witstudios/ppg-cli/blob/main/LICENSE)
 
-Local orchestration runtime for parallel CLI coding agents.
+A visual dashboard for orchestrating parallel AI coding agents.
 
-ppg spawns multiple AI coding agents in isolated git worktrees, each in its own tmux pane, and gives you a single control plane to monitor, aggregate, and merge their work.
+ppg's native macOS dashboard lets you spawn, monitor, and merge multiple AI coding agents working in parallel — each isolated in its own git worktree. The CLI engine underneath handles worktree creation, tmux session management, status tracking, result collection, and branch merging.
 
 ## Why
 
@@ -23,19 +23,9 @@ It works with any CLI agent (Claude Code, Codex, custom scripts) and is designed
 
 ## Install
 
-### CLI
+### Dashboard
 
-```bash
-npm install -g pure-point-guard
-```
-
-### Claude Code Integration
-
-Running `ppg init` in any project automatically installs the `/ppg` skill for Claude Code. This gives Claude the ability to orchestrate parallel agents — just type `/ppg` in any Claude Code session.
-
-### Dashboard (optional)
-
-The native macOS dashboard app provides a visual interface for monitoring agents and worktrees.
+The native macOS dashboard is the primary interface for ppg — it gives you a real-time view of all your agents, worktrees, and results.
 
 **Via CLI:**
 
@@ -45,7 +35,36 @@ ppg install-dashboard
 
 **Or download directly** from [GitHub Releases](https://github.com/2witstudios/ppg-cli/releases/latest) — grab the `.dmg` file.
 
+### CLI
+
+The CLI is the engine that powers the dashboard. Install it globally:
+
+```bash
+npm install -g pure-point-guard
+```
+
+### Claude Code Integration
+
+Running `ppg init` in any project automatically installs the `/ppg` skill for Claude Code. This gives Claude the ability to orchestrate parallel agents — just type `/ppg` in any Claude Code session.
+
 ## Quick Start
+
+### Dashboard workflow
+
+```bash
+# Initialize in your project
+cd your-project
+ppg init
+
+# Open the dashboard
+ppg ui
+```
+
+From the dashboard you can spawn agents, watch their progress in real time, review diffs, and merge completed work — all from a single window.
+
+### CLI workflow
+
+Everything the dashboard does is also available from the command line:
 
 ```bash
 # Initialize in your project
@@ -300,7 +319,7 @@ ppg install-dashboard --dir ~/Apps       # Custom install directory
 
 ### `ppg ui`
 
-Open the native macOS dashboard app (alias: `ppg dashboard`).
+Open the ppg dashboard — the primary interface for managing agents and worktrees. The dashboard reads the project manifest in real time and provides spawn controls, live status, log streaming, diffs, and merge actions in a single window. Alias: `ppg dashboard`.
 
 ## Configuration
 

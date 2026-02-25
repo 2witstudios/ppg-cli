@@ -23,7 +23,7 @@ class TerminalPane: NSView {
 
     private func setupUI() {
         wantsLayer = true
-        layer?.backgroundColor = terminalBackground.cgColor
+        layer?.backgroundColor = Theme.terminalBackground.resolvedCGColor(for: effectiveAppearance)
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.7
         layer?.shadowRadius = 40
@@ -46,7 +46,7 @@ class TerminalPane: NSView {
         NSLayoutConstraint.activate([
             tv.topAnchor.constraint(equalTo: topAnchor),
             tv.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            tv.trailingAnchor.constraint(equalTo: trailingAnchor),
+            tv.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             tv.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
         terminalView = tv
@@ -126,10 +126,15 @@ class TerminalPane: NSView {
         )
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.terminalBackground.resolvedCGColor(for: effectiveAppearance)
+    }
+
     func updateStatus(_ status: AgentStatus) {
         let displayName = agent.name.isEmpty ? agent.id : agent.name
         label.stringValue = "\(displayName) — \(status.rawValue)"
-        label.textColor = statusColor(for: status)
+        label.textColor = Theme.statusColor(for: status)
     }
 
     /// Explicit cleanup — tears down the terminal view (timer, monitor, process).

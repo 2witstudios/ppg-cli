@@ -67,13 +67,13 @@ final class SidebarViewControllerTests: XCTestCase {
     // MARK: - Status color
 
     func testStatusColorMapping() {
-        XCTAssertEqual(statusColor(for: .running), .systemGreen)
-        XCTAssertEqual(statusColor(for: .completed), .systemBlue)
-        XCTAssertEqual(statusColor(for: .failed), .systemRed)
-        XCTAssertEqual(statusColor(for: .killed), .systemOrange)
-        XCTAssertEqual(statusColor(for: .lost), .systemGray)
-        XCTAssertEqual(statusColor(for: .waiting), .systemGray)
-        XCTAssertEqual(statusColor(for: .spawning), .systemYellow)
+        XCTAssertEqual(Theme.statusColor(for: .running), .systemGreen)
+        XCTAssertEqual(Theme.statusColor(for: .completed), .systemBlue)
+        XCTAssertEqual(Theme.statusColor(for: .failed), .systemRed)
+        XCTAssertEqual(Theme.statusColor(for: .killed), .systemOrange)
+        XCTAssertEqual(Theme.statusColor(for: .lost), .systemGray)
+        XCTAssertEqual(Theme.statusColor(for: .waiting), .systemGray)
+        XCTAssertEqual(Theme.statusColor(for: .spawning), .systemYellow)
     }
 
     // MARK: - Callbacks

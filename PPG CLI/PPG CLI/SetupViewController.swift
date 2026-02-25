@@ -10,13 +10,18 @@ class SetupViewController: NSViewController {
     private var continueButton: NSButton!
 
     override func loadView() {
-        view = NSView()
+        let root = ThemeAwareView()
+        root.onAppearanceChanged = { [weak self] in
+            guard let self = self else { return }
+            self.view.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: self.view.effectiveAppearance)
+        }
+        view = root
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.wantsLayer = true
-        view.layer?.backgroundColor = terminalBackground.cgColor
+        view.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: view.effectiveAppearance)
 
         let card = NSView()
         card.translatesAutoresizingMaskIntoConstraints = false
@@ -122,14 +127,14 @@ class SetupViewController: NSViewController {
         super.viewDidAppear()
         // Make window fully opaque so setup text is readable
         view.window?.isOpaque = true
-        view.window?.backgroundColor = terminalBackground
+        view.window?.backgroundColor = Theme.contentBackground
     }
 
     override func viewWillDisappear() {
         super.viewWillDisappear()
         // Restore transparency for other screens
         view.window?.isOpaque = false
-        view.window?.backgroundColor = chromeBackground
+        view.window?.backgroundColor = Theme.chromeBackground
     }
 
     private func runChecks() {
@@ -142,11 +147,17 @@ class SetupViewController: NSViewController {
                     installed: cli.available,
                     detail: cli.version
                 )
+                let tmuxInstalledAndSupported = tmux.available && tmux.supportsCodexInputTheme
+                let tmuxDetail = tmux.version.map { "tmux \($0)" }
+                let tmuxIssueHint = (tmux.available && !tmux.supportsCodexInputTheme)
+                    ? "Update to tmux \(PPGService.minimumTmuxVersionForCodexInputTheme)+ for Codex input theming."
+                    : nil
                 self?.tmuxStatus.setStatus(
-                    installed: tmux,
-                    detail: nil
+                    installed: tmuxInstalledAndSupported,
+                    detail: tmuxDetail,
+                    issueHint: tmuxIssueHint
                 )
-                self?.continueButton.isEnabled = cli.available && tmux
+                self?.continueButton.isEnabled = cli.available && tmuxInstalledAndSupported
             }
         }
     }
@@ -170,16 +181,18 @@ private class StatusRow: NSView {
     private let titleField: NSTextField
     private let detailField = NSTextField(labelWithString: "")
     private let hintField: NSTextField
+    private let installHint: String
 
     init(title: String, installHint: String) {
         titleField = NSTextField(labelWithString: title)
+        self.installHint = installHint
         hintField = NSTextField(labelWithString: installHint)
         super.init(frame: .zero)
 
         wantsLayer = true
         layer?.cornerRadius = 8
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
 
         statusIcon.translatesAutoresizingMaskIntoConstraints = false
         addSubview(statusIcon)
@@ -223,6 +236,11 @@ private class StatusRow: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
+    }
+
     func setChecking() {
         statusIcon.image = NSImage(systemSymbolName: "circle.dashed", accessibilityDescription: "Checking")
         statusIcon.contentTintColor = .tertiaryLabelColor
@@ -230,16 +248,23 @@ private class StatusRow: NSView {
         hintField.isHidden = true
     }
 
-    func setStatus(installed: Bool, detail: String?) {
+    func setStatus(installed: Bool, detail: String?, issueHint: String? = nil) {
         if installed {
             statusIcon.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Installed")
             statusIcon.contentTintColor = .systemGreen
             detailField.stringValue = detail ?? "Installed"
             hintField.isHidden = true
+        } else if let issueHint {
+            statusIcon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Unsupported version")
+            statusIcon.contentTintColor = .systemOrange
+            detailField.stringValue = detail ?? "Installed"
+            hintField.stringValue = issueHint
+            hintField.isHidden = false
         } else {
             statusIcon.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Not found")
             statusIcon.contentTintColor = .systemRed
             detailField.stringValue = "Not found"
+            hintField.stringValue = installHint
             hintField.isHidden = false
         }
     }

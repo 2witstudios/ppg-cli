@@ -68,7 +68,7 @@ class HomeDashboardView: NSView {
 
     private func setupViews() {
         wantsLayer = true
-        layer?.backgroundColor = terminalBackground.cgColor
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
 
         // Outer stack (vertical)
         outerStack.orientation = .vertical
@@ -82,7 +82,7 @@ class HomeDashboardView: NSView {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = terminalBackground
+        scrollView.backgroundColor = Theme.contentBackground
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
 
@@ -103,7 +103,7 @@ class HomeDashboardView: NSView {
         statsBar.alignment = .centerY
 
         projectCountLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        projectCountLabel.textColor = terminalForeground
+        projectCountLabel.textColor = Theme.primaryText
         agentStatsLabel.font = .systemFont(ofSize: 13)
         agentStatsLabel.textColor = .secondaryLabelColor
 
@@ -111,6 +111,12 @@ class HomeDashboardView: NSView {
         statsBar.addArrangedSubview(agentStatsLabel)
         statsBar.addArrangedSubview(NSView())  // spacer
         outerStack.addArrangedSubview(statsBar)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
+        scrollView.backgroundColor = Theme.contentBackground
     }
 
     // MARK: - Visibility
@@ -336,12 +342,12 @@ private class ProjectCardView: NSView {
         layer?.cornerRadius = 8
         layer?.masksToBounds = true
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
-        layer?.backgroundColor = WorktreeDetailView.cardBackground.cgColor
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
+        layer?.backgroundColor = Theme.cardBackground.resolvedCGColor(for: effectiveAppearance)
 
         // Header
         headerView.wantsLayer = true
-        headerView.layer?.backgroundColor = WorktreeDetailView.cardHeaderBackground.cgColor
+        headerView.layer?.backgroundColor = Theme.cardHeaderBackground.resolvedCGColor(for: effectiveAppearance)
         headerView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headerView)
 
@@ -351,7 +357,7 @@ private class ProjectCardView: NSView {
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
         nameLabel.font = .boldSystemFont(ofSize: 14)
-        nameLabel.textColor = terminalForeground
+        nameLabel.textColor = Theme.primaryText
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -359,7 +365,7 @@ private class ProjectCardView: NSView {
         branchTag.textColor = .secondaryLabelColor
         branchTag.wantsLayer = true
         branchTag.layer?.cornerRadius = 3
-        branchTag.layer?.backgroundColor = NSColor(white: 0.2, alpha: 1).cgColor
+        branchTag.layer?.backgroundColor = Theme.branchTagBackground.resolvedCGColor(for: effectiveAppearance)
         branchTag.translatesAutoresizingMaskIntoConstraints = false
 
         wtCountLabel.font = .systemFont(ofSize: 11)
@@ -440,6 +446,14 @@ private class ProjectCardView: NSView {
         ])
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.cardBackground.resolvedCGColor(for: effectiveAppearance)
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
+        headerView.layer?.backgroundColor = Theme.cardHeaderBackground.resolvedCGColor(for: effectiveAppearance)
+        branchTag.layer?.backgroundColor = Theme.branchTagBackground.resolvedCGColor(for: effectiveAppearance)
+    }
+
     func update(data: ProjectDashboardData, skipHeatmap: Bool) {
         nameLabel.stringValue = data.projectName
         branchTag.stringValue = " \(data.branch) "
@@ -447,10 +461,10 @@ private class ProjectCardView: NSView {
 
         // Agent status dots
         for v in agentDotsStack.arrangedSubviews { agentDotsStack.removeArrangedSubview(v); v.removeFromSuperview() }
-        addDots(count: data.agentCounts.running, color: statusColor(for: .running))
-        addDots(count: data.agentCounts.completed, color: statusColor(for: .completed))
-        addDots(count: data.agentCounts.failed, color: statusColor(for: .failed))
-        addDots(count: data.agentCounts.killed, color: statusColor(for: .killed))
+        addDots(count: data.agentCounts.running, color: Theme.statusColor(for: .running))
+        addDots(count: data.agentCounts.completed, color: Theme.statusColor(for: .completed))
+        addDots(count: data.agentCounts.failed, color: Theme.statusColor(for: .failed))
+        addDots(count: data.agentCounts.killed, color: Theme.statusColor(for: .killed))
 
         // Heatmap
         if !skipHeatmap {
@@ -478,7 +492,7 @@ private class ProjectCardView: NSView {
         for _ in 0..<dotsToShow {
             let dot = NSView()
             dot.wantsLayer = true
-            dot.layer?.backgroundColor = color.cgColor
+            dot.layer?.backgroundColor = color.resolvedCGColor(for: effectiveAppearance)
             dot.layer?.cornerRadius = 4
             dot.translatesAutoresizingMaskIntoConstraints = false
             dot.widthAnchor.constraint(equalToConstant: 8).isActive = true
@@ -509,7 +523,7 @@ private class ProjectCardView: NSView {
 
         let msgLabel = NSTextField(labelWithString: commit.message)
         msgLabel.font = .systemFont(ofSize: 11)
-        msgLabel.textColor = terminalForeground
+        msgLabel.textColor = Theme.primaryText
         msgLabel.lineBreakMode = .byTruncatingTail
         msgLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 

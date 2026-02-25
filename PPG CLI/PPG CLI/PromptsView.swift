@@ -112,14 +112,14 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
 
     private func setupViews() {
         wantsLayer = true
-        layer?.backgroundColor = terminalBackground.cgColor
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
 
         // Header
         let headerBar = NSView()
         headerBar.translatesAutoresizingMaskIntoConstraints = false
 
         headerLabel.font = .boldSystemFont(ofSize: 14)
-        headerLabel.textColor = terminalForeground
+        headerLabel.textColor = Theme.primaryText
         headerLabel.translatesAutoresizingMaskIntoConstraints = false
         headerBar.addSubview(headerLabel)
 
@@ -129,7 +129,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         newButton.imagePosition = .imageLeading
         newButton.font = .systemFont(ofSize: 11)
         newButton.isBordered = false
-        newButton.contentTintColor = terminalForeground
+        newButton.contentTintColor = Theme.primaryText
         newButton.target = self
         newButton.action = #selector(newPromptClicked)
         newButton.translatesAutoresizingMaskIntoConstraints = false
@@ -173,9 +173,9 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         editorTextView.isRichText = false
         editorTextView.allowsUndo = true
         editorTextView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        editorTextView.backgroundColor = terminalBackground
-        editorTextView.textColor = terminalForeground
-        editorTextView.insertionPointColor = terminalForeground
+        editorTextView.backgroundColor = Theme.contentBackground
+        editorTextView.textColor = Theme.primaryText
+        editorTextView.insertionPointColor = Theme.primaryText
         editorTextView.isVerticallyResizable = true
         editorTextView.isHorizontallyResizable = false
         editorTextView.textContainer?.widthTracksTextView = true
@@ -186,7 +186,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         editorScrollView.documentView = editorTextView
         editorScrollView.hasVerticalScroller = true
         editorScrollView.drawsBackground = true
-        editorScrollView.backgroundColor = terminalBackground
+        editorScrollView.backgroundColor = Theme.contentBackground
         editorScrollView.translatesAutoresizingMaskIntoConstraints = false
         editorContainer.addSubview(editorScrollView)
 
@@ -205,7 +205,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         saveButton.imagePosition = .imageLeading
         saveButton.font = .systemFont(ofSize: 11)
         saveButton.isBordered = false
-        saveButton.contentTintColor = terminalForeground
+        saveButton.contentTintColor = Theme.primaryText
         saveButton.target = self
         saveButton.action = #selector(saveClicked)
         saveButton.isEnabled = false
@@ -291,6 +291,13 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         }
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
+        editorTextView.backgroundColor = Theme.contentBackground
+        editorScrollView.backgroundColor = Theme.contentBackground
+    }
+
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -312,7 +319,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
 
         let nameLabel = NSTextField(labelWithString: prompt.name)
         nameLabel.font = .boldSystemFont(ofSize: 12)
-        nameLabel.textColor = terminalForeground
+        nameLabel.textColor = Theme.primaryText
 
         let detailParts = [prompt.projectName, prompt.directory]
         let varPart = prompt.variables.isEmpty ? "" : " · \(prompt.variables.map { "{{\($0)}}" }.joined(separator: " "))"
@@ -378,7 +385,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
 
         storage.beginEditing()
         storage.addAttributes([
-            .foregroundColor: terminalForeground,
+            .foregroundColor: Theme.primaryText,
             .font: monoFont,
         ], range: fullRange)
 

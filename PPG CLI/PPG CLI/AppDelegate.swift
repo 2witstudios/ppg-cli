@@ -4,6 +4,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var window: NSWindow!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppSettingsManager.shared.applyAppearance()
         setupMainMenu()
         KeybindingManager.shared.applyBindings(to: NSApp.mainMenu!)
 
@@ -16,7 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             defer: false
         )
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = chromeBackground
+        window.backgroundColor = Theme.chromeBackground
         window.isOpaque = false
         window.isRestorable = false
 
@@ -29,7 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let cli = PPGService.shared.checkCLIAvailable()
         let tmux = PPGService.shared.checkTmuxAvailable()
 
-        if cli.available && tmux {
+        if cli.available && tmux.available && tmux.supportsCodexInputTheme {
             proceedToProjects()
             if let version = cli.version {
                 checkCLIVersion(installedVersion: version)

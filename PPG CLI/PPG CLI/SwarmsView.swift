@@ -225,14 +225,14 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     private func setupViews() {
         wantsLayer = true
-        layer?.backgroundColor = terminalBackground.cgColor
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
 
         // Header
         let headerBar = NSView()
         headerBar.translatesAutoresizingMaskIntoConstraints = false
 
         headerLabel.font = .boldSystemFont(ofSize: 14)
-        headerLabel.textColor = terminalForeground
+        headerLabel.textColor = Theme.primaryText
         headerLabel.translatesAutoresizingMaskIntoConstraints = false
         headerBar.addSubview(headerLabel)
 
@@ -242,7 +242,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         newButton.imagePosition = .imageLeading
         newButton.font = .systemFont(ofSize: 11)
         newButton.isBordered = false
-        newButton.contentTintColor = terminalForeground
+        newButton.contentTintColor = Theme.primaryText
         newButton.target = self
         newButton.action = #selector(newSwarmClicked)
         newButton.translatesAutoresizingMaskIntoConstraints = false
@@ -292,7 +292,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         detailScrollView.documentView = detailStack
         detailScrollView.hasVerticalScroller = true
         detailScrollView.drawsBackground = true
-        detailScrollView.backgroundColor = terminalBackground
+        detailScrollView.backgroundColor = Theme.contentBackground
         detailScrollView.translatesAutoresizingMaskIntoConstraints = false
         detailContainer.addSubview(detailScrollView)
 
@@ -311,7 +311,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         saveButton.imagePosition = .imageLeading
         saveButton.font = .systemFont(ofSize: 11)
         saveButton.isBordered = false
-        saveButton.contentTintColor = terminalForeground
+        saveButton.contentTintColor = Theme.primaryText
         saveButton.target = self
         saveButton.action = #selector(saveClicked)
         saveButton.isEnabled = false
@@ -399,12 +399,18 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
+        detailScrollView.backgroundColor = Theme.contentBackground
+    }
+
     private func setupDetailForm() {
         // Name
         let nameRow = makeFormRow(label: "Name:", field: nameField)
         nameField.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        nameField.textColor = terminalForeground
-        nameField.backgroundColor = terminalBackground
+        nameField.textColor = Theme.primaryText
+        nameField.backgroundColor = Theme.contentBackground
         nameField.drawsBackground = true
         detailStack.addArrangedSubview(nameRow)
         nameRow.translatesAutoresizingMaskIntoConstraints = false
@@ -413,8 +419,8 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         // Description
         let descRow = makeFormRow(label: "Description:", field: descField)
         descField.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        descField.textColor = terminalForeground
-        descField.backgroundColor = terminalBackground
+        descField.textColor = Theme.primaryText
+        descField.backgroundColor = Theme.contentBackground
         descField.drawsBackground = true
         detailStack.addArrangedSubview(descRow)
         descRow.translatesAutoresizingMaskIntoConstraints = false
@@ -427,10 +433,10 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
         sharedRadio.target = self
         sharedRadio.action = #selector(strategyChanged)
-        sharedRadio.contentTintColor = terminalForeground
+        sharedRadio.contentTintColor = Theme.primaryText
         isolatedRadio.target = self
         isolatedRadio.action = #selector(strategyChanged)
-        isolatedRadio.contentTintColor = terminalForeground
+        isolatedRadio.contentTintColor = Theme.primaryText
 
         let radioStack = NSStackView(views: [sharedRadio, isolatedRadio])
         radioStack.orientation = .horizontal
@@ -444,7 +450,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         // Agents section
         let agentsLabel = NSTextField(labelWithString: "Agents:")
         agentsLabel.font = .boldSystemFont(ofSize: 12)
-        agentsLabel.textColor = terminalForeground
+        agentsLabel.textColor = Theme.primaryText
         detailStack.addArrangedSubview(agentsLabel)
 
         agentListStack.orientation = .vertical
@@ -459,7 +465,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         addAgentButton.imagePosition = .imageLeading
         addAgentButton.font = .systemFont(ofSize: 11)
         addAgentButton.isBordered = false
-        addAgentButton.contentTintColor = terminalForeground
+        addAgentButton.contentTintColor = Theme.primaryText
         addAgentButton.target = self
         addAgentButton.action = #selector(addAgentClicked)
         detailStack.addArrangedSubview(addAgentButton)
@@ -503,7 +509,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
         let nameLabel = NSTextField(labelWithString: swarm.name)
         nameLabel.font = .boldSystemFont(ofSize: 12)
-        nameLabel.textColor = terminalForeground
+        nameLabel.textColor = Theme.primaryText
 
         let detail = "\(swarm.agentCount) agent\(swarm.agentCount == 1 ? "" : "s") · \(swarm.strategy)"
         let detailLabel = NSTextField(labelWithString: "\(swarm.projectName) · \(detail)")
@@ -773,8 +779,8 @@ class AgentRowView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 6
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
-        layer?.backgroundColor = NSColor(srgbRed: 0.14, green: 0.14, blue: 0.15, alpha: 1.0).cgColor
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
+        layer?.backgroundColor = Theme.agentRowBackground.resolvedCGColor(for: effectiveAppearance)
 
         let promptLabel = NSTextField(labelWithString: "Prompt:")
         promptLabel.font = .systemFont(ofSize: 11)
@@ -783,8 +789,8 @@ class AgentRowView: NSView {
 
         promptField.stringValue = agent.prompt
         promptField.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        promptField.textColor = terminalForeground
-        promptField.backgroundColor = terminalBackground
+        promptField.textColor = Theme.primaryText
+        promptField.backgroundColor = Theme.contentBackground
         promptField.drawsBackground = true
         promptField.isBordered = true
         promptField.isBezeled = true
@@ -798,8 +804,8 @@ class AgentRowView: NSView {
         agentField.stringValue = agent.agent ?? ""
         agentField.placeholderString = "claude"
         agentField.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        agentField.textColor = terminalForeground
-        agentField.backgroundColor = terminalBackground
+        agentField.textColor = Theme.primaryText
+        agentField.backgroundColor = Theme.contentBackground
         agentField.drawsBackground = true
         agentField.isBordered = true
         agentField.isBezeled = true
@@ -839,6 +845,12 @@ class AgentRowView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) not supported")
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.agentRowBackground.resolvedCGColor(for: effectiveAppearance)
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
     }
 
     @objc private func removeClicked() {

@@ -35,9 +35,7 @@ class ScrollableTerminalView: NSView {
         super.init(frame: frame)
 
         // Harmonize terminal background with UI chrome (replaces pure black default)
-        self.terminalView.nativeBackgroundColor = terminalBackground
-        self.terminalView.nativeForegroundColor = terminalForeground
-        self.terminalView.layer?.backgroundColor = terminalBackground.cgColor
+        applyTerminalTheme(forceRefresh: false)
 
         self.terminalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(self.terminalView)
@@ -59,9 +57,19 @@ class ScrollableTerminalView: NSView {
         settingsObserver = NotificationCenter.default.addObserver(
             forName: .appSettingsDidChange, object: nil, queue: .main
         ) { [weak self] notification in
-            guard let key = notification.userInfo?[AppSettingsManager.changedKeyUserInfoKey] as? AppSettingsKey,
-                  key == .terminalFont || key == .terminalFontSize else { return }
-            self?.applyFont()
+            guard let self,
+                  let key = notification.userInfo?[AppSettingsManager.changedKeyUserInfoKey] as? AppSettingsKey else { return }
+            switch key {
+            case .terminalFont, .terminalFontSize:
+                self.applyFont()
+            case .appearanceMode:
+                // Run on next cycle to ensure the window/view effectiveAppearance is already updated.
+                DispatchQueue.main.async { [weak self] in
+                    self?.applyTerminalTheme(forceRefresh: true)
+                }
+            default:
+                break
+            }
         }
 
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
@@ -112,6 +120,100 @@ class ScrollableTerminalView: NSView {
     var allowMouseReporting: Bool {
         get { terminalView.allowMouseReporting }
         set { terminalView.allowMouseReporting = newValue }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyTerminalTheme(forceRefresh: true)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyTerminalTheme(forceRefresh: true)
+    }
+
+    private func applyTerminalTheme(forceRefresh: Bool) {
+        let appearance = window?.effectiveAppearance ?? NSApp.appearance ?? effectiveAppearance
+        let resolvedBackground = Theme.terminalBackground.resolvedColor(for: appearance)
+        let resolvedForeground = Theme.terminalForeground.resolvedColor(for: appearance)
+        let term = terminalView.getTerminal()
+
+        // Keep the terminal engine's default colors in sync with native colors so
+        // OSC 10/11 queries (used by TUIs like Codex) report the active theme.
+        term.backgroundColor = makeTerminalColor(from: resolvedBackground)
+        term.foregroundColor = makeTerminalColor(from: resolvedForeground)
+
+        terminalView.nativeBackgroundColor = resolvedBackground
+        terminalView.nativeForegroundColor = resolvedForeground
+        terminalView.installColors(ansiPalette(for: appearance))
+        terminalView.layer?.backgroundColor = resolvedBackground.cgColor
+        layer?.backgroundColor = resolvedBackground.cgColor
+
+        guard forceRefresh else { return }
+
+        // SwiftTerm caches attributes per color/font; invalidate and repaint all rows.
+        terminalView.colorChanged(source: term, idx: nil)
+        term.refresh(startRow: 0, endRow: term.rows)
+        terminalView.needsDisplay = true
+        terminalView.font = terminalView.font
+    }
+
+    private func ansiPalette(for appearance: NSAppearance) -> [SwiftTerm.Color] {
+        let isDark = appearance.isDark
+        let palette: [(CGFloat, CGFloat, CGFloat)] = isDark ? [
+            (0.11, 0.11, 0.12), // 0 black
+            (0.78, 0.35, 0.35), // 1 red
+            (0.43, 0.68, 0.47), // 2 green
+            (0.79, 0.67, 0.40), // 3 yellow
+            (0.43, 0.61, 0.90), // 4 blue
+            (0.72, 0.53, 0.86), // 5 magenta
+            (0.39, 0.72, 0.78), // 6 cyan
+            (0.68, 0.68, 0.70), // 7 white
+            (0.34, 0.35, 0.37), // 8 bright black
+            (0.89, 0.48, 0.48), // 9 bright red
+            (0.55, 0.84, 0.60), // 10 bright green
+            (0.90, 0.78, 0.50), // 11 bright yellow
+            (0.54, 0.70, 0.94), // 12 bright blue
+            (0.80, 0.63, 0.91), // 13 bright magenta
+            (0.49, 0.79, 0.84), // 14 bright cyan
+            (0.94, 0.94, 0.95), // 15 bright white
+        ] : [
+            (0.17, 0.17, 0.18), // 0 black
+            (0.71, 0.23, 0.23), // 1 red
+            (0.18, 0.49, 0.20), // 2 green
+            (0.55, 0.43, 0.12), // 3 yellow
+            (0.18, 0.37, 0.69), // 4 blue
+            (0.48, 0.25, 0.64), // 5 magenta
+            (0.12, 0.44, 0.52), // 6 cyan
+            (0.87, 0.86, 0.82), // 7 white
+            (0.43, 0.43, 0.45), // 8 bright black
+            (0.82, 0.31, 0.31), // 9 bright red
+            (0.25, 0.58, 0.30), // 10 bright green
+            (0.64, 0.52, 0.18), // 11 bright yellow
+            (0.25, 0.47, 0.78), // 12 bright blue
+            (0.58, 0.35, 0.75), // 13 bright magenta
+            (0.20, 0.54, 0.63), // 14 bright cyan
+            (0.99, 0.99, 0.99), // 15 bright white
+        ]
+
+        return palette.map { makeTerminalColor(red: $0.0, green: $0.1, blue: $0.2) }
+    }
+
+    private func makeTerminalColor(red: CGFloat, green: CGFloat, blue: CGFloat) -> SwiftTerm.Color {
+        let r = UInt16((max(0, min(1, red)) * 65535).rounded())
+        let g = UInt16((max(0, min(1, green)) * 65535).rounded())
+        let b = UInt16((max(0, min(1, blue)) * 65535).rounded())
+        return SwiftTerm.Color(red: r, green: g, blue: b)
+    }
+
+    private func makeTerminalColor(from color: NSColor) -> SwiftTerm.Color {
+        let rgb = color.usingColorSpace(.deviceRGB) ?? color
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        rgb.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return makeTerminalColor(red: r, green: g, blue: b)
     }
 
     private func handleScrollEvent(_ event: NSEvent) -> NSEvent? {

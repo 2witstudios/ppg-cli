@@ -6,6 +6,7 @@ class CommandPalettePanel: NSPanel {
     var onDismiss: (() -> Void)?
 
     private var localMouseMonitor: Any?
+    private var settingsObserver: NSObjectProtocol?
 
     override var canBecomeKey: Bool { true }
 
@@ -21,13 +22,23 @@ class CommandPalettePanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
+        appearance = NSApp.appearance
 
         let vc = CommandPaletteViewController()
         contentViewController = vc
+
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .appSettingsDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let key = notification.userInfo?[AppSettingsManager.changedKeyUserInfoKey] as? AppSettingsKey,
+                  key == .appearanceMode else { return }
+            self?.syncAppearance()
+        }
     }
 
     func showRelativeTo(window: NSWindow?) {
         guard let parentWindow = window else { return }
+        appearance = parentWindow.effectiveAppearance
 
         let parentFrame = parentWindow.frame
         let panelSize = frame.size
@@ -37,6 +48,7 @@ class CommandPalettePanel: NSPanel {
 
         parentWindow.addChildWindow(self, ordered: .above)
         makeKeyAndOrderFront(nil)
+        syncAppearance()
 
         // Dismiss on click outside
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
@@ -57,6 +69,20 @@ class CommandPalettePanel: NSPanel {
         parent?.removeChildWindow(self)
         orderOut(nil)
         onDismiss?()
+    }
+
+    deinit {
+        if let monitor = localMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let settingsObserver {
+            NotificationCenter.default.removeObserver(settingsObserver)
+        }
+    }
+
+    private func syncAppearance() {
+        appearance = NSApp.appearance
+        (contentViewController as? CommandPaletteViewController)?.refreshTheme()
     }
 
     override func cancelOperation(_ sender: Any?) {
@@ -116,33 +142,51 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
     private let promptHint = NSTextField(labelWithString: "Enter to submit")
 
     // Shared
-    private let containerView = NSView()
+    private let containerView = ThemeAwareView()
     private let separatorView = NSBox()
 
-    // Colors
-    private let bgColor = NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 0.95)
-    private let textColor = NSColor(srgbRed: 0.85, green: 0.85, blue: 0.87, alpha: 1.0)
-    private let dimColor = NSColor(srgbRed: 0.55, green: 0.55, blue: 0.57, alpha: 1.0)
-    private let highlightColor = NSColor(white: 0.25, alpha: 1.0)
-    private let borderColor = NSColor(white: 0.3, alpha: 0.5)
+    private var resolvedAppearance: NSAppearance {
+        containerView.effectiveAppearance
+    }
+    private var textColor: NSColor {
+        Theme.primaryText.resolvedColor(for: resolvedAppearance)
+    }
+    private var dimColor: NSColor {
+        NSColor.secondaryLabelColor.resolvedColor(for: resolvedAppearance)
+    }
+    private var inputBackgroundColor: NSColor {
+        Theme.contentBackground.resolvedColor(for: resolvedAppearance)
+    }
+    private var highlightCGColor: CGColor {
+        Theme.paletteHighlight.resolvedCGColor(for: resolvedAppearance)
+    }
+    private var borderCGColor: CGColor {
+        Theme.paletteBorder.resolvedCGColor(for: resolvedAppearance)
+    }
+    private var clearCGColor: CGColor {
+        NSColor.clear.resolvedCGColor(for: resolvedAppearance)
+    }
 
     override func loadView() {
         let wrapper = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 380))
         self.view = wrapper
 
         containerView.wantsLayer = true
-        containerView.layer?.backgroundColor = bgColor.cgColor
+        containerView.layer?.backgroundColor = Theme.paletteBackground.resolvedCGColor(for: resolvedAppearance)
         containerView.layer?.cornerRadius = 12
         containerView.layer?.borderWidth = 1
-        containerView.layer?.borderColor = borderColor.cgColor
+        containerView.layer?.borderColor = borderCGColor
 
         // Shadow on wrapper
         let shadow = NSShadow()
         shadow.shadowBlurRadius = 20
         shadow.shadowOffset = NSSize(width: 0, height: -4)
-        shadow.shadowColor = NSColor(white: 0, alpha: 0.5)
+        shadow.shadowColor = Theme.paletteShadow.resolvedColor(for: resolvedAppearance)
         containerView.shadow = shadow
 
+        containerView.onAppearanceChanged = { [weak self] in
+            self?.refreshTheme()
+        }
         containerView.frame = wrapper.bounds
         containerView.autoresizingMask = [.width, .height]
         wrapper.addSubview(containerView)
@@ -153,6 +197,7 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
         setupPromptViews()
 
         showSelectionPhase()
+        applyTheme()
     }
 
     override func viewDidAppear() {
@@ -249,10 +294,12 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
 
         // Prompt field
         promptField.placeholderString = "Enter prompt..."
-        promptField.isBordered = false
-        promptField.isBezeled = false
+        promptField.isBordered = true
+        promptField.isBezeled = true
+        promptField.bezelStyle = .roundedBezel
         promptField.focusRingType = .none
-        promptField.drawsBackground = false
+        promptField.drawsBackground = true
+        promptField.backgroundColor = inputBackgroundColor
         promptField.textColor = textColor
         promptField.font = .systemFont(ofSize: 16)
         promptField.delegate = self
@@ -377,12 +424,36 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
 
     // MARK: - Highlight
 
+    func refreshTheme() {
+        guard isViewLoaded else { return }
+        applyTheme()
+        tableView.reloadData()
+        updateHighlight()
+    }
+
+    private func applyTheme() {
+        containerView.layer?.backgroundColor = Theme.paletteBackground.resolvedCGColor(for: resolvedAppearance)
+        containerView.layer?.borderColor = borderCGColor
+
+        if let shadow = containerView.shadow {
+            shadow.shadowColor = Theme.paletteShadow.resolvedColor(for: resolvedAppearance)
+            containerView.shadow = shadow
+        }
+
+        searchField.textColor = textColor
+        promptHeaderLabel.textColor = textColor
+        promptField.textColor = textColor
+        promptField.backgroundColor = inputBackgroundColor
+        promptHint.textColor = dimColor
+        updateHighlight()
+    }
+
     private func updateHighlight() {
         for row in 0..<tableView.numberOfRows {
             if let cellView = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) {
                 cellView.layer?.backgroundColor = row == selectedIndex
-                    ? highlightColor.cgColor
-                    : NSColor.clear.cgColor
+                    ? highlightCGColor
+                    : clearCGColor
             }
         }
     }
@@ -491,8 +562,8 @@ extension CommandPaletteViewController: NSTableViewDataSource, NSTableViewDelega
         let cellView = NSTableCellView()
         cellView.wantsLayer = true
         cellView.layer?.backgroundColor = row == selectedIndex
-            ? highlightColor.cgColor
-            : NSColor.clear.cgColor
+            ? highlightCGColor
+            : clearCGColor
         cellView.layer?.cornerRadius = 6
 
         // Icon

@@ -7,15 +7,22 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
     private let scrollView = NSScrollView()
     private var recentProjects: [String] = []
     private var hoveredRow: Int = -1
+    private weak var listContainer: NSView?
 
     override func loadView() {
-        view = NSView()
+        let root = ThemeAwareView()
+        root.onAppearanceChanged = { [weak self] in
+            guard let self = self else { return }
+            self.view.layer?.backgroundColor = Theme.chromeBackground.resolvedCGColor(for: self.view.effectiveAppearance)
+            self.listContainer?.layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: self.view.effectiveAppearance)
+        }
+        view = root
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.wantsLayer = true
-        view.layer?.backgroundColor = chromeBackground.cgColor
+        view.layer?.backgroundColor = Theme.chromeBackground.resolvedCGColor(for: view.effectiveAppearance)
 
         recentProjects = RecentProjects.shared.projects.filter { RecentProjects.shared.isValidProject($0) }
 
@@ -80,9 +87,10 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
         listContainer.wantsLayer = true
         listContainer.layer?.cornerRadius = 10
         listContainer.layer?.borderWidth = 1
-        listContainer.layer?.borderColor = NSColor.separatorColor.cgColor
+        listContainer.layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: view.effectiveAppearance)
         listContainer.layer?.masksToBounds = true
         listContainer.translatesAutoresizingMaskIntoConstraints = false
+        self.listContainer = listContainer
         card.addSubview(listContainer)
         listContainer.addSubview(scrollView)
 

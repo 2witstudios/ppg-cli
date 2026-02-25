@@ -81,17 +81,21 @@ class ContentViewController: NSViewController {
     var isShowingSwarmsView: Bool { swarmsView?.superview != nil }
 
     override func loadView() {
-        view = NSView()
+        let root = ThemeAwareView()
+        root.onAppearanceChanged = { [weak self] in
+            self?.refreshAppearance()
+        }
+        view = root
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
         view.wantsLayer = true
-        view.layer?.backgroundColor = chromeBackground.cgColor
+        view.layer?.backgroundColor = Theme.chromeBackground.resolvedCGColor(for: view.effectiveAppearance)
 
         containerView.wantsLayer = true
-        containerView.layer?.backgroundColor = terminalBackground.cgColor
+        containerView.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: containerView.effectiveAppearance)
         containerView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(containerView)
 
@@ -124,6 +128,11 @@ class ContentViewController: NSViewController {
 
     deinit {
         evictionTimer?.invalidate()
+    }
+
+    private func refreshAppearance() {
+        view.layer?.backgroundColor = Theme.chromeBackground.resolvedCGColor(for: view.effectiveAppearance)
+        containerView.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: containerView.effectiveAppearance)
     }
 
     /// Evict terminal views for completed/killed/failed agents that haven't been
@@ -403,10 +412,11 @@ class ContentViewController: NSViewController {
                 existingView.translatesAutoresizingMaskIntoConstraints = false
                 containerView.addSubview(existingView)
                 let leadingPadding: CGFloat = (existingView is TerminalPane) ? 0 : 8
+                let trailingPadding: CGFloat = (existingView is TerminalPane) ? 0 : -8
                 NSLayoutConstraint.activate([
                     existingView.topAnchor.constraint(equalTo: containerView.topAnchor),
                     existingView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: leadingPadding),
-                    existingView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                    existingView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: trailingPadding),
                     existingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
                 ])
                 terminalViews[entry.id] = existingView
@@ -762,12 +772,13 @@ class ContentViewController: NSViewController {
 
         termView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(termView)
-        // TerminalPane handles its own leading inset; other views get 8px gap from the container.
+        // TerminalPane handles its own horizontal insets; other views get 8px gaps from the container.
         let leadingPadding: CGFloat = (termView is TerminalPane) ? 0 : 8
+        let trailingPadding: CGFloat = (termView is TerminalPane) ? 0 : -8
         NSLayoutConstraint.activate([
             termView.topAnchor.constraint(equalTo: containerView.topAnchor),
             termView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: leadingPadding),
-            termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            termView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: trailingPadding),
             termView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
         ])
         terminalViews[tab.id] = termView
@@ -902,16 +913,6 @@ class WorktreeDetailView: NSView {
             case context, addition, deletion
         }
     }
-
-    // MARK: - Colors
-
-    static let cardBackground = NSColor(srgbRed: 0.14, green: 0.14, blue: 0.15, alpha: 1.0)
-    static let cardHeaderBackground = NSColor(srgbRed: 0.16, green: 0.16, blue: 0.17, alpha: 1.0)
-    static let additionBackground = NSColor(srgbRed: 0.13, green: 0.22, blue: 0.15, alpha: 1.0)
-    static let deletionBackground = NSColor(srgbRed: 0.25, green: 0.13, blue: 0.13, alpha: 1.0)
-    static let additionText = NSColor(srgbRed: 0.55, green: 0.85, blue: 0.55, alpha: 1.0)
-    static let deletionText = NSColor(srgbRed: 0.90, green: 0.55, blue: 0.55, alpha: 1.0)
-    static let hunkSeparatorColor = NSColor(white: 0.22, alpha: 1.0)
 
     private(set) var currentWorktreePath = ""
 
@@ -1154,7 +1155,7 @@ class WorktreeDetailView: NSView {
 
     private func setupViews() {
         wantsLayer = true
-        layer?.backgroundColor = terminalBackground.cgColor
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
 
         // Icon
         iconView.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "Worktree")
@@ -1241,7 +1242,7 @@ class WorktreeDetailView: NSView {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = terminalBackground
+        scrollView.backgroundColor = Theme.contentBackground
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
         addSubview(emptyLabel)
@@ -1279,13 +1280,19 @@ class WorktreeDetailView: NSView {
         button.imagePosition = .imageLeading
         button.font = .systemFont(ofSize: 11)
         button.isBordered = false
-        button.contentTintColor = terminalForeground
+        button.contentTintColor = Theme.primaryText
         button.translatesAutoresizingMaskIntoConstraints = false
     }
 
     @objc private func agentButtonClicked() { onNewAgent?() }
     @objc private func terminalButtonClicked() { onNewTerminal?() }
     @objc private func worktreeButtonClicked() { onNewWorktree?() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
+        scrollView.backgroundColor = Theme.contentBackground
+    }
 }
 
 // MARK: - DiffCardView
@@ -1293,6 +1300,8 @@ class WorktreeDetailView: NSView {
 class DiffCardView: NSView {
 
     private let fileDiff: WorktreeDetailView.DiffData.FileDiff
+    private var headerView: NSView?
+    private var diffTextView: NSTextView?
 
     init(fileDiff: WorktreeDetailView.DiffData.FileDiff) {
         self.fileDiff = fileDiff
@@ -1309,15 +1318,16 @@ class DiffCardView: NSView {
         layer?.cornerRadius = 8
         layer?.masksToBounds = true
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
-        layer?.backgroundColor = WorktreeDetailView.cardBackground.cgColor
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
+        layer?.backgroundColor = Theme.cardBackground.resolvedCGColor(for: effectiveAppearance)
 
         // Header bar
         let headerView = NSView()
         headerView.wantsLayer = true
-        headerView.layer?.backgroundColor = WorktreeDetailView.cardHeaderBackground.cgColor
+        headerView.layer?.backgroundColor = Theme.cardHeaderBackground.resolvedCGColor(for: effectiveAppearance)
         headerView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headerView)
+        self.headerView = headerView
 
         // File icon
         let iconName: String
@@ -1353,12 +1363,12 @@ class DiffCardView: NSView {
             ]))
             filenameAttr.append(NSAttributedString(string: String(pathComponents.last!), attributes: [
                 .font: monoBold,
-                .foregroundColor: terminalForeground,
+                .foregroundColor: Theme.primaryText,
             ]))
         } else {
             filenameAttr.append(NSAttributedString(string: fileDiff.filename, attributes: [
                 .font: monoBold,
-                .foregroundColor: terminalForeground,
+                .foregroundColor: Theme.primaryText,
             ]))
         }
         filenameLabel.attributedStringValue = filenameAttr
@@ -1391,14 +1401,14 @@ class DiffCardView: NSView {
         if fileDiff.added > 0 {
             statsAttr.append(NSAttributedString(string: "+\(fileDiff.added)", attributes: [
                 .font: statsFont,
-                .foregroundColor: WorktreeDetailView.additionText,
+                .foregroundColor: Theme.additionText,
             ]))
         }
         if fileDiff.removed > 0 {
             if statsAttr.length > 0 { statsAttr.append(NSAttributedString(string: "  ")) }
             statsAttr.append(NSAttributedString(string: "-\(fileDiff.removed)", attributes: [
                 .font: statsFont,
-                .foregroundColor: WorktreeDetailView.deletionText,
+                .foregroundColor: Theme.deletionText,
             ]))
         }
         let statsLabel = NSTextField(labelWithString: "")
@@ -1446,7 +1456,7 @@ class DiffCardView: NSView {
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = true
-        textView.backgroundColor = WorktreeDetailView.cardBackground
+        textView.backgroundColor = Theme.cardBackground
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
@@ -1454,6 +1464,7 @@ class DiffCardView: NSView {
         textView.autoresizingMask = [.width]
         textView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(textView)
+        self.diffTextView = textView
 
         let attributed = buildDiffAttributedString()
         textView.textStorage?.setAttributedString(attributed)
@@ -1474,6 +1485,17 @@ class DiffCardView: NSView {
             textView.bottomAnchor.constraint(equalTo: bottomAnchor),
             textView.heightAnchor.constraint(equalToConstant: textHeight),
         ])
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = Theme.cardBackground.resolvedCGColor(for: effectiveAppearance)
+        layer?.borderColor = NSColor.separatorColor.resolvedCGColor(for: effectiveAppearance)
+        headerView?.layer?.backgroundColor = Theme.cardHeaderBackground.resolvedCGColor(for: effectiveAppearance)
+        if let tv = diffTextView {
+            tv.backgroundColor = Theme.cardBackground
+            tv.textStorage?.setAttributedString(buildDiffAttributedString())
+        }
     }
 
     private func buildDiffAttributedString() -> NSAttributedString {
@@ -1499,7 +1521,7 @@ class DiffCardView: NSView {
                     .font: NSFont.systemFont(ofSize: 11),
                     .foregroundColor: NSColor.tertiaryLabelColor,
                     .paragraphStyle: sepPara,
-                    .backgroundColor: WorktreeDetailView.hunkSeparatorColor,
+                    .backgroundColor: Theme.hunkSeparator,
                 ]))
             }
 
@@ -1511,14 +1533,14 @@ class DiffCardView: NSView {
                 let fgColor: NSColor
                 switch line.type {
                 case .addition:
-                    bgColor = WorktreeDetailView.additionBackground
-                    fgColor = WorktreeDetailView.additionText
+                    bgColor = Theme.additionBackground
+                    fgColor = Theme.additionText
                 case .deletion:
-                    bgColor = WorktreeDetailView.deletionBackground
-                    fgColor = WorktreeDetailView.deletionText
+                    bgColor = Theme.deletionBackground
+                    fgColor = Theme.deletionText
                 case .context:
-                    bgColor = WorktreeDetailView.cardBackground
-                    fgColor = terminalForeground
+                    bgColor = Theme.cardBackground
+                    fgColor = Theme.primaryText
                 }
 
                 // Old line number

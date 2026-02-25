@@ -2,7 +2,7 @@
 
 ## Overview
 
-ppg (Pure Point Guard) is a local orchestration runtime for parallel CLI coding agents. It spawns multiple AI agents in isolated git worktrees, each in its own tmux pane, and provides a single control plane to monitor, aggregate, and merge their work.
+ppg (Pure Point Guard) is a local orchestration system for parallel AI coding agents, driven through a native macOS dashboard. The dashboard is the primary interface — it lets you spawn, monitor, and merge agents visually. Underneath, a CLI engine manages git worktrees, tmux sessions, status tracking, and branch merging.
 
 ## Who It's For
 
@@ -12,17 +12,18 @@ ppg (Pure Point Guard) is a local orchestration runtime for parallel CLI coding 
 
 ## Goals
 
+- **Visual dashboard as primary interface** — A native macOS app that reads the manifest in real time, providing spawn controls, live status, log streaming, diffs, and merge actions in a single window
 - **Parallel agent isolation** — Each agent works in its own git worktree on its own branch, with no file conflicts
 - **Simple orchestration primitives** — `spawn`, `status`, `kill`, `aggregate`, `merge` — do one thing well
 - **Agent-agnostic design** — Works with Claude Code, Codex, custom scripts, or any CLI agent
 - **Manifest-based state** — Single `manifest.json` as the source of truth for all runtime state, with file-level locking and atomic writes
-- **Human + conductor workflows** — Pretty tables for humans, `--json` for machine consumption
+- **Human + conductor workflows** — Dashboard for visual use, pretty tables for the terminal, `--json` for machine consumption
 - **Template system** — Reusable prompt templates with `{{VAR}}` substitution
 
 ## Non-Goals
 
 - Not a cloud service — ppg runs locally on your machine
-- Not an IDE or editor — ppg is a CLI tool
+- Not an IDE or editor — ppg is for agent orchestration, not code editing
 - Not agent logic — ppg spawns and monitors agents, it doesn't implement agent behavior
 - Not CI/CD — ppg is for interactive development, not automated pipelines
 - Not cross-platform yet — macOS-first (Terminal.app auto-open via AppleScript)
@@ -37,6 +38,7 @@ ppg (Pure Point Guard) is a local orchestration runtime for parallel CLI coding 
 
 ## Architecture Decisions
 
+- **Native macOS dashboard** — A Swift app that watches the manifest file and provides the primary user interface. The dashboard reads the same `manifest.json` the CLI writes, keeping the two fully decoupled — no IPC, no server
 - **Worktree isolation model** — Git worktrees provide true filesystem isolation with shared history. Branch naming: `ppg/<name>`. Path: `.worktrees/wt-{id}/`
 - **tmux process management** — One session per project, one window per worktree, one pane per agent. tmux provides attach, logs, kill, and status detection for free
 - **Manifest with file-level locking** — `proper-lockfile` (10s stale, 5 retries) + `write-file-atomic` for safe concurrent access from multiple ppg commands

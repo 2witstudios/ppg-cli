@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Codable representation of a PaneSplitNode tree (entry IDs only, no views).
@@ -82,6 +83,9 @@ class DashboardSession {
             // 1. Environment prefix
             if variant.needsUnsetClaudeCode {
                 cmdParts.append("unset CLAUDECODE")
+            }
+            if variant.id == "codex" {
+                cmdParts.append(codexLaunchEnvironmentExports())
             }
 
             // 2. Base command + agent-specific flags
@@ -362,5 +366,29 @@ class DashboardSession {
     private func generateId(_ length: Int) -> String {
         let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
         return String((0..<length).map { _ in chars.randomElement()! })
+    }
+
+    private func codexLaunchEnvironmentExports() -> String {
+        let colorFgBg = isDarkAppearanceForAgents() ? "15;0" : "0;15"
+        let envPairs = [
+            ("COLORTERM", "truecolor"),
+            ("COLORFGBG", colorFgBg),
+            ("TERM_PROGRAM", "ppg-cli"),
+        ]
+        return envPairs
+            .map { key, value in "export \(key)=\(shellEscape(value))" }
+            .joined(separator: "; ")
+    }
+
+    private func isDarkAppearanceForAgents() -> Bool {
+        switch AppSettingsManager.shared.appearanceMode {
+        case .dark:
+            return true
+        case .light:
+            return false
+        case .system:
+            let match = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+            return match == .darkAqua
+        }
     }
 }

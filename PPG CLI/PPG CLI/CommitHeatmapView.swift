@@ -18,14 +18,7 @@ class CommitHeatmapView: NSView {
     private static let dayLabelWidth: CGFloat = 24
     private static let monthLabelHeight: CGFloat = 14
 
-    // 5-level green color scale (empty → bright green)
-    private static let levelColors: [NSColor] = [
-        NSColor(srgbRed: 0.16, green: 0.16, blue: 0.17, alpha: 1.0),  // level 0 — empty
-        NSColor(srgbRed: 0.06, green: 0.27, blue: 0.14, alpha: 1.0),  // level 1
-        NSColor(srgbRed: 0.0,  green: 0.41, blue: 0.18, alpha: 1.0),  // level 2
-        NSColor(srgbRed: 0.15, green: 0.57, blue: 0.25, alpha: 1.0),  // level 3
-        NSColor(srgbRed: 0.24, green: 0.75, blue: 0.35, alpha: 1.0),  // level 4
-    ]
+    // Heatmap colors are now adaptive via Theme.heatmapLevel(_:)
 
     private var data: HeatmapData?
     private var trackingArea: NSTrackingArea?
@@ -118,7 +111,7 @@ class CommitHeatmapView: NSView {
                 let ratio = Double(info.count) / Double(max(maxCount, 1))
                 level = min(4, Int(ratio * 4.0) + 1)
             }
-            let color = Self.levelColors[level]
+            let color = Theme.heatmapLevel(level)
             ctx.setFillColor(color.cgColor)
 
             let path = CGPath(roundedRect: info.rect, cornerWidth: 2, cornerHeight: 2, transform: nil)
@@ -168,6 +161,11 @@ class CommitHeatmapView: NSView {
                 label.draw(at: NSPoint(x: x, y: topY))
             }
         }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 
     // MARK: - Tooltip

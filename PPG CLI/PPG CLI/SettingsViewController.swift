@@ -7,6 +7,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
     private var currentTabView: NSView?
 
     // Cached tab views (built once, reused)
+    private var displayView: NSView?
     private var terminalView: NSView?
     private var shortcutsView: NSView?
 
@@ -23,7 +24,11 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
     private var historyField: NSTextField?
 
     override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 520))
+        let container = ThemeAwareView(frame: NSRect(x: 0, y: 0, width: 620, height: 520))
+        container.onAppearanceChanged = { [weak self] in
+            guard let self = self else { return }
+            self.view.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: self.view.effectiveAppearance)
+        }
         view = container
     }
 
@@ -32,12 +37,13 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         title = "Settings"
 
         view.wantsLayer = true
-        view.layer?.backgroundColor = terminalBackground.cgColor
+        view.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: view.effectiveAppearance)
 
         // Segmented control
-        segmentedControl.segmentCount = 2
-        segmentedControl.setLabel("Terminal", forSegment: 0)
-        segmentedControl.setLabel("Shortcuts", forSegment: 1)
+        segmentedControl.segmentCount = 3
+        segmentedControl.setLabel("Display", forSegment: 0)
+        segmentedControl.setLabel("Terminal", forSegment: 1)
+        segmentedControl.setLabel("Shortcuts", forSegment: 2)
         segmentedControl.segmentStyle = .texturedRounded
         segmentedControl.selectedSegment = 0
         segmentedControl.target = self
@@ -93,9 +99,12 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         let tabView: NSView
         switch index {
         case 0:
+            if displayView == nil { displayView = makeDisplayView() }
+            tabView = displayView!
+        case 1:
             if terminalView == nil { terminalView = makeTerminalView() }
             tabView = terminalView!
-        case 1:
+        case 2:
             if shortcutsView == nil { shortcutsView = makeShortcutsView() }
             tabView = shortcutsView!
         default: return
@@ -110,6 +119,63 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
             tabView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
         ])
         currentTabView = tabView
+    }
+
+    // MARK: - Display Tab
+
+    private func makeDisplayView() -> NSView {
+        let container = NSView()
+
+        let label = makeLabel("Appearance:")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        let seg = NSSegmentedControl()
+        seg.segmentCount = 3
+        seg.setLabel("System", forSegment: 0)
+        seg.setLabel("Light", forSegment: 1)
+        seg.setLabel("Dark", forSegment: 2)
+        seg.segmentStyle = .texturedRounded
+        seg.target = self
+        seg.action = #selector(appearanceChanged(_:))
+        seg.translatesAutoresizingMaskIntoConstraints = false
+
+        switch AppSettingsManager.shared.appearanceMode {
+        case .system: seg.selectedSegment = 0
+        case .light:  seg.selectedSegment = 1
+        case .dark:   seg.selectedSegment = 2
+        }
+
+        container.addSubview(seg)
+
+        let hint = NSTextField(labelWithString: "System follows your macOS appearance setting.")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(hint)
+
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            seg.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 8),
+            seg.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            hint.topAnchor.constraint(equalTo: seg.bottomAnchor, constant: 8),
+            hint.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        ])
+
+        return container
+    }
+
+    @objc private func appearanceChanged(_ sender: NSSegmentedControl) {
+        let mode: AppearanceMode
+        switch sender.selectedSegment {
+        case 1:  mode = .light
+        case 2:  mode = .dark
+        default: mode = .system
+        }
+        AppSettingsManager.shared.appearanceMode = mode
     }
 
     // MARK: - Terminal Tab
@@ -134,7 +200,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         let sizeLabel = makeLabel("Font Size:")
         let sizeField = NSTextField(labelWithString: "\(Int(settings.terminalFontSize))")
         sizeField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        sizeField.textColor = terminalForeground
+        sizeField.textColor = Theme.primaryText
         sizeField.translatesAutoresizingMaskIntoConstraints = false
         fontSizeField = sizeField
 
@@ -280,7 +346,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
         tableView.dataSource = self
         tableView.delegate = self
         tableView.rowSizeStyle = .medium
-        tableView.backgroundColor = terminalBackground
+        tableView.backgroundColor = Theme.contentBackground
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.headerView?.wantsLayer = true
         tableView.reloadData()
@@ -315,7 +381,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
     private func makeLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.textColor = terminalForeground
+        label.textColor = Theme.primaryText
         return label
     }
 
@@ -461,7 +527,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
             let cell = NSTableCellView()
             let label = NSTextField(labelWithString: action.displayName)
             label.font = .systemFont(ofSize: 13)
-            label.textColor = terminalForeground
+            label.textColor = Theme.primaryText
             label.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(label)
             NSLayoutConstraint.activate([
@@ -475,7 +541,7 @@ class SettingsViewController: NSViewController, NSTableViewDataSource, NSTableVi
             let shortcutStr = KeybindingManager.shared.displayString(for: action)
             let label = NSTextField(labelWithString: shortcutStr)
             label.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-            label.textColor = KeybindingManager.shared.isCustomized(action) ? .systemYellow : terminalForeground
+            label.textColor = KeybindingManager.shared.isCustomized(action) ? .systemYellow : Theme.primaryText
             label.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(label)
             NSLayoutConstraint.activate([

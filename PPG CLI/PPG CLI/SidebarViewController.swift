@@ -1,25 +1,5 @@
 import AppKit
 
-/// Chrome background — semi-transparent dark to let desktop show through.
-let chromeBackground = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 0.7)
-
-/// Terminal background — opaque dark to match tmux.
-let terminalBackground = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
-
-/// Terminal foreground text — light on dark.
-let terminalForeground = NSColor(srgbRed: 0.85, green: 0.85, blue: 0.87, alpha: 1.0)
-
-func statusColor(for status: AgentStatus) -> NSColor {
-    switch status {
-    case .running: return .systemGreen
-    case .completed: return .systemBlue
-    case .failed: return .systemRed
-    case .killed: return .systemOrange
-    case .lost, .waiting: return .systemGray
-    case .spawning: return .systemYellow
-    }
-}
-
 // MARK: - Sidebar Tab
 
 enum SidebarTab {
@@ -89,6 +69,8 @@ private class WorktreeMenuRef: NSObject {
 class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     let scrollView = NSScrollView()
     let outlineView = NSOutlineView()
+    private let gearButton = NSButton()
+    private let addProjectButton = NSButton()
 
     var projectWorktrees: [String: [WorktreeModel]] = [:]
 
@@ -125,11 +107,16 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private var contextClickedNode: SidebarNode?
 
     override func loadView() {
-        view = NSView()
+        let root = ThemeAwareView()
+        root.onAppearanceChanged = { [weak self] in
+            self?.applyTheme()
+        }
+        view = root
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        applyTheme()
 
         // Outline view — pinned directly to top safe area (no header bar)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
@@ -211,24 +198,22 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         separator.translatesAutoresizingMaskIntoConstraints = false
         footerBar.addSubview(separator)
 
-        let gearButton = NSButton()
         gearButton.bezelStyle = .accessoryBarAction
         gearButton.image = NSImage(systemSymbolName: "gear", accessibilityDescription: "Settings")
         gearButton.isBordered = false
-        gearButton.contentTintColor = terminalForeground
+        gearButton.contentTintColor = Theme.primaryText
         gearButton.target = self
         gearButton.action = #selector(settingsButtonClicked)
         gearButton.translatesAutoresizingMaskIntoConstraints = false
         footerBar.addSubview(gearButton)
 
-        let addProjectButton = NSButton()
         addProjectButton.bezelStyle = .accessoryBarAction
         addProjectButton.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: "Add Project")
         addProjectButton.title = "Add Project"
         addProjectButton.imagePosition = .imageLeading
         addProjectButton.font = .systemFont(ofSize: 11)
         addProjectButton.isBordered = false
-        addProjectButton.contentTintColor = terminalForeground
+        addProjectButton.contentTintColor = Theme.primaryText
         addProjectButton.target = self
         addProjectButton.action = #selector(addProjectButtonClicked)
         addProjectButton.translatesAutoresizingMaskIntoConstraints = false
@@ -268,6 +253,18 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         ])
 
         startRefreshTimer()
+    }
+
+    private func applyTheme() {
+        view.wantsLayer = true
+        view.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: view.effectiveAppearance)
+        gearButton.contentTintColor = Theme.primaryText.resolvedColor(for: view.effectiveAppearance)
+        addProjectButton.contentTintColor = Theme.primaryText.resolvedColor(for: view.effectiveAppearance)
+
+        // Rebuild row views so inline + buttons don't keep stale cached control chrome.
+        if isViewLoaded {
+            outlineView.reloadData()
+        }
     }
 
     func selectTab(_ tab: SidebarTab) {
@@ -826,6 +823,19 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         return 24
     }
 
+    private func makeInlineAddButton(action: Selector) -> NSButton {
+        let button = NSButton()
+        button.setButtonType(.momentaryPushIn)
+        button.isBordered = false
+        button.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
+        button.imageScaling = .scaleProportionallyDown
+        button.contentTintColor = Theme.primaryText
+        button.target = self
+        button.action = action
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        return button
+    }
+
     private func makeProjectCell(_ ctx: ProjectContext) -> NSView {
         let cell = NSTableCellView()
         let stack = NSStackView()
@@ -837,13 +847,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         name.font = .boldSystemFont(ofSize: 13)
 
         // Inline "+" button
-        let addBtn = NSButton()
-        addBtn.bezelStyle = .glass
-        addBtn.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
-        addBtn.target = self
-        addBtn.action = #selector(projectAddButtonClicked(_:))
+        let addBtn = makeInlineAddButton(action: #selector(projectAddButtonClicked(_:)))
         addBtn.tag = OpenProjects.shared.indexOf(root: ctx.projectRoot) ?? 0
-        addBtn.setContentHuggingPriority(.required, for: .horizontal)
 
         stack.addArrangedSubview(name)
         stack.addArrangedSubview(NSView()) // spacer
@@ -881,13 +886,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         badge.setContentHuggingPriority(.required, for: .horizontal)
 
         // Inline "+" button for adding agents/terminals to this worktree
-        let addBtn = NSButton()
-        addBtn.bezelStyle = .glass
-        addBtn.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
-        addBtn.target = self
-        addBtn.action = #selector(worktreeAddButtonClicked(_:))
+        let addBtn = makeInlineAddButton(action: #selector(worktreeAddButtonClicked(_:)))
         addBtn.identifier = NSUserInterfaceItemIdentifier(worktree.id)
-        addBtn.setContentHuggingPriority(.required, for: .horizontal)
 
         stack.addArrangedSubview(icon)
         stack.addArrangedSubview(name)
@@ -913,7 +913,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         let statusDesc = "Agent \(agent.status.rawValue)"
         let icon = NSImageView(image: NSImage(systemSymbolName: "circle.fill", accessibilityDescription: statusDesc)!)
-        icon.contentTintColor = statusColor(for: agent.status)
+        icon.contentTintColor = Theme.statusColor(for: agent.status)
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 6, weight: .regular)
         icon.setContentHuggingPriority(.required, for: .horizontal)
         icon.translatesAutoresizingMaskIntoConstraints = false
@@ -948,7 +948,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let leadStatus = agents.first?.status ?? .running
         let statusDesc = "\(agents.count) agents (split)"
         let icon = NSImageView(image: NSImage(systemSymbolName: "rectangle.split.2x1.fill", accessibilityDescription: statusDesc)!)
-        icon.contentTintColor = statusColor(for: leadStatus)
+        icon.contentTintColor = Theme.statusColor(for: leadStatus)
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -1241,8 +1241,8 @@ private class ManifestWatcher {
 /// Full-width clickable row for sidebar navigation (Slack/Notion style).
 class SidebarNavRow: NSView {
 
-    private static let selectedBackground = NSColor.white.withAlphaComponent(0.08)
-    private static let hoverBackground = NSColor.white.withAlphaComponent(0.05)
+    private static let selectedBackground = Theme.sidebarSelection
+    private static let hoverBackground = Theme.sidebarHover
     private static let rowHeight: CGFloat = 26
 
     private let iconView = NSImageView()
@@ -1263,7 +1263,7 @@ class SidebarNavRow: NSView {
         layer?.cornerRadius = 5
 
         iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: title)
-        iconView.contentTintColor = terminalForeground.withAlphaComponent(0.7)
+        iconView.contentTintColor = Theme.primaryText.withAlphaComponent(0.7)
         iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.setContentHuggingPriority(.required, for: .horizontal)
@@ -1271,7 +1271,7 @@ class SidebarNavRow: NSView {
 
         titleLabel.stringValue = title
         titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        titleLabel.textColor = terminalForeground.withAlphaComponent(0.7)
+        titleLabel.textColor = Theme.primaryText.withAlphaComponent(0.7)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
@@ -1295,17 +1295,17 @@ class SidebarNavRow: NSView {
 
     private func updateAppearance() {
         if isSelected {
-            layer?.backgroundColor = Self.selectedBackground.cgColor
-            iconView.contentTintColor = terminalForeground
-            titleLabel.textColor = terminalForeground
+            layer?.backgroundColor = Self.selectedBackground.resolvedCGColor(for: effectiveAppearance)
+            iconView.contentTintColor = Theme.primaryText
+            titleLabel.textColor = Theme.primaryText
         } else if isHovered {
-            layer?.backgroundColor = Self.hoverBackground.cgColor
-            iconView.contentTintColor = terminalForeground.withAlphaComponent(0.7)
-            titleLabel.textColor = terminalForeground.withAlphaComponent(0.7)
+            layer?.backgroundColor = Self.hoverBackground.resolvedCGColor(for: effectiveAppearance)
+            iconView.contentTintColor = Theme.primaryText.withAlphaComponent(0.7)
+            titleLabel.textColor = Theme.primaryText.withAlphaComponent(0.7)
         } else {
-            layer?.backgroundColor = NSColor.clear.cgColor
-            iconView.contentTintColor = terminalForeground.withAlphaComponent(0.7)
-            titleLabel.textColor = terminalForeground.withAlphaComponent(0.7)
+            layer?.backgroundColor = NSColor.clear.resolvedCGColor(for: effectiveAppearance)
+            iconView.contentTintColor = Theme.primaryText.withAlphaComponent(0.7)
+            titleLabel.textColor = Theme.primaryText.withAlphaComponent(0.7)
         }
     }
 
@@ -1337,5 +1337,10 @@ class SidebarNavRow: NSView {
 
     override func mouseDown(with event: NSEvent) {
         onClick?()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
     }
 }
