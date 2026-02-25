@@ -380,15 +380,21 @@ class DashboardSplitViewController: NSSplitViewController {
     func splitPaneBelow() {
         guard content.currentEntryId != nil || content.isGridMode else { return }
         wireGridCallbacks()
-        content.splitPaneBelow()
+        let didSplit = content.splitPaneBelow()
         persistGridLayout()
+        if didSplit {
+            showCreationMenuForGrid()
+        }
     }
 
     func splitPaneRight() {
         guard content.currentEntryId != nil || content.isGridMode else { return }
         wireGridCallbacks()
-        content.splitPaneRight()
+        let didSplit = content.splitPaneRight()
         persistGridLayout()
+        if didSplit {
+            showCreationMenuForGrid()
+        }
     }
 
     func closeFocusedPane() {
@@ -571,7 +577,10 @@ class DashboardSplitViewController: NSSplitViewController {
             projectRoot: ctx.projectRoot,
             onNewAgent: { [weak self] in self?.addAgent(project: ctx, parentWorktreeId: worktreeId) },
             onNewTerminal: { [weak self] in self?.addTerminal(project: ctx, parentWorktreeId: worktreeId) },
-            onNewWorktree: { [weak self] in self?.createWorktree(project: ctx) }
+            onNewWorktree: { [weak self] in self?.createWorktree(project: ctx) },
+            onRenameWorktree: { [weak self] worktreeId, newName in
+                self?.renameManifestWorktree(project: ctx, worktreeId: worktreeId, newName: newName)
+            }
         )
     }
 
@@ -763,6 +772,25 @@ class DashboardSplitViewController: NSSplitViewController {
                 try? updatedData.write(to: URL(fileURLWithPath: manifestPath))
             }
             break
+        }
+
+        sidebar.refresh()
+    }
+
+    private func renameManifestWorktree(project: ProjectContext, worktreeId: String, newName: String) {
+        let manifestPath = project.manifestPath
+        guard let data = FileManager.default.contents(atPath: manifestPath),
+              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var worktrees = json["worktrees"] as? [String: Any],
+              var wt = worktrees[worktreeId] as? [String: Any] else { return }
+
+        wt["name"] = newName
+        worktrees[worktreeId] = wt
+        json["worktrees"] = worktrees
+        json["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+
+        if let updatedData = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
+            try? updatedData.write(to: URL(fileURLWithPath: manifestPath))
         }
 
         sidebar.refresh()

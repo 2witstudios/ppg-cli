@@ -354,20 +354,22 @@ class ContentViewController: NSViewController {
         currentEntry = nil
     }
 
-    func splitPaneBelow() {
-        guard let entryId = currentEntry?.id ?? activeGridOwnerId else { return }
+    @discardableResult
+    func splitPaneBelow() -> Bool {
+        guard let entryId = currentEntry?.id ?? activeGridOwnerId else { return false }
         if !isGridMode {
             enterGridMode(forEntryId: entryId)
         }
-        paneGrid?.splitFocusedPane(direction: .horizontal)
+        return paneGrid?.splitFocusedPane(direction: .horizontal) ?? false
     }
 
-    func splitPaneRight() {
-        guard let entryId = currentEntry?.id ?? activeGridOwnerId else { return }
+    @discardableResult
+    func splitPaneRight() -> Bool {
+        guard let entryId = currentEntry?.id ?? activeGridOwnerId else { return false }
         if !isGridMode {
             enterGridMode(forEntryId: entryId)
         }
-        paneGrid?.splitFocusedPane(direction: .vertical)
+        return paneGrid?.splitFocusedPane(direction: .vertical) ?? false
     }
 
     func closeFocusedPane() -> Bool {
@@ -567,7 +569,8 @@ class ContentViewController: NSViewController {
         projectRoot: String,
         onNewAgent: @escaping () -> Void,
         onNewTerminal: @escaping () -> Void,
-        onNewWorktree: @escaping () -> Void
+        onNewWorktree: @escaping () -> Void,
+        onRenameWorktree: @escaping (String, String) -> Void
     ) {
         homeDashboardView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
@@ -593,6 +596,7 @@ class ContentViewController: NSViewController {
             onNewTerminal: onNewTerminal,
             onNewWorktree: onNewWorktree
         )
+        detailView.onRenameWorktree = onRenameWorktree
 
         if detailView.superview != view {
             detailView.removeFromSuperview()
@@ -915,16 +919,19 @@ class WorktreeDetailView: NSView {
     }
 
     private(set) var currentWorktreePath = ""
+    private(set) var currentWorktreeId = ""
 
     // Header
     private let iconView = NSImageView()
-    private let nameLabel = NSTextField(labelWithString: "")
+    private let nameLabel = NSTextField()
     private let branchLabel = NSTextField(labelWithString: "")
     private let shortcutLabel = NSTextField(labelWithString: "")
     private let agentButton = NSButton()
     private let terminalButton = NSButton()
     private let worktreeButton = NSButton()
     private let headerStack = NSStackView()
+    private var nameBeforeEditing = ""
+    private var isEditingName = false
 
     // Diff area
     private let scrollView = NSScrollView()
@@ -934,6 +941,7 @@ class WorktreeDetailView: NSView {
     var onNewAgent: (() -> Void)?
     var onNewTerminal: (() -> Void)?
     var onNewWorktree: (() -> Void)?
+    var onRenameWorktree: ((String, String) -> Void)?  // (worktreeId, newName)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -952,6 +960,7 @@ class WorktreeDetailView: NSView {
         onNewWorktree: @escaping () -> Void
     ) {
         currentWorktreePath = worktree.path
+        currentWorktreeId = worktree.id
         nameLabel.stringValue = worktree.name
         branchLabel.stringValue = worktree.branch
         shortcutLabel.stringValue = "Press \(KeybindingManager.shared.displayString(for: .newItem)) or:"
@@ -1163,12 +1172,21 @@ class WorktreeDetailView: NSView {
         iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 28, weight: .regular)
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        // Name
+        // Name (editable on click, styled as label)
+        nameLabel.isBordered = false
+        nameLabel.isEditable = false
+        nameLabel.isSelectable = false
+        nameLabel.drawsBackground = false
+        nameLabel.focusRingType = .exterior
         nameLabel.font = .boldSystemFont(ofSize: 18)
         nameLabel.textColor = .labelColor
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        nameLabel.delegate = self
+
+        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(nameLabelClicked))
+        nameLabel.addGestureRecognizer(clickGesture)
 
         // Branch
         branchLabel.font = .systemFont(ofSize: 13)
@@ -1288,10 +1306,64 @@ class WorktreeDetailView: NSView {
     @objc private func terminalButtonClicked() { onNewTerminal?() }
     @objc private func worktreeButtonClicked() { onNewWorktree?() }
 
+    // MARK: - Inline Name Editing
+
+    @objc private func nameLabelClicked() {
+        guard !isEditingName else { return }
+        isEditingName = true
+        nameBeforeEditing = nameLabel.stringValue
+        nameLabel.isEditable = true
+        nameLabel.isSelectable = true
+        nameLabel.isBordered = true
+        nameLabel.drawsBackground = true
+        nameLabel.backgroundColor = Theme.contentBackground
+        window?.makeFirstResponder(nameLabel)
+        nameLabel.currentEditor()?.selectAll(nil)
+    }
+
+    private func endNameEditing(commitName: String?) {
+        guard isEditingName else { return }
+        isEditingName = false
+        nameLabel.isEditable = false
+        nameLabel.isSelectable = false
+        nameLabel.isBordered = false
+        nameLabel.drawsBackground = false
+        window?.makeFirstResponder(nil)
+
+        if let newName = commitName, newName != nameBeforeEditing {
+            nameLabel.stringValue = newName
+            onRenameWorktree?(currentWorktreeId, newName)
+        } else {
+            nameLabel.stringValue = nameBeforeEditing
+        }
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: effectiveAppearance)
         scrollView.backgroundColor = Theme.contentBackground
+    }
+}
+
+// MARK: - WorktreeDetailView + NSTextFieldDelegate
+
+extension WorktreeDetailView: NSTextFieldDelegate {
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            let newName = nameLabel.stringValue.trimmingCharacters(in: .whitespaces)
+            endNameEditing(commitName: !newName.isEmpty ? newName : nil)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            endNameEditing(commitName: nil)
+            return true
+        }
+        return false
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        let newName = nameLabel.stringValue.trimmingCharacters(in: .whitespaces)
+        endNameEditing(commitName: !newName.isEmpty ? newName : nil)
     }
 }
 
