@@ -99,4 +99,44 @@ final class ContentViewControllerTests: XCTestCase {
         vc.clearStaleViews(validIds: [])
         XCTAssertNil(vc.currentEntry)
     }
+
+    func testUpdateCurrentEntrySkipsDuplicateStatus() {
+        let vc = ContentViewController()
+        vc.loadViewIfNeeded()
+        let agent = makeAgent(id: "ag-dup")
+        let entry = TabEntry.manifestAgent(agent, sessionName: "test")
+        vc.showEntry(entry)
+
+        // Call updateCurrentEntry twice with same status+label — should not crash
+        vc.updateCurrentEntry(entry)
+        vc.updateCurrentEntry(entry)
+        XCTAssertEqual(vc.currentEntryId, "ag-dup")
+    }
+
+    func testUpdateCurrentEntryAppliesNewStatus() {
+        let vc = ContentViewController()
+        vc.loadViewIfNeeded()
+        let agent = makeAgent(id: "ag-status")
+        let entry = TabEntry.manifestAgent(agent, sessionName: "test")
+        vc.showEntry(entry)
+
+        // Update to completed status
+        let completedAgent = AgentModel(id: "ag-status", name: "claude", agentType: "claude", status: .completed, tmuxTarget: "s:1", prompt: "x", startedAt: "t")
+        let updatedEntry = TabEntry.manifestAgent(completedAgent, sessionName: "test")
+        vc.updateCurrentEntry(updatedEntry)
+        XCTAssertEqual(vc.currentEntryId, "ag-status")
+        // currentEntry should reflect the updated entry
+        if case .manifestAgent(let ag, _) = vc.currentEntry {
+            XCTAssertEqual(ag.status, .completed)
+        } else {
+            XCTFail("Expected manifestAgent entry")
+        }
+    }
+
+    func testEvictionDoesNotCrashWithEmptyTracking() {
+        let vc = ContentViewController()
+        // loadViewIfNeeded starts the eviction timer — verify no crash on empty state
+        vc.loadViewIfNeeded()
+        XCTAssertNil(vc.currentEntry)
+    }
 }

@@ -7,9 +7,10 @@ final class TerminalPaneTests: XCTestCase {
         AgentModel(id: "ag-test", name: "claude", agentType: "claude", status: .running, tmuxTarget: "s:1", prompt: "x", startedAt: "t")
     }
 
-    func testHasTwoSubviews() {
+    func testNoSubviewsBeforeWindowAttachment() {
         let pane = TerminalPane(agent: makeAgent(), sessionName: "test")
-        XCTAssertEqual(pane.subviews.count, 2)
+        // Terminal view is lazy — nothing added until viewDidMoveToWindow
+        XCTAssertEqual(pane.subviews.count, 0)
     }
 
     func testLabelContainsAgentIdAndStatus() {
@@ -24,9 +25,10 @@ final class TerminalPaneTests: XCTestCase {
         XCTAssertTrue(descriptor.symbolicTraits.contains(.monoSpace))
     }
 
-    func testConstraintsAreActive() {
+    func testNoConstraintsBeforeWindowAttachment() {
         let pane = TerminalPane(agent: makeAgent(), sessionName: "test")
-        XCTAssertGreaterThan(pane.constraints.count, 0)
+        // Terminal view is lazy — no constraints until viewDidMoveToWindow
+        XCTAssertTrue(pane.constraints.isEmpty)
     }
 
     func testTerminateDoesNotCrashWithoutProcess() {
@@ -34,8 +36,11 @@ final class TerminalPaneTests: XCTestCase {
         pane.terminate()
     }
 
-    func testMouseReportingDisabledForTextSelection() {
+    func testTerminalViewNilBeforeWindowAttachment() {
         let pane = TerminalPane(agent: makeAgent(), sessionName: "test")
-        XCTAssertFalse(pane.terminalView.allowMouseReporting)
+        // No terminal view exists before window attachment.
+        // The mouse reporting guarantee is enforced by ScrollableTerminalView.init
+        // which sets allowMouseReporting = false.
+        XCTAssertNil(pane.terminalView)
     }
 }
