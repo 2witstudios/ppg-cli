@@ -88,6 +88,7 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
     projectRoot,
     branch: wt.branch,
     sessionId: newSessionId,
+    skipResultInstructions: !options.prompt,
   });
 
   // Update manifest: mark old agent as killed, add new agent
