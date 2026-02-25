@@ -16,7 +16,19 @@ class ScrollableTerminalView: NSView {
     let terminalView: LocalProcessTerminalView
     private var scrollMonitor: Any?
     private var settingsObserver: NSObjectProtocol?
-    private var lastScrollTime: CFTimeInterval = 0
+
+    /// Accumulated scroll delta since last frame flush.
+    private var accumulatedDelta: CGFloat = 0
+    /// Track last scroll direction so we can flush on reversal.
+    private var lastScrollDirection: Bool?  // true = up, false = down
+    /// Last event location (for computing terminal grid position).
+    private var lastScrollLocation: NSPoint = .zero
+    /// Display-linked timer that flushes accumulated scroll at screen refresh rate.
+    private var scrollFlushTimer: DispatchSourceTimer?
+    /// Whether tearDown() has been called.
+    private var tornDown = false
+    /// Approximate pixels of trackpad scroll delta per terminal scroll tick.
+    private static let pixelsPerScrollTick: CGFloat = 30
 
     init(frame: NSRect, terminalView: LocalProcessTerminalView? = nil) {
         self.terminalView = terminalView ?? LocalProcessTerminalView(frame: frame)
@@ -61,12 +73,24 @@ class ScrollableTerminalView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     deinit {
+        tearDown()
+    }
+
+    /// Explicit cleanup — cancels timer, removes scroll monitor, terminates process.
+    /// Safe to call multiple times.
+    func tearDown() {
+        guard !tornDown else { return }
+        tornDown = true
+        scrollFlushTimer?.cancel()
+        scrollFlushTimer = nil
         if let scrollMonitor {
             NSEvent.removeMonitor(scrollMonitor)
+            self.scrollMonitor = nil
         }
         if let settingsObserver {
             NotificationCenter.default.removeObserver(settingsObserver)
         }
+        terminalView.process?.terminate()
     }
 
     private func applyFont() {
@@ -108,31 +132,75 @@ class ScrollableTerminalView: NSView {
             return event
         }
 
-        // Filter out tiny deltas and throttle to ~20 events/sec max
+        // Filter out sub-pixel noise
         let delta = event.scrollingDeltaY
-        guard abs(delta) > 1.0 else { return nil }
+        guard abs(delta) > 0.5 else { return nil }
 
-        let now = CACurrentMediaTime()
-        guard now - lastScrollTime > 0.05 else { return nil }
-        lastScrollTime = now
-
+        // Flush immediately if scroll direction reverses to avoid eating input
         let isUp = delta > 0
-        // Mouse button 4 = scroll up, button 5 = scroll down
-        let button = isUp ? 4 : 5
-        let flags = term.encodeButton(button: button, release: false, shift: false, meta: false, control: false)
+        if let lastDir = lastScrollDirection, lastDir != isUp, abs(accumulatedDelta) > 0.5 {
+            flushScrollDelta()
+        }
+        lastScrollDirection = isUp
 
-        // Compute the grid cell position from the event location
-        let localPoint = terminalView.convert(event.locationInWindow, from: nil)
-        let cellWidth = terminalView.bounds.width / CGFloat(term.cols)
-        let cellHeight = terminalView.bounds.height / CGFloat(term.rows)
-        let x = max(0, min(Int(localPoint.x / cellWidth), term.cols - 1))
-        // NSView coordinates have origin at bottom-left; convert to top-left for terminal grid
-        let y = max(0, min(Int((terminalView.bounds.height - localPoint.y) / cellHeight), term.rows - 1))
-
-        // One scroll event per wheel tick — tmux accumulates naturally
-        term.sendEvent(buttonFlags: flags, x: x, y: y)
+        // Accumulate delta and record position; flush on next frame tick
+        accumulatedDelta += delta
+        lastScrollLocation = event.locationInWindow
+        startScrollFlushTimerIfNeeded()
 
         // Consume the event — don't let SwiftTerm's scrollWheel see it
         return nil
+    }
+
+    /// Start a display-rate timer (~16ms) to batch accumulated scroll deltas into
+    /// a single escape sequence per frame. The timer auto-cancels when idle.
+    private func startScrollFlushTimerIfNeeded() {
+        guard scrollFlushTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .milliseconds(16), repeating: .milliseconds(16))
+        timer.setEventHandler { [weak self] in
+            self?.flushScrollDelta()
+        }
+        timer.resume()
+        scrollFlushTimer = timer
+    }
+
+    private func flushScrollDelta() {
+        let delta = accumulatedDelta
+        guard abs(delta) > 0.5 else {
+            // No accumulated scroll — stop the timer to save CPU
+            scrollFlushTimer?.cancel()
+            scrollFlushTimer = nil
+            lastScrollDirection = nil
+            return
+        }
+
+        accumulatedDelta = 0
+
+        let term = terminalView.getTerminal()
+        guard term.mouseMode != .off, term.isCurrentBufferAlternate else {
+            scrollFlushTimer?.cancel()
+            scrollFlushTimer = nil
+            lastScrollDirection = nil
+            return
+        }
+
+        let isUp = delta > 0
+        let button = isUp ? 4 : 5
+        let flags = term.encodeButton(button: button, release: false, shift: false, meta: false, control: false)
+
+        // Compute grid position from the last event location
+        let localPoint = terminalView.convert(lastScrollLocation, from: nil)
+        let cellWidth = terminalView.bounds.width / CGFloat(term.cols)
+        let cellHeight = terminalView.bounds.height / CGFloat(term.rows)
+        let x = max(0, min(Int(localPoint.x / cellWidth), term.cols - 1))
+        let y = max(0, min(Int((terminalView.bounds.height - localPoint.y) / cellHeight), term.rows - 1))
+
+        // Send proportional number of scroll events based on accumulated delta.
+        // This preserves scroll speed while batching to one frame.
+        let ticks = max(1, Int(abs(delta) / Self.pixelsPerScrollTick))
+        for _ in 0..<ticks {
+            term.sendEvent(buttonFlags: flags, x: x, y: y)
+        }
     }
 }

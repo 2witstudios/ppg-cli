@@ -5,15 +5,16 @@ class TerminalPane: NSView {
     let agent: AgentModel
     let sessionName: String
     let label: NSTextField
-    let terminalView: ScrollableTerminalView
+    /// Lazily created — nil until the pane is actually visible in a window.
+    private(set) var terminalView: ScrollableTerminalView?
     private var processStarted = false
+    private var terminalInstalled = false
 
     init(agent: AgentModel, sessionName: String) {
         self.agent = agent
         self.sessionName = sessionName
         let displayName = agent.name.isEmpty ? agent.id : agent.name
         self.label = NSTextField(labelWithString: "\(displayName) — \(agent.status.rawValue)")
-        self.terminalView = ScrollableTerminalView(frame: .zero)
         super.init(frame: .zero)
         setupUI()
     }
@@ -29,18 +30,34 @@ class TerminalPane: NSView {
         layer?.shadowOffset = .zero
 
         label.isHidden = true
+    }
 
-        terminalView.wantsLayer = true
-        terminalView.layer?.masksToBounds = true
-        terminalView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(terminalView)
+    /// Create and install the terminal view on demand (first time only).
+    private func ensureTerminalView() {
+        guard !terminalInstalled else { return }
+        terminalInstalled = true
+
+        let tv = ScrollableTerminalView(frame: bounds)
+        tv.wantsLayer = true
+        tv.layer?.masksToBounds = true
+        tv.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(tv)
 
         NSLayoutConstraint.activate([
-            terminalView.topAnchor.constraint(equalTo: topAnchor),
-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            tv.topAnchor.constraint(equalTo: topAnchor),
+            tv.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            tv.trailingAnchor.constraint(equalTo: trailingAnchor),
+            tv.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        terminalView = tv
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Create the terminal view only when we're actually in a window.
+        if window != nil && !terminalInstalled {
+            ensureTerminalView()
+        }
     }
 
     override func layout() {
@@ -54,7 +71,7 @@ class TerminalPane: NSView {
         // frame.  Starting earlier (while frame is .zero) causes SwiftTerm to open
         // a 1-column PTY; tmux then rewraps all scrollback to 1 column which is
         // never reflowed even after a later SIGWINCH resize.
-        if !processStarted && terminalView.bounds.width > 1 {
+        if let tv = terminalView, !processStarted && tv.bounds.width > 1 {
             processStarted = true
             startTmux()
         }
@@ -80,9 +97,17 @@ class TerminalPane: NSView {
         // tracking.  Without this, all TerminalPanes sharing the same tmux session
         // would display whichever window was most recently attached — clicking one
         // agent would hijack every other agent's view.
-        let viewSession = "\(tmuxSession)-view-\(agent.id)"
+        // Suffix with a short random ID to avoid session name collisions on fast
+        // re-selection after LRU eviction (the old view session may still be dying).
+        let suffix = String((0..<4).map { _ in "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()! })
+        let viewSession = "\(tmuxSession)-view-\(agent.id)-\(suffix)"
 
-        var cmd = "tmux set-option -t \(shellEscape(target)) status off 2>/dev/null; "
+        // Source shell profiles so tmux is found on M-series Macs where
+        // /opt/homebrew/bin is not in the default GUI app PATH.
+        var cmd = "if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; "
+        cmd += "[ -f ~/.zprofile ] && source ~/.zprofile; "
+        cmd += "[ -f ~/.zshrc ] && source ~/.zshrc; "
+        cmd += "tmux set-option -t \(shellEscape(target)) status off 2>/dev/null; "
         cmd += "exec tmux new-session -t \(shellEscape(tmuxSession)) -s \(shellEscape(viewSession))"
         cmd += " \\; set-option destroy-unattached on"
         cmd += " \\; set-option status off"
@@ -92,7 +117,7 @@ class TerminalPane: NSView {
 
         let shellPath = AppSettingsManager.shared.shell
         let shellName = (shellPath as NSString).lastPathComponent
-        terminalView.startProcess(
+        terminalView?.startProcess(
             executable: shellPath,
             args: ["-c", cmd],
             environment: nil,
@@ -106,7 +131,13 @@ class TerminalPane: NSView {
         label.textColor = statusColor(for: status)
     }
 
+    /// Explicit cleanup — tears down the terminal view (timer, monitor, process).
+    /// Safe to call multiple times.
+    func tearDown() {
+        terminalView?.tearDown()
+    }
+
     func terminate() {
-        terminalView.process?.terminate()
+        tearDown()
     }
 }

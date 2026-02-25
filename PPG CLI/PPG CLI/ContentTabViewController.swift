@@ -44,6 +44,19 @@ class ContentViewController: NSViewController {
     private var promptsConstraints: [NSLayoutConstraint] = []
     private var swarmsConstraints: [NSLayoutConstraint] = []
 
+    // MARK: - Terminal Tracking (LRU eviction + status dedup)
+    private struct TerminalTrackingState {
+        var lastAccess: Date
+        var evictionStatus: AgentStatus
+        /// Fingerprint of last-seen mutable fields, used to skip redundant status label updates.
+        var lastChangeKey: String
+    }
+    private var terminalTracking: [String: TerminalTrackingState] = [:]
+    /// Timer for periodic eviction of idle completed-agent terminals.
+    private var evictionTimer: Timer?
+    /// How long a non-visible completed terminal lives before eviction.
+    private static let evictionDelay: TimeInterval = 30
+
     // MARK: - Grid Mode
     private(set) var paneGrid: PaneGridController?  // currently visible grid
     private var gridsByEntry: [String: PaneGridController] = [:]  // all grids (active + suspended)
@@ -96,6 +109,45 @@ class ContentViewController: NSViewController {
             placeholderLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             placeholderLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
+
+        // Start the periodic eviction timer for idle completed-agent terminals
+        evictionTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            self?.evictStaleTerminals()
+        }
+    }
+
+    deinit {
+        evictionTimer?.invalidate()
+    }
+
+    /// Evict terminal views for completed/killed/failed agents that haven't been
+    /// viewed in `evictionDelay` seconds and are not currently visible.
+    private func evictStaleTerminals() {
+        let now = Date()
+        let visibleId = currentEntry?.id
+        let gridVisibleIds: Set<String> = {
+            guard let grid = paneGrid, isGridMode else { return [] }
+            return Set(grid.root.allLeafIds().compactMap { grid.root.entry(forLeafId: $0)?.id })
+        }()
+
+        // Collect IDs before mutating to avoid dictionary-mutation-during-iteration crash
+        var toEvict: [String] = []
+        for (id, state) in terminalTracking {
+            let status = state.evictionStatus
+            guard status == .completed || status == .killed || status == .failed else { continue }
+            guard id != visibleId, !gridVisibleIds.contains(id) else { continue }
+            guard now.timeIntervalSince(state.lastAccess) > Self.evictionDelay else { continue }
+            toEvict.append(id)
+        }
+
+        for id in toEvict {
+            if let termView = terminalViews[id] {
+                tearDownTerminal(termView)
+                termView.removeFromSuperview()
+                terminalViews.removeValue(forKey: id)
+            }
+            terminalTracking.removeValue(forKey: id)
+        }
     }
 
     func showEntry(_ entry: TabEntry?) {
@@ -133,17 +185,50 @@ class ContentViewController: NSViewController {
 
         let termView = terminalView(for: entry)
         termView.isHidden = false
+
+        // Track access time for LRU eviction
+        terminalTracking[entry.id, default: TerminalTrackingState(
+            lastAccess: Date(), evictionStatus: .running, lastChangeKey: ""
+        )].lastAccess = Date()
     }
 
     func updateCurrentEntry(_ entry: TabEntry) {
-        // Update in grid mode if the entry is visible in any pane
+        // Extract the agent status (if any) for eviction tracking
+        let agentStatus: AgentStatus? = {
+            switch entry {
+            case .manifestAgent(let agent, _): return agent.status
+            case .agentGroup(let agents, _, _): return agents.first?.status ?? .lost
+            case .sessionEntry: return nil
+            }
+        }()
+
+        // Build a change fingerprint from mutable fields (status + label)
+        let changeKey = "\(agentStatus?.rawValue ?? "")-\(entry.label)"
+
+        // Always update eviction tracking regardless of dedup
+        if let status = agentStatus {
+            terminalTracking[entry.id, default: TerminalTrackingState(
+                lastAccess: Date(), evictionStatus: status, lastChangeKey: ""
+            )].evictionStatus = status
+        }
+
+        // Update in grid mode — always forward, no dedup (grid manages its own state)
         if isGridMode, let grid = paneGrid, grid.containsEntry(id: entry.id) {
             grid.updateEntry(entry)
+            // Update tracking fingerprint after forwarding
+            terminalTracking[entry.id]?.lastChangeKey = changeKey
             return
         }
 
         guard let current = currentEntry, current.id == entry.id else { return }
+
+        // Skip expensive status label update if nothing changed
+        let isChanged = terminalTracking[entry.id]?.lastChangeKey != changeKey
+        terminalTracking[entry.id]?.lastChangeKey = changeKey
+
         currentEntry = entry
+        guard isChanged else { return }
+
         switch entry {
         case .manifestAgent(let agent, _):
             if let pane = terminalViews[agent.id] as? TerminalPane {
@@ -165,6 +250,7 @@ class ContentViewController: NSViewController {
             termView.removeFromSuperview()
             terminalViews.removeValue(forKey: id)
         }
+        terminalTracking.removeValue(forKey: id)
         removeGrid(forEntryId: id)
         if currentEntry?.id == id {
             currentEntry = nil
@@ -182,6 +268,7 @@ class ContentViewController: NSViewController {
                 termView.removeFromSuperview()
                 terminalViews.removeValue(forKey: id)
             }
+            terminalTracking.removeValue(forKey: id)
         }
         // Clean up grids whose owner entry no longer exists
         let staleGridIds = gridsByEntry.keys.filter { !validIds.contains($0) }
@@ -450,6 +537,7 @@ class ContentViewController: NSViewController {
             NSLayoutConstraint.activate(dashboardConstraints)
         }
 
+        dashboard.setVisible(true)
         dashboard.configure(projects: projects, worktreesByProject: worktreesByProject)
     }
 
@@ -685,6 +773,18 @@ class ContentViewController: NSViewController {
             pane.terminate()
         } else if let scrollTerm = view as? ScrollableTerminalView {
             scrollTerm.process?.terminate()
+        } else if let localTerm = view as? LocalProcessTerminalView {
+            localTerm.process?.terminate()
+        }
+    }
+
+    /// Explicit teardown — cancels timers, removes monitors, terminates process.
+    /// Used by LRU eviction to ensure PTY/fd cleanup without relying on deinit.
+    private func tearDownTerminal(_ view: NSView) {
+        if let pane = view as? TerminalPane {
+            pane.tearDown()
+        } else if let scrollTerm = view as? ScrollableTerminalView {
+            scrollTerm.tearDown()
         } else if let localTerm = view as? LocalProcessTerminalView {
             localTerm.process?.terminate()
         }

@@ -33,6 +33,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if cli.available && tmux {
             proceedToProjects()
+            if let version = cli.version {
+                checkCLIVersion(installedVersion: version)
+            }
         } else {
             showSetup()
         }
@@ -367,6 +370,86 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showDashboard()
         } else if let splitVC = window?.contentViewController as? DashboardSplitViewController {
             splitVC.sidebar.refresh()
+        }
+    }
+
+    // MARK: - CLI Version Check
+
+    private static let cliUpdateDismissedKey = "CLIUpdateDismissed"
+
+    private func checkCLIVersion(installedVersion: String) {
+        DispatchQueue.global(qos: .utility).async {
+            guard let latest = PPGService.shared.checkLatestCLIVersion() else { return }
+            guard Self.isVersion(installed: installedVersion, olderThan: latest) else { return }
+
+            let dismissedValue = UserDefaults.standard.string(forKey: Self.cliUpdateDismissedKey)
+            let currentKey = "\(installedVersion):\(latest)"
+            guard dismissedValue != currentKey else { return }
+
+            DispatchQueue.main.async { [weak self] in
+                self?.showCLIUpdateAlert(installed: installedVersion, latest: latest)
+            }
+        }
+    }
+
+    /// Compare two semver strings. Returns true if `installed` is strictly older than `latest`.
+    static func isVersion(installed: String, olderThan latest: String) -> Bool {
+        let iParts = installed.split(separator: ".").compactMap { Int($0) }
+        let lParts = latest.split(separator: ".").compactMap { Int($0) }
+        let count = max(iParts.count, lParts.count)
+        for i in 0..<count {
+            let a = i < iParts.count ? iParts[i] : 0
+            let b = i < lParts.count ? lParts[i] : 0
+            if a < b { return true }
+            if a > b { return false }
+        }
+        return false
+    }
+
+    private func showCLIUpdateAlert(installed: String, latest: String) {
+        let alert = NSAlert()
+        alert.messageText = "CLI Update Available"
+        alert.informativeText = "ppg CLI \(latest) is available (you have \(installed)). Update now?"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Update Now")
+        alert.addButton(withTitle: "Later")
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            runCLIUpdate()
+        } else {
+            let key = "\(installed):\(latest)"
+            UserDefaults.standard.set(key, forKey: Self.cliUpdateDismissedKey)
+        }
+    }
+
+    private func runCLIUpdate() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = PPGService.shared.updateCLI()
+            let newVersion = PPGService.shared.checkCLIAvailable().version
+
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                if result.success, let v = newVersion {
+                    alert.messageText = "CLI Updated"
+                    alert.informativeText = "ppg CLI updated to \(v)."
+                    alert.alertStyle = .informational
+                    // Clear any stored dismissal since versions changed
+                    UserDefaults.standard.removeObject(forKey: Self.cliUpdateDismissedKey)
+                } else {
+                    alert.messageText = "Update Failed"
+                    alert.informativeText = "Could not update ppg CLI.\n\n\(result.output.prefix(500))"
+                    alert.alertStyle = .warning
+                }
+                alert.runModal()
+            }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Flush any debounced dashboard session writes before exit
+        for project in OpenProjects.shared.projects {
+            project.dashboardSession.flushToDisk()
         }
     }
 

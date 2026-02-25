@@ -149,6 +149,63 @@ nonisolated class PPGService: @unchecked Sendable {
         return FileManager.default.fileExists(atPath: pgDir)
     }
 
+    /// Check the npm registry for the latest published version of pure-point-guard.
+    func checkLatestCLIVersion() -> String? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        let cmd = """
+        if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+        [ -f ~/.zprofile ] && source ~/.zprofile; \
+        [ -f ~/.zshrc ] && source ~/.zshrc; \
+        npm view pure-point-guard version
+        """
+        task.arguments = ["-c", cmd]
+
+        let outPipe = Pipe()
+        task.standardOutput = outPipe
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        guard task.terminationStatus == 0 else { return nil }
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let version = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (version?.isEmpty == false) ? version : nil
+    }
+
+    /// Install the latest version of pure-point-guard globally via npm.
+    func updateCLI() -> (success: Bool, output: String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        let cmd = """
+        if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
+        [ -f ~/.zprofile ] && source ~/.zprofile; \
+        [ -f ~/.zshrc ] && source ~/.zshrc; \
+        npm install -g pure-point-guard@latest 2>&1
+        """
+        task.arguments = ["-c", cmd]
+
+        let outPipe = Pipe()
+        task.standardOutput = outPipe
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return (false, error.localizedDescription)
+        }
+
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        return (task.terminationStatus == 0, output)
+    }
+
     /// Run `ppg init` in the given directory. Returns true on success.
     func initProject(at projectRoot: String) -> Bool {
         let result = runPPGCommand("init --json", projectRoot: projectRoot)

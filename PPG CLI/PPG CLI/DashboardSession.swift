@@ -51,6 +51,13 @@ class DashboardSession {
     private var terminalCounter = 0
     private var agentCounter = 0
 
+    /// Serial queue for all disk I/O — keeps file reads/writes off the main thread.
+    private let ioQueue = DispatchQueue(label: "ppg.dashboard-session.io", qos: .utility)
+    /// Pending debounced write work item (cancelled + replaced on each mutation).
+    private var pendingWrite: DispatchWorkItem?
+    /// Debounce interval for disk writes (seconds).
+    private let writeDebounceInterval: TimeInterval = 1.0
+
     init(projectRoot: String) {
         self.projectRoot = projectRoot
         loadFromDisk()
@@ -58,6 +65,7 @@ class DashboardSession {
 
     @discardableResult
     func addAgent(sessionName: String, parentWorktreeId: String?, command: String, workingDir: String) -> TerminalEntry {
+        dispatchPrecondition(condition: .onQueue(.main))
         agentCounter += 1
         let entryId = "da-\(generateId(6))"
         let sid = UUID().uuidString.lowercased()
@@ -101,6 +109,7 @@ class DashboardSession {
 
     @discardableResult
     func addTerminal(parentWorktreeId: String?, workingDir: String) -> TerminalEntry {
+        dispatchPrecondition(condition: .onQueue(.main))
         terminalCounter += 1
         let entry = TerminalEntry(
             id: "dt-\(generateId(6))",
@@ -118,6 +127,7 @@ class DashboardSession {
     }
 
     func rename(id: String, newLabel: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         if let index = entries.firstIndex(where: { $0.id == id }) {
             entries[index].label = newLabel
             saveToDisk()
@@ -125,6 +135,7 @@ class DashboardSession {
     }
 
     func remove(id: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         entries.removeAll { $0.id == id }
         saveToDisk()
     }
@@ -146,6 +157,7 @@ class DashboardSession {
     }
 
     func setGridOwner(entryId: String, gridOwnerEntryId: String?) {
+        dispatchPrecondition(condition: .onQueue(.main))
         if let index = entries.firstIndex(where: { $0.id == entryId }) {
             entries[index].gridOwnerEntryId = gridOwnerEntryId
             saveToDisk()
@@ -155,6 +167,7 @@ class DashboardSession {
     // MARK: - Grid Layouts
 
     func saveGridLayout(ownerEntryId: String, layout: GridLayoutNode) {
+        dispatchPrecondition(condition: .onQueue(.main))
         gridLayouts[ownerEntryId] = layout
         saveToDisk()
     }
@@ -164,11 +177,13 @@ class DashboardSession {
     }
 
     func removeGridLayout(ownerEntryId: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         gridLayouts.removeValue(forKey: ownerEntryId)
         saveToDisk()
     }
 
     func removeAll() {
+        dispatchPrecondition(condition: .onQueue(.main))
         entries.removeAll()
         gridLayouts.removeAll()
         terminalCounter = 0
@@ -185,22 +200,59 @@ class DashboardSession {
     }
 
     private func saveToDisk() {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard let path = persistencePath else { return }
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let sessionData = SessionData(
-                entries: entries,
-                gridLayouts: gridLayouts.isEmpty ? nil : gridLayouts
-            )
-            let data = try encoder.encode(sessionData)
-            try data.write(to: URL(fileURLWithPath: path))
-        } catch {
-            // Non-fatal — entries will be lost on restart
+
+        // Snapshot current state for the background write
+        let sessionData = SessionData(
+            entries: entries,
+            gridLayouts: gridLayouts.isEmpty ? nil : gridLayouts
+        )
+
+        // Cancel any pending debounced write and schedule a new one
+        pendingWrite?.cancel()
+        let workItem = DispatchWorkItem { [sessionData] in
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(sessionData)
+                try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            } catch {
+                // Non-fatal — entries will be lost on restart
+            }
+        }
+        pendingWrite = workItem
+        ioQueue.asyncAfter(deadline: .now() + writeDebounceInterval, execute: workItem)
+    }
+
+    /// Force an immediate synchronous write (e.g., before app termination).
+    /// Serializes against any in-flight debounced write on ioQueue.
+    func flushToDisk() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        pendingWrite?.cancel()
+        pendingWrite = nil
+        guard let path = persistencePath else { return }
+        let sessionData = SessionData(
+            entries: entries,
+            gridLayouts: gridLayouts.isEmpty ? nil : gridLayouts
+        )
+        ioQueue.sync {
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(sessionData)
+                try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            } catch {
+                // Non-fatal
+            }
         }
     }
 
     private func loadFromDisk() {
+        // Cancel any pending debounced write — we're about to reload from disk
+        pendingWrite?.cancel()
+        pendingWrite = nil
+
         guard let path = persistencePath,
               FileManager.default.fileExists(atPath: path),
               let data = FileManager.default.contents(atPath: path) else { return }
@@ -221,6 +273,7 @@ class DashboardSession {
     }
 
     func reloadFromDisk() {
+        dispatchPrecondition(condition: .onQueue(.main))
         entries = []
         gridLayouts = [:]
         terminalCounter = 0

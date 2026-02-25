@@ -3,12 +3,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
 import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir } from '../lib/paths.js';
-import { NotGitRepoError, TmuxNotFoundError } from '../lib/errors.js';
+import { NotGitRepoError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
 import { createEmptyManifest, writeManifest } from '../core/manifest.js';
 import { bundledPrompts } from '../bundled/prompts.js';
 import { bundledSwarms } from '../bundled/swarms.js';
+import { execaEnv } from '../lib/env.js';
+import { checkTmux } from '../core/tmux.js';
 
 const CONDUCTOR_CONTEXT = `# PPG Conductor Context
 
@@ -56,18 +58,14 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   // 1. Verify git repo
   let projectRoot: string;
   try {
-    const result = await execa('git', ['rev-parse', '--show-toplevel'], { cwd });
+    const result = await execa('git', ['rev-parse', '--show-toplevel'], { ...execaEnv, cwd });
     projectRoot = result.stdout.trim();
   } catch {
     throw new NotGitRepoError(cwd);
   }
 
   // 2. Check tmux available
-  try {
-    await execa('tmux', ['-V']);
-  } catch {
-    throw new TmuxNotFoundError();
-  }
+  await checkTmux();
 
   // 3. Create directories
   const dirs = [

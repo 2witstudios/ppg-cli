@@ -9,7 +9,9 @@ export async function openTerminalWindow(
   windowTarget: string,
   title: string,
 ): Promise<void> {
-  const tmuxCmd = `tmux attach-session -t ${sessionName} \\\\; select-window -t ${windowTarget}`;
+  // Source shell profiles so tmux is found on M-series Macs where
+  // /opt/homebrew/bin is not in the default GUI app / Terminal.app PATH.
+  const tmuxCmd = `if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; [ -f ~/.zprofile ] && source ~/.zprofile; [ -f ~/.zshrc ] && source ~/.zshrc; tmux attach-session -t ${sessionName} \\\\; select-window -t ${windowTarget}`;
 
   const script = `
 tell application "Terminal"

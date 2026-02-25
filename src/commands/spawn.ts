@@ -190,8 +190,8 @@ async function spawnNewWorktree(
     return m;
   });
 
-  // Auto-open Terminal window unless --no-open (fire-and-forget)
-  if (options.open !== false) {
+  // Only open Terminal window when explicitly requested via --open (fire-and-forget)
+  if (options.open === true) {
     openTerminalWindow(sessionName, windowTarget, name).catch(() => {});
   }
 
@@ -301,8 +301,8 @@ async function spawnIntoExistingWorktree(
     return m;
   });
 
-  // Auto-open Terminal window unless --no-open (fire-and-forget)
-  if (options.open !== false) {
+  // Only open Terminal window when explicitly requested via --open (fire-and-forget)
+  if (options.open === true) {
     openTerminalWindow(manifest.sessionName, windowTarget, wt.name).catch(() => {});
   }
 

@@ -107,4 +107,100 @@ final class DashboardSessionTests: XCTestCase {
         case .agent: XCTFail("Expected terminal kind")
         }
     }
+
+    // MARK: - Persistence: debounce & flush
+
+    func testFlushWritesImmediately() {
+        let dir = NSTemporaryDirectory() + "ppg-test-flush-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        let s = DashboardSession(projectRoot: dir)
+        s.addTerminal(parentWorktreeId: nil, workingDir: dir)
+
+        // Debounced write hasn't fired yet — file may not exist
+        s.flushToDisk()
+
+        let filePath = dir + "/.pg/dashboard-sessions.json"
+        XCTAssertTrue(FileManager.default.fileExists(atPath: filePath),
+                      "flushToDisk should write the file synchronously")
+
+        let data = FileManager.default.contents(atPath: filePath)!
+        let decoded = try! JSONDecoder().decode(SessionDataWrapper.self, from: data)
+        XCTAssertEqual(decoded.entries.count, 1)
+
+        try? FileManager.default.removeItem(atPath: dir)
+    }
+
+    func testDebouncedWriteCoalesces() {
+        let dir = NSTemporaryDirectory() + "ppg-test-debounce-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        let s = DashboardSession(projectRoot: dir)
+
+        // Rapid mutations — each triggers saveToDisk with 1s debounce
+        s.addTerminal(parentWorktreeId: nil, workingDir: dir)
+        s.addTerminal(parentWorktreeId: nil, workingDir: dir)
+        s.addTerminal(parentWorktreeId: nil, workingDir: dir)
+
+        let filePath = dir + "/.pg/dashboard-sessions.json"
+
+        // Wait for debounce to fire (1s interval + margin)
+        let expectation = expectation(description: "Debounced write completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3.0)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: filePath),
+                      "Debounced write should produce the file after the interval")
+
+        let data = FileManager.default.contents(atPath: filePath)!
+        let decoded = try! JSONDecoder().decode(SessionDataWrapper.self, from: data)
+        XCTAssertEqual(decoded.entries.count, 3,
+                       "All three entries should be present in the coalesced write")
+
+        try? FileManager.default.removeItem(atPath: dir)
+    }
+
+    func testFlushCancelsPendingDebouncedWrite() {
+        let dir = NSTemporaryDirectory() + "ppg-test-cancel-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        let s = DashboardSession(projectRoot: dir)
+
+        s.addTerminal(parentWorktreeId: nil, workingDir: dir)
+        // Flush immediately — should cancel the pending debounced write
+        s.flushToDisk()
+
+        let filePath = dir + "/.pg/dashboard-sessions.json"
+        let data = FileManager.default.contents(atPath: filePath)!
+        let decoded = try! JSONDecoder().decode(SessionDataWrapper.self, from: data)
+        XCTAssertEqual(decoded.entries.count, 1)
+
+        try? FileManager.default.removeItem(atPath: dir)
+    }
+
+    func testReloadFromDiskCancelsPendingWrite() {
+        let dir = NSTemporaryDirectory() + "ppg-test-reload-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        let s = DashboardSession(projectRoot: dir)
+
+        s.addTerminal(parentWorktreeId: nil, workingDir: dir)
+        // Flush so the file exists with 1 entry
+        s.flushToDisk()
+
+        // Add another — triggers debounced write (not yet flushed)
+        s.addTerminal(parentWorktreeId: nil, workingDir: dir)
+        XCTAssertEqual(s.entries.count, 2)
+
+        // Reload cancels the pending write and restores from disk (1 entry)
+        s.reloadFromDisk()
+        XCTAssertEqual(s.entries.count, 1,
+                       "reloadFromDisk should restore from the flushed file, not the in-memory state")
+
+        try? FileManager.default.removeItem(atPath: dir)
+    }
+}
+
+/// Minimal Codable wrapper matching DashboardSession.SessionData for test decoding.
+private struct SessionDataWrapper: Codable {
+    var entries: [DashboardSession.TerminalEntry]
+    var gridLayouts: [String: GridLayoutNode]?
 }
