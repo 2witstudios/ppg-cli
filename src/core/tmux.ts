@@ -61,8 +61,12 @@ export async function splitPane(
 }
 
 export async function sendKeys(target: string, command: string): Promise<void> {
-  // Send command text with trailing newline in a single call
-  await execa('tmux', ['send-keys', '-t', target, '-l', command + '\n'], execaEnv);
+  // Send text as literal characters, then Enter as a named key.
+  // Using -l sends \n as LF (0x0a) which Ink-based CLIs like Claude Code
+  // treat as text insertion. Sending 'Enter' without -l sends CR (0x0d),
+  // which correctly triggers onSubmit in terminal apps.
+  await execa('tmux', ['send-keys', '-t', target, '-l', command], execaEnv);
+  await execa('tmux', ['send-keys', '-t', target, 'Enter'], execaEnv);
 }
 
 export async function sendLiteral(target: string, text: string): Promise<void> {
