@@ -134,7 +134,8 @@ async function swarmShared(
 
   await setupWorktreeEnv(projectRoot, wtPath, config);
 
-  const sessionName = config.sessionName;
+  const manifest = await readManifest(projectRoot);
+  const sessionName = manifest.sessionName;
   await tmux.ensureSession(sessionName);
   const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
 
@@ -188,7 +189,8 @@ async function swarmIsolated(
 ): Promise<void> {
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const baseName = options.name ? normalizeName(options.name, swarm.name) : swarm.name;
-  const sessionName = config.sessionName;
+  const manifest = await readManifest(projectRoot);
+  const sessionName = manifest.sessionName;
   await tmux.ensureSession(sessionName);
 
   const worktrees: Array<{ id: string; name: string; branch: string; path: string; tmuxWindow: string }> = [];
@@ -275,7 +277,7 @@ async function swarmIntoExistingWorktree(
 
   if (!wt) throw new WorktreeNotFoundError(options.worktree!);
 
-  const sessionName = config.sessionName;
+  const sessionName = manifest.sessionName;
 
   // Lazily create tmux window if worktree has none
   let windowTarget = wt.tmuxWindow;
