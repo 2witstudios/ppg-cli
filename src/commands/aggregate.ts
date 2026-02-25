@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises';
-import { readManifest, resolveWorktree, updateManifest } from '../core/manifest.js';
+import { requireManifest, resolveWorktree, updateManifest } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
-import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, warn } from '../lib/output.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
 
@@ -19,14 +19,10 @@ export async function aggregateCommand(
 ): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  let manifest;
-  try {
-    manifest = await updateManifest(projectRoot, async (m) => {
-      return refreshAllAgentStatuses(m, projectRoot);
-    });
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  await requireManifest(projectRoot);
+  const manifest = await updateManifest(projectRoot, async (m) => {
+    return refreshAllAgentStatuses(m, projectRoot);
+  });
 
   let worktrees: WorktreeEntry[];
 

@@ -1,11 +1,11 @@
 import { execa } from 'execa';
-import { readManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
+import { requireManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId } from '../core/self.js';
 import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { PgError, NotInitializedError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
+import { PgError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import { execaEnv } from '../lib/env.js';
 
@@ -20,14 +20,10 @@ export interface MergeOptions {
 export async function mergeCommand(worktreeId: string, options: MergeOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  let manifest;
-  try {
-    manifest = await updateManifest(projectRoot, async (m) => {
-      return refreshAllAgentStatuses(m, projectRoot);
-    });
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  await requireManifest(projectRoot);
+  const manifest = await updateManifest(projectRoot, async (m) => {
+    return refreshAllAgentStatuses(m, projectRoot);
+  });
 
   const wt = resolveWorktree(manifest, worktreeId);
 

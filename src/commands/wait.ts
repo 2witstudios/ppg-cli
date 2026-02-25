@@ -1,7 +1,7 @@
-import { updateManifest, resolveWorktree } from '../core/manifest.js';
+import { requireManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PgError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, info } from '../lib/output.js';
 import type { AgentEntry, AgentStatus, Manifest } from '../types/manifest.js';
 
@@ -72,13 +72,10 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
 }
 
 async function refreshAndGet(projectRoot: string): Promise<Manifest> {
-  try {
-    return await updateManifest(projectRoot, async (m) => {
-      return refreshAllAgentStatuses(m, projectRoot);
-    });
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  await requireManifest(projectRoot);
+  return await updateManifest(projectRoot, async (m) => {
+    return refreshAllAgentStatuses(m, projectRoot);
+  });
 }
 
 function collectAgents(

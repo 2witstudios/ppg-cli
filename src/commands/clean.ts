@@ -1,9 +1,8 @@
-import { readManifest, updateManifest } from '../core/manifest.js';
+import { requireManifest, updateManifest } from '../core/manifest.js';
 import { getRepoRoot, pruneWorktrees } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, wouldCleanupAffectSelf } from '../core/self.js';
 import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { NotInitializedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { WorktreeEntry } from '../types/manifest.js';
 
@@ -17,12 +16,7 @@ export interface CleanOptions {
 export async function cleanCommand(options: CleanOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  let manifest;
-  try {
-    manifest = await readManifest(projectRoot);
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  const manifest = await requireManifest(projectRoot);
 
   // Build self-protection context if inside tmux
   const selfPaneId = getCurrentPaneId();

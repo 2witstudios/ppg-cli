@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { readManifest, updateManifest, findAgent } from '../core/manifest.js';
+import { requireManifest, updateManifest, findAgent } from '../core/manifest.js';
 import { loadConfig, resolveAgentConfig } from '../core/config.js';
 import { spawnAgent, killAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
@@ -7,7 +7,7 @@ import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { agentPromptFile, resultFile } from '../lib/paths.js';
-import { PgError, NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
+import { PgError, AgentNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { renderTemplate, type TemplateContext } from '../core/template.js';
 
@@ -22,12 +22,7 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
   const projectRoot = await getRepoRoot();
   const config = await loadConfig(projectRoot);
 
-  let manifest;
-  try {
-    manifest = await readManifest(projectRoot);
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  const manifest = await requireManifest(projectRoot);
 
   const found = findAgent(manifest, agentRef);
   if (!found) throw new AgentNotFoundError(agentRef);

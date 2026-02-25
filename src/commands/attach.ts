@@ -1,22 +1,17 @@
-import { readManifest, resolveWorktree, findAgent } from '../core/manifest.js';
+import { requireManifest, resolveWorktree, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { getPaneInfo } from '../core/tmux.js';
 import { resumeAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
-import { PgError, NotInitializedError } from '../lib/errors.js';
+import { PgError } from '../lib/errors.js';
 import { info, success } from '../lib/output.js';
 import type { AgentEntry } from '../types/manifest.js';
 
 export async function attachCommand(target: string): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  let manifest;
-  try {
-    manifest = await readManifest(projectRoot);
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  const manifest = await requireManifest(projectRoot);
 
   // Try to resolve target as worktree ID, worktree name, or agent ID
   let tmuxTarget: string | undefined;

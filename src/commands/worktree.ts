@@ -1,9 +1,8 @@
 import { loadConfig } from '../core/config.js';
-import { readManifest, updateManifest } from '../core/manifest.js';
+import { requireManifest, updateManifest } from '../core/manifest.js';
 import { getRepoRoot, getCurrentBranch, createWorktree } from '../core/worktree.js';
 import { setupWorktreeEnv } from '../core/env.js';
 import { worktreeId as genWorktreeId } from '../lib/id.js';
-import { NotInitializedError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
 import type { WorktreeEntry } from '../types/manifest.js';
@@ -19,11 +18,7 @@ export async function worktreeCreateCommand(options: WorktreeCreateOptions): Pro
   const config = await loadConfig(projectRoot);
 
   // Verify initialized
-  try {
-    await readManifest(projectRoot);
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  await requireManifest(projectRoot);
 
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();

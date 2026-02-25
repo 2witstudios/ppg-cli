@@ -1,8 +1,7 @@
 import { loadConfig } from '../core/config.js';
-import { readManifest, updateManifest } from '../core/manifest.js';
+import { requireManifest, updateManifest } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { NotInitializedError } from '../lib/errors.js';
 import { output, formatStatus, formatTable, type Column } from '../lib/output.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
 
@@ -16,14 +15,10 @@ export async function statusCommand(worktreeFilter?: string, options?: StatusOpt
   const projectRoot = await getRepoRoot();
 
   // Read manifest and refresh statuses
-  let manifest;
-  try {
-    manifest = await updateManifest(projectRoot, async (m) => {
-      return refreshAllAgentStatuses(m, projectRoot);
-    });
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  await requireManifest(projectRoot);
+  const manifest = await updateManifest(projectRoot, async (m) => {
+    return refreshAllAgentStatuses(m, projectRoot);
+  });
 
   // Filter worktrees if specified
   const filter = worktreeFilter ?? options?.worktree;
