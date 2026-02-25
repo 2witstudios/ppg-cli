@@ -870,9 +870,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "Worktree")!)
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-
         let name = NSTextField(labelWithString: worktree.name)
         name.font = .systemFont(ofSize: 13)
 
@@ -889,7 +886,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let addBtn = makeInlineAddButton(action: #selector(worktreeAddButtonClicked(_:)))
         addBtn.identifier = NSUserInterfaceItemIdentifier(worktree.id)
 
-        stack.addArrangedSubview(icon)
         stack.addArrangedSubview(name)
         stack.addArrangedSubview(badge)
         stack.addArrangedSubview(NSView()) // spacer
