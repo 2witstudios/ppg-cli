@@ -122,6 +122,25 @@ async function spawnNewWorktree(
   // Create tmux window
   const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
 
+  // Register skeleton worktree in manifest before spawning agents
+  // so partial failures leave a record for cleanup
+  const worktreeEntry: WorktreeEntry = {
+    id: wtId,
+    name,
+    path: wtPath,
+    branch: branchName,
+    baseBranch,
+    status: 'active',
+    tmuxWindow: windowTarget,
+    agents: {},
+    createdAt: new Date().toISOString(),
+  };
+
+  await updateManifest(projectRoot, (m) => {
+    m.worktrees[wtId] = worktreeEntry;
+    return m;
+  });
+
   // Spawn agents — one tmux window per agent (default), or split panes (--split)
   const agents: AgentEntry[] = [];
   for (let i = 0; i < count; i++) {
@@ -168,25 +187,15 @@ async function spawnNewWorktree(
     });
 
     agents.push(agentEntry);
+
+    // Update manifest incrementally after each agent spawn
+    await updateManifest(projectRoot, (m) => {
+      if (m.worktrees[wtId]) {
+        m.worktrees[wtId].agents[agentEntry.id] = agentEntry;
+      }
+      return m;
+    });
   }
-
-  // Update manifest
-  const worktreeEntry: WorktreeEntry = {
-    id: wtId,
-    name,
-    path: wtPath,
-    branch: branchName,
-    baseBranch,
-    status: 'active',
-    tmuxWindow: windowTarget,
-    agents: Object.fromEntries(agents.map((a) => [a.id, a])),
-    createdAt: new Date().toISOString(),
-  };
-
-  await updateManifest(projectRoot, (m) => {
-    m.worktrees[wtId] = worktreeEntry;
-    return m;
-  });
 
   // Only open Terminal window when explicitly requested via --open (fire-and-forget)
   if (options.open === true) {
@@ -288,6 +297,7 @@ async function spawnIntoExistingWorktree(
 
   await updateManifest(projectRoot, (m) => {
     const mWt = m.worktrees[wt.id];
+    if (!mWt) return m;
     if (!mWt.tmuxWindow) {
       mWt.tmuxWindow = windowTarget;
     }
