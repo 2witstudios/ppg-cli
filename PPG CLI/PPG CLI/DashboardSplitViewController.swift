@@ -11,6 +11,12 @@ class DashboardSplitViewController: NSSplitViewController {
     /// Entry ID to navigate to after the next sidebar data refresh.
     private var pendingNavigationEntryId: String?
 
+    /// Editable title in the window titlebar.
+    private var titleAccessory: EditableTitleBarAccessory?
+
+    /// The currently displayed sidebar item (for rename routing).
+    private var currentSidebarItem: SidebarItem?
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -140,6 +146,43 @@ class DashboardSplitViewController: NSSplitViewController {
         // Auto-show dashboard on launch
         DispatchQueue.main.async { [weak self] in
             self?.showHomeDashboard()
+        }
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        installTitleAccessory()
+    }
+
+    private func installTitleAccessory() {
+        guard titleAccessory == nil, let window = view.window else { return }
+        window.titleVisibility = .hidden
+
+        let accessory = EditableTitleBarAccessory()
+        accessory.layoutAttribute = .bottom
+        accessory.onRename = { [weak self] newName in
+            self?.handleTitleRename(newName)
+        }
+        window.addTitlebarAccessoryViewController(accessory)
+        titleAccessory = accessory
+    }
+
+    private func handleTitleRename(_ newName: String) {
+        guard let item = currentSidebarItem else { return }
+        view.window?.title = newName
+        switch item {
+        case .agent(let agent):
+            guard let ctx = sidebar.projectContext(for: item) else { return }
+            renameManifestAgent(project: ctx, agentId: agent.id, newName: newName)
+        case .terminal(let entry):
+            guard let ctx = sidebar.projectContext(for: item) else { return }
+            ctx.dashboardSession.rename(id: entry.id, newLabel: newName)
+            sidebar.refresh()
+        case .worktree(let wt):
+            guard let ctx = sidebar.projectContext(for: item) else { return }
+            renameManifestWorktree(project: ctx, worktreeId: wt.id, newName: newName)
+        default:
+            break
         }
     }
 
@@ -509,19 +552,25 @@ class DashboardSplitViewController: NSSplitViewController {
     func showHomeDashboard() {
         let projects = OpenProjects.shared.projects
         content.showHomeDashboard(projects: projects, worktreesByProject: sidebar.projectWorktrees)
+        currentSidebarItem = nil
         view.window?.title = "ppg"
+        titleAccessory?.setTitle("ppg", editable: false)
     }
 
     func showSwarmsView() {
         let projects = OpenProjects.shared.projects
         content.showSwarmsView(projects: projects)
+        currentSidebarItem = nil
         view.window?.title = "ppg - Swarms"
+        titleAccessory?.setTitle("ppg - Swarms", editable: false)
     }
 
     func showPromptsView() {
         let projects = OpenProjects.shared.projects
         content.showPromptsView(projects: projects)
+        currentSidebarItem = nil
         view.window?.title = "ppg - Prompts"
+        titleAccessory?.setTitle("ppg - Prompts", editable: false)
     }
 
     // MARK: - Selection & Refresh
@@ -589,18 +638,30 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     private func updateWindowTitle(for item: SidebarItem) {
+        currentSidebarItem = item
+
+        let title: String
+        let editable: Bool
         switch item {
         case .project(let ctx):
-            view.window?.title = ctx.projectName
+            title = ctx.projectName
+            editable = false
         case .worktree(let wt):
-            view.window?.title = wt.name
+            title = wt.name
+            editable = wt.id != "__project__"
         case .agent(let ag):
-            view.window?.title = ag.name.isEmpty ? ag.id : ag.name
+            title = ag.name.isEmpty ? ag.id : ag.name
+            editable = true
         case .agentGroup(let agents, _):
-            view.window?.title = "\(agents.count) agents (split)"
+            title = "\(agents.count) agents (split)"
+            editable = false
         case .terminal(let entry):
-            view.window?.title = entry.label
+            title = entry.label
+            editable = true
         }
+
+        view.window?.title = title
+        titleAccessory?.setTitle(title, editable: editable)
     }
 
     private func handleRefresh() {
@@ -924,5 +985,105 @@ class DashboardSplitViewController: NSSplitViewController {
             guard let name = prompt, !name.isEmpty else { return }
             createWorktreeWithName(project: project, name: name)
         }
+    }
+}
+
+// MARK: - EditableTitleBarAccessory
+
+class EditableTitleBarAccessory: NSTitlebarAccessoryViewController, NSTextFieldDelegate {
+    private let titleField = NSTextField()
+    private var nameBeforeEditing = ""
+    private var isEditing = false
+    private var isEditableItem = false
+
+    var onRename: ((String) -> Void)?
+
+    override func loadView() {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        titleField.isBordered = false
+        titleField.isEditable = false
+        titleField.isSelectable = false
+        titleField.drawsBackground = false
+        titleField.backgroundColor = .clear
+        titleField.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleField.textColor = .labelColor
+        titleField.alignment = .center
+        titleField.lineBreakMode = .byTruncatingTail
+        titleField.focusRingType = .none
+        titleField.translatesAutoresizingMaskIntoConstraints = false
+        titleField.delegate = self
+
+        let click = NSClickGestureRecognizer(target: self, action: #selector(titleClicked))
+        titleField.addGestureRecognizer(click)
+
+        container.addSubview(titleField)
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 22),
+            titleField.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            titleField.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            titleField.widthAnchor.constraint(lessThanOrEqualTo: container.widthAnchor, constant: -32),
+        ])
+
+        view = container
+    }
+
+    func setTitle(_ title: String, editable: Bool) {
+        guard !isEditing else { return }
+        titleField.stringValue = title
+        isEditableItem = editable
+    }
+
+    @objc private func titleClicked() {
+        guard isEditableItem, !isEditing else { return }
+        isEditing = true
+        nameBeforeEditing = titleField.stringValue
+        titleField.isEditable = true
+        titleField.isSelectable = true
+        titleField.isBordered = true
+        titleField.drawsBackground = true
+        titleField.backgroundColor = Theme.contentBackground
+        view.window?.makeFirstResponder(titleField)
+        titleField.currentEditor()?.selectAll(nil)
+    }
+
+    private func endEditing(commit: Bool) {
+        guard isEditing else { return }
+        isEditing = false
+        titleField.isEditable = false
+        titleField.isSelectable = false
+        titleField.isBordered = false
+        titleField.drawsBackground = false
+        view.window?.makeFirstResponder(nil)
+
+        if commit {
+            let newName = titleField.stringValue.trimmingCharacters(in: .whitespaces)
+            if !newName.isEmpty, newName != nameBeforeEditing {
+                onRename?(newName)
+            } else {
+                titleField.stringValue = nameBeforeEditing
+            }
+        } else {
+            titleField.stringValue = nameBeforeEditing
+        }
+    }
+
+    // MARK: NSTextFieldDelegate
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        if sel == #selector(NSResponder.insertNewline(_:)) {
+            endEditing(commit: true)
+            return true
+        }
+        if sel == #selector(NSResponder.cancelOperation(_:)) {
+            endEditing(commit: false)
+            return true
+        }
+        return false
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        endEditing(commit: true)
     }
 }
