@@ -140,6 +140,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         outlineView.delegate = self
         outlineView.rowSizeStyle = .medium
         outlineView.style = .sourceList
+        outlineView.indentationPerLevel = 10
 
         let contextMenu = NSMenu()
         contextMenu.delegate = self
@@ -946,13 +947,17 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let cell = NSTableCellView()
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 6
+        stack.spacing = 5
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let statusDesc = "Agent \(agent.status.rawValue)"
         let icon = NSImageView(image: NSImage(systemSymbolName: "circle.fill", accessibilityDescription: statusDesc)!)
         icon.contentTintColor = statusColor(for: agent.status)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 6, weight: .regular)
         icon.setContentHuggingPriority(.required, for: .horizontal)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 8).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 8).isActive = true
 
         let displayName = agent.name.isEmpty ? agent.id : agent.name
         let label = NSTextField(labelWithString: "\(displayName) — \(agent.agentType)")
@@ -983,6 +988,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let statusDesc = "\(agents.count) agents (split)"
         let icon = NSImageView(image: NSImage(systemSymbolName: "rectangle.split.2x1.fill", accessibilityDescription: statusDesc)!)
         icon.contentTintColor = statusColor(for: leadStatus)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
         let label = NSTextField(labelWithString: "\(agents.count) agents (split)")
@@ -1021,6 +1027,12 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let kindDesc = entry.kind == .agent ? "Agent" : "Terminal"
         let icon = NSImageView(image: NSImage(systemSymbolName: symbolName, accessibilityDescription: kindDesc)!)
         icon.contentTintColor = tintColor
+        if entry.kind == .agent {
+            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 6, weight: .regular)
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            icon.widthAnchor.constraint(equalToConstant: 8).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: 8).isActive = true
+        }
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
         let label = NSTextField(labelWithString: entry.label)
