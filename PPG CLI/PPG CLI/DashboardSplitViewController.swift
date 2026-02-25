@@ -8,6 +8,9 @@ class DashboardSplitViewController: NSSplitViewController {
     private var pendingRefreshWork: DispatchWorkItem?
     private let refreshCoalesceDelay: TimeInterval = 0.05  // 50ms
 
+    /// Entry ID to navigate to after the next sidebar data refresh.
+    private var pendingNavigationEntryId: String?
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -37,7 +40,14 @@ class DashboardSplitViewController: NSSplitViewController {
         }
 
         sidebar.onDataRefreshed = { [weak self] _ in
-            self?.handleRefresh()
+            guard let self = self else { return }
+            if let pendingId = self.pendingNavigationEntryId {
+                if self.sidebar.selectItem(byId: pendingId) {
+                    self.pendingNavigationEntryId = nil
+                    return
+                }
+            }
+            self.handleRefresh()
         }
 
         sidebar.onRenameTerminal = { [weak self] project, id, newLabel in
@@ -386,6 +396,16 @@ class DashboardSplitViewController: NSSplitViewController {
         content.movePaneFocus(direction: direction, forward: forward)
     }
 
+    /// Whether the focused pane can be split in the given direction.
+    /// Used by menu validation to disable split items at the grid limit.
+    func canSplitFocusedPane(direction: SplitDirection) -> Bool {
+        guard content.isGridMode, let grid = content.paneGrid else {
+            // Not in grid mode — splitting will enter grid mode, so allow it if there's content
+            return content.currentEntryId != nil
+        }
+        return grid.root.canSplit(leafId: grid.focusedLeafId, direction: direction)
+    }
+
     /// Set up grid controller callbacks for picker actions.
     /// Callbacks resolve the current project context at invocation time (not wire time)
     /// so they stay correct when the user switches projects.
@@ -396,18 +416,11 @@ class DashboardSplitViewController: NSSplitViewController {
         guard grid.onNewAgent == nil else { return }
 
         grid.onNewAgent = { [weak self] in
-            guard let self = self else { return }
-            // Resolve project context now — not at wire time
-            guard let ctx = self.sidebar.selectedProjectContext() else { return }
-            let worktreeId = self.sidebar.selectedWorktreeId()
-            self.addAgentToGrid(project: ctx, parentWorktreeId: worktreeId)
+            self?.showCreationMenuForGrid()
         }
 
         grid.onNewTerminal = { [weak self] in
-            guard let self = self else { return }
-            guard let ctx = self.sidebar.selectedProjectContext() else { return }
-            let worktreeId = self.sidebar.selectedWorktreeId()
-            self.addTerminalToGrid(project: ctx, parentWorktreeId: worktreeId)
+            self?.showCreationMenuForGrid()
         }
 
         grid.onPickFromSidebar = { [weak self] in
@@ -418,8 +431,11 @@ class DashboardSplitViewController: NSSplitViewController {
         grid.onSplitPane = { [weak self] leafId, direction in
             guard let self = self, let grid = self.content.paneGrid else { return }
             grid.setFocus(leafId)
-            grid.splitFocusedPane(direction: direction)
+            let didSplit = grid.splitFocusedPane(direction: direction)
             self.persistGridLayout()
+            if didSplit {
+                self.showCreationMenuForGrid()
+            }
         }
 
         grid.onClosePane = { [weak self] leafId in
@@ -658,7 +674,7 @@ class DashboardSplitViewController: NSSplitViewController {
             workingDir: workingDir,
             initialPrompt: initialPrompt
         )
-        content.showEntry(.sessionEntry(entry, sessionName: project.sessionName))
+        pendingNavigationEntryId = entry.id
         sidebar.refresh()
     }
 
@@ -675,7 +691,7 @@ class DashboardSplitViewController: NSSplitViewController {
                 project.dashboardSession.sendTmuxKeys(target: target, command: cmd)
             }
         }
-        content.showEntry(.sessionEntry(entry, sessionName: project.sessionName))
+        pendingNavigationEntryId = entry.id
         sidebar.refresh()
     }
 
@@ -820,14 +836,25 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     /// Show Raycast-style command palette scoped to current sidebar selection's project.
+    /// Always creates a sidebar entry (Cmd+N). Grid pane filling uses `showCreationMenuForGrid()`.
     func showCreationMenu() {
         guard let ctx = sidebar.selectedProjectContext() else { return }
         let worktreeId = sidebar.selectedWorktreeId()
-        let isGrid = content.isGridMode
 
         CommandPalettePanel.show(relativeTo: view.window) { [weak self] variant, prompt in
             self?.handlePaletteSelection(variant: variant, prompt: prompt,
-                                          project: ctx, worktreeId: worktreeId, isGrid: isGrid)
+                                          project: ctx, worktreeId: worktreeId, isGrid: false)
+        }
+    }
+
+    /// Show command palette for grid pane filling (empty pane placeholder / split).
+    private func showCreationMenuForGrid() {
+        guard let ctx = sidebar.selectedProjectContext() else { return }
+        let worktreeId = sidebar.selectedWorktreeId()
+
+        CommandPalettePanel.show(relativeTo: view.window) { [weak self] variant, prompt in
+            self?.handlePaletteSelection(variant: variant, prompt: prompt,
+                                          project: ctx, worktreeId: worktreeId, isGrid: true)
         }
     }
 

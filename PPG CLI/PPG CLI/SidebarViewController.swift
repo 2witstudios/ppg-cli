@@ -670,6 +670,20 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         }
     }
 
+    /// Select the sidebar row matching the given entry ID and fire `onItemSelected`.
+    @discardableResult
+    func selectItem(byId id: String) -> Bool {
+        for row in 0..<outlineView.numberOfRows {
+            guard let node = outlineView.item(atRow: row) as? SidebarNode else { continue }
+            if node.item.id == id {
+                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                onItemSelected?(node.item)
+                return true
+            }
+        }
+        return false
+    }
+
     func selectedWorktreeId() -> String? {
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }

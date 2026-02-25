@@ -111,6 +111,53 @@ indirect enum PaneSplitNode {
         }
     }
 
+    // MARK: - Grid Shape Analysis (max 2 rows × 3 columns)
+
+    /// Number of rows. A leaf or vertical-only subtree is 1 row.
+    /// A horizontal split at root level means 2 rows.
+    var rowCount: Int {
+        switch self {
+        case .leaf: return 1
+        case .split(let dir, _, _, _):
+            return dir == .horizontal ? 2 : 1
+        }
+    }
+
+    /// Return the subtree (row) that contains a given leaf.
+    /// If root is a horizontal split, returns the child subtree containing the leaf.
+    /// Otherwise returns self (the whole tree is one row).
+    func rowForLeaf(id leafId: String) -> PaneSplitNode? {
+        switch self {
+        case .leaf(let id, _):
+            return id == leafId ? self : nil
+        case .split(let dir, let first, let second, _):
+            guard dir == .horizontal else {
+                // Vertical split — whole node is one row; just check containment
+                return findLeaf(id: leafId) != nil ? self : nil
+            }
+            // Horizontal root — return whichever child contains the leaf
+            if first.findLeaf(id: leafId) != nil { return first }
+            if second.findLeaf(id: leafId) != nil { return second }
+            return nil
+        }
+    }
+
+    /// Number of columns in this row subtree (leaf count within a single row).
+    var columnsInRow: Int {
+        return leafCount
+    }
+
+    /// Check whether a leaf can be split in the given direction under the 2×3 constraint.
+    func canSplit(leafId: String, direction: SplitDirection) -> Bool {
+        switch direction {
+        case .horizontal:
+            return rowCount < 2
+        case .vertical:
+            guard let row = rowForLeaf(id: leafId) else { return false }
+            return row.columnsInRow < 3
+        }
+    }
+
     // Helpers for accessing split properties without re-destructuring
     private var splitDirection: SplitDirection? {
         if case .split(let dir, _, _, _) = self { return dir }
@@ -120,6 +167,15 @@ indirect enum PaneSplitNode {
     private var splitRatio: CGFloat? {
         if case .split(_, _, _, let ratio) = self { return ratio }
         return nil
+    }
+
+    /// Find the split node that directly contains a leaf with the given ID, and its structural path.
+    func subtreeContaining(leafId: String, path: String = "root") -> (node: PaneSplitNode, path: String)? {
+        guard case .split(_, let first, let second, _) = self else { return nil }
+        if case .leaf(let id, _) = first, id == leafId { return (self, path) }
+        if case .leaf(let id, _) = second, id == leafId { return (self, path) }
+        return first.subtreeContaining(leafId: leafId, path: path + ".0")
+            ?? second.subtreeContaining(leafId: leafId, path: path + ".1")
     }
 
     /// Convert to a serializable layout node (entry IDs only, no views).
@@ -280,12 +336,17 @@ class PaneGridController: NSViewController {
     }
 
     /// Split the focused pane in the given direction.
-    /// Uses incremental NSSplitView insertion instead of a full rebuild.
     @discardableResult
     func splitFocusedPane(direction: SplitDirection) -> Bool {
+        // Enforce 2-row × 3-column grid constraint
+        guard root.canSplit(leafId: focusedLeafId, direction: direction) else {
+            return false
+        }
+
+        let splittingId = focusedLeafId
         let newId = nextLeafId()
         guard let newRoot = root.splittingLeaf(
-            id: focusedLeafId,
+            id: splittingId,
             direction: direction,
             newLeafId: newId,
             currentCount: root.leafCount
@@ -293,80 +354,44 @@ class PaneGridController: NSViewController {
             return false
         }
 
-        let oldFocusedId = focusedLeafId
+        let oldRoot = root
         root = newRoot
         focusedLeafId = newId
 
-        // Try incremental update: replace the existing cell with a split containing it + new cell
-        guard let existingCell = cellViews[oldFocusedId],
-              let parentView = existingCell.superview else {
+        // Single pane → two panes: full rebuild (only happens once)
+        guard oldRoot.leafCount > 1,
+              let existingCell = cellViews[splittingId],
+              let parentSplit = existingCell.superview as? NSSplitView else {
             rebuild()
             return true
         }
 
-        // Create the new cell for the empty pane
-        let newCell = cellView(for: newId)
-        newCell.showPlaceholder(
-            onNewAgent: { [weak self] in self?.onNewAgent?() },
-            onNewTerminal: { [weak self] in self?.onNewTerminal?() },
-            onPickFromSidebar: { [weak self] in self?.onPickFromSidebar?() }
-        )
-        newCell.onClick = { [weak self] in self?.setFocus(newId) }
-        newCell.onSplitHorizontal = { [weak self] in self?.onSplitPane?(newId, .horizontal) }
-        newCell.onSplitVertical = { [weak self] in self?.onSplitPane?(newId, .vertical) }
-        newCell.onClose = { [weak self] in self?.onClosePane?(newId) }
-
-        // Build a new NSSplitView to replace the cell in its parent
-        let splitView = NSSplitView()
-        splitView.isVertical = (direction == .vertical)
-        splitView.dividerStyle = .thin
-        splitView.translatesAutoresizingMaskIntoConstraints = false
-        splitView.wantsLayer = true
-
-        let delegate = SplitViewDelegate()
-        splitView.delegate = delegate
-        objc_setAssociatedObject(splitView, &splitViewDelegateKey, delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-        // Record existing cell's index before detaching so we can insert at the same position
-        let existingIndex = (parentView as? NSSplitView)?.subviews.firstIndex(of: existingCell)
-
-        existingCell.removeFromSuperview()
-        splitView.addSubview(existingCell)
-        splitView.addSubview(newCell)
-
-        // Insert split into parent at the same position
-        if let parentSplit = parentView as? NSSplitView {
-            // Insert at the correct index to preserve visual ordering
-            if let idx = existingIndex, idx == 0, let remaining = parentSplit.subviews.first {
-                parentSplit.addSubview(splitView, positioned: .below, relativeTo: remaining)
-            } else {
-                parentSplit.addSubview(splitView)
-            }
-        } else {
-            // Parent is the root view
-            parentView.addSubview(splitView)
-            NSLayoutConstraint.activate([
-                splitView.topAnchor.constraint(equalTo: parentView.topAnchor),
-                splitView.leadingAnchor.constraint(equalTo: parentView.leadingAnchor),
-                splitView.trailingAnchor.constraint(equalTo: parentView.trailingAnchor),
-                splitView.bottomAnchor.constraint(equalTo: parentView.bottomAnchor),
-            ])
+        // Find the new subtree node that wraps the split leaf
+        guard let (subtreeNode, subtreePath) = newRoot.subtreeContaining(leafId: splittingId) else {
+            rebuild()
+            return true
         }
 
-        // Set initial ratio to 50/50
-        DispatchQueue.main.async { [weak self] in
-            self?.applySplitRatio(splitView, ratio: 0.5)
-            // Update focus borders
-            for (id, cell) in self?.cellViews ?? [:] {
-                cell.updateFocusIndicator(focused: id == self?.focusedLeafId)
-            }
+        // Placeholder swap: keep parent at 2 children so divider is preserved
+        let placeholder = NSView()
+        placeholder.frame = existingCell.frame
+        parentSplit.replaceSubview(existingCell, with: placeholder)
+
+        // Build the new subtree (reuses existingCell via cellView(for:))
+        let subtreeView = buildView(for: subtreeNode, path: subtreePath)
+        subtreeView.frame = placeholder.frame
+        parentSplit.replaceSubview(placeholder, with: subtreeView)
+
+        // Update focus indicators and split availability
+        for (id, cell) in cellViews {
+            cell.updateFocusIndicator(focused: id == focusedLeafId)
         }
+        updateSplitAvailability()
 
         return true
     }
 
     /// Close the focused pane.
-    /// Uses incremental NSSplitView removal instead of a full rebuild.
     @discardableResult
     func closeFocusedPane() -> Bool {
         // Can't close the last pane
@@ -380,66 +405,62 @@ class PaneGridController: NSViewController {
         }
 
         guard let newRoot = root.removingLeaf(id: closingId) else { return false }
+
+        // Capture view hierarchy references before mutating state
+        let closingCell = cellViews[closingId]
+        let parentSplit = closingCell?.superview as? NSSplitView
+
         root = newRoot
 
         // Move focus to first remaining leaf
         focusedLeafId = root.allLeafIds().first ?? ""
+        cellViews.removeValue(forKey: closingId)
 
-        // Try incremental removal: find the parent NSSplitView, remove the closing cell,
-        // and replace the split with the remaining sibling.
-        if let closingCell = cellViews[closingId],
-           let parentSplit = closingCell.superview as? NSSplitView {
-
-            // Find the sibling view (the one that's not the closing cell)
-            let siblings = parentSplit.subviews.filter { $0 !== closingCell }
-            if let sibling = siblings.first, let grandparent = parentSplit.superview {
-                // Record parentSplit's index in grandparent before removal
-                let parentIndex = (grandparent as? NSSplitView)?.subviews.firstIndex(of: parentSplit)
-
-                closingCell.removeFromSuperview()
-
-                if let grandSplit = grandparent as? NSSplitView {
-                    // Replace the parent split with the sibling at the same index
-                    parentSplit.removeFromSuperview()
-                    sibling.removeFromSuperview()
-                    if let idx = parentIndex, idx == 0, let remaining = grandSplit.subviews.first {
-                        grandSplit.addSubview(sibling, positioned: .below, relativeTo: remaining)
-                    } else {
-                        grandSplit.addSubview(sibling)
-                    }
-                } else {
-                    // Grandparent is the root view — replace parent split with sibling
-                    parentSplit.removeFromSuperview()
-                    sibling.removeFromSuperview()
-                    sibling.translatesAutoresizingMaskIntoConstraints = false
-                    grandparent.addSubview(sibling)
-                    NSLayoutConstraint.activate([
-                        sibling.topAnchor.constraint(equalTo: grandparent.topAnchor),
-                        sibling.leadingAnchor.constraint(equalTo: grandparent.leadingAnchor),
-                        sibling.trailingAnchor.constraint(equalTo: grandparent.trailingAnchor),
-                        sibling.bottomAnchor.constraint(equalTo: grandparent.bottomAnchor),
-                    ])
-                }
-            } else {
-                // Fallback to full rebuild
-                cellViews.removeValue(forKey: closingId)
-                rebuild()
-                return true
-            }
-        } else {
-            // Fallback to full rebuild
-            cellViews.removeValue(forKey: closingId)
+        // Two panes → one pane, or closing cell not in a split: full rebuild
+        guard let parentSplit = parentSplit, parentSplit.subviews.count == 2 else {
             rebuild()
             return true
         }
 
-        // Remove cell view for the closed pane
-        cellViews.removeValue(forKey: closingId)
+        // Find the sibling (the other child of parentSplit)
+        let sibling: NSView
+        if parentSplit.subviews[0] === closingCell {
+            sibling = parentSplit.subviews[1]
+        } else {
+            sibling = parentSplit.subviews[0]
+        }
 
-        // Update focus borders
+        let grandparent = parentSplit.superview
+
+        if let grandSplit = grandparent as? NSSplitView {
+            // Grandparent is a split view — atomic swap, no 1-child state
+            let parentFrame = parentSplit.frame
+            sibling.removeFromSuperview()
+            grandSplit.replaceSubview(parentSplit, with: sibling)
+            sibling.frame = parentFrame
+        } else if grandparent === view {
+            // Grandparent is the root view — replace with constraints
+            sibling.removeFromSuperview()
+            parentSplit.removeFromSuperview()
+            sibling.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(sibling)
+            NSLayoutConstraint.activate([
+                sibling.topAnchor.constraint(equalTo: view.topAnchor),
+                sibling.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                sibling.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                sibling.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+        } else {
+            // Unexpected hierarchy — fall back to rebuild
+            rebuild()
+            return true
+        }
+
+        // Update focus indicators and split availability
         for (id, cell) in cellViews {
             cell.updateFocusIndicator(focused: id == focusedLeafId)
         }
+        updateSplitAvailability()
 
         return true
     }
@@ -571,6 +592,15 @@ class PaneGridController: NSViewController {
         for (id, cell) in cellViews {
             cell.updateFocusIndicator(focused: id == focusedLeafId)
         }
+        updateSplitAvailability()
+    }
+
+    /// Update canSplitH/canSplitV on all leaf cell views based on current tree shape.
+    private func updateSplitAvailability() {
+        for (leafId, cell) in cellViews {
+            cell.canSplitH = root.canSplit(leafId: leafId, direction: .horizontal)
+            cell.canSplitV = root.canSplit(leafId: leafId, direction: .vertical)
+        }
     }
 
     private func buildView(for node: PaneSplitNode, path: String) -> NSView {
@@ -680,6 +710,10 @@ class PaneCellView: NSView {
     var onSplitVertical: (() -> Void)?
     var onClose: (() -> Void)?
 
+    /// Whether this pane can be split in each direction (updated by PaneGridController).
+    var canSplitH: Bool = true
+    var canSplitV: Bool = true
+
     private let focusBarLayer = CALayer()
     private static let focusBarHeight: CGFloat = 2
     private static let focusBarColor = NSColor.controlAccentColor
@@ -718,8 +752,8 @@ class PaneCellView: NSView {
             removeTrackingArea(existing)
         }
         let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInActiveApp],
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
@@ -739,8 +773,6 @@ class PaneCellView: NSView {
     }
 
     private func showHoverOverlay() {
-        // Only show overlay when there's content (not placeholder)
-        guard entryId != nil else { return }
 
         if hoverOverlay == nil {
             let overlay = PaneHoverOverlay()
@@ -751,6 +783,7 @@ class PaneCellView: NSView {
             overlay.updatePosition(in: bounds)
             hoverOverlay = overlay
         }
+        hoverOverlay?.updateSplitAvailability(canSplitH: canSplitH, canSplitV: canSplitV)
         hoverOverlay?.animator().alphaValue = 1
     }
 
@@ -925,6 +958,10 @@ class PaneHoverOverlay: NSView {
     private static let padding: CGFloat = 6
     private static let spacing: CGFloat = 2
 
+    private var splitHButton: NSButton!
+    private var splitVButton: NSButton!
+    private var closeButton: NSButton!
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupButtons()
@@ -941,23 +978,23 @@ class PaneHoverOverlay: NSView {
         layer?.borderWidth = 1
         layer?.borderColor = NSColor(white: 0.3, alpha: 0.5).cgColor
 
-        let splitH = makeButton(
+        splitHButton = makeButton(
             icon: "rectangle.split.1x2",
             tooltip: "Split Below",
             action: #selector(splitHClicked)
         )
-        let splitV = makeButton(
+        splitVButton = makeButton(
             icon: "rectangle.split.2x1",
             tooltip: "Split Right",
             action: #selector(splitVClicked)
         )
-        let close = makeButton(
+        closeButton = makeButton(
             icon: "xmark",
             tooltip: "Close Pane",
             action: #selector(closeClicked)
         )
 
-        let stack = NSStackView(views: [splitV, splitH, close])
+        let stack = NSStackView(views: [splitVButton, splitHButton, closeButton])
         stack.orientation = .horizontal
         stack.spacing = Self.spacing
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -971,6 +1008,11 @@ class PaneHoverOverlay: NSView {
         ])
 
         translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    func updateSplitAvailability(canSplitH: Bool, canSplitV: Bool) {
+        splitHButton.isHidden = !canSplitH
+        splitVButton.isHidden = !canSplitV
     }
 
     private func makeButton(icon: String, tooltip: String, action: Selector) -> NSButton {
@@ -994,7 +1036,11 @@ class PaneHoverOverlay: NSView {
 
     func updatePosition(in parentBounds: CGRect) {
         guard superview != nil else { return }
-        let overlayWidth = Self.padding * 2 + Self.buttonSize * 3 + Self.spacing * 2
+        let visibleCount = CGFloat(
+            [splitHButton, splitVButton, closeButton].filter({ !$0.isHidden }).count
+        )
+        let gaps = max(visibleCount - 1, 0)
+        let overlayWidth = Self.padding * 2 + Self.buttonSize * visibleCount + Self.spacing * gaps
         let overlayHeight = Self.padding * 2 + Self.buttonSize
         frame = NSRect(
             x: parentBounds.maxX - overlayWidth - 8,
@@ -1046,11 +1092,9 @@ class PanePlaceholderView: NSView {
         subtitleLabel.textColor = .secondaryLabelColor
         subtitleLabel.alignment = .center
 
-        let agentButton = makeButton(title: "New Agent", icon: "cpu", action: #selector(agentClicked))
-        let terminalButton = makeButton(title: "New Terminal", icon: "terminal", action: #selector(terminalClicked))
-        let sidebarButton = makeButton(title: "Pick from Sidebar", icon: "sidebar.left", action: #selector(sidebarClicked))
+        let openButton = makeButton(title: "New...", icon: "plus", action: #selector(agentClicked))
 
-        let buttonStack = NSStackView(views: [agentButton, terminalButton, sidebarButton])
+        let buttonStack = NSStackView(views: [openButton])
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 12
 
@@ -1091,6 +1135,4 @@ class PanePlaceholderView: NSView {
     }
 
     @objc private func agentClicked() { onNewAgent?() }
-    @objc private func terminalClicked() { onNewTerminal?() }
-    @objc private func sidebarClicked() { onPickFromSidebar?() }
 }

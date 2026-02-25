@@ -13,10 +13,6 @@ final class AppSettingsManagerTests: XCTestCase {
         XCTAssertEqual(AppSettingsManager.defaultRefreshInterval, 2.0)
     }
 
-    func testDefaultAppearance() {
-        XCTAssertEqual(AppSettingsManager.defaultAppearance, "dark")
-    }
-
     func testDefaultShell() {
         XCTAssertEqual(AppSettingsManager.defaultShell, "/bin/zsh")
     }

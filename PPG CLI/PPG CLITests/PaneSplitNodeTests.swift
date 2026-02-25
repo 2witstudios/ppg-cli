@@ -254,6 +254,244 @@ final class PaneSplitNodeTests: XCTestCase {
         let overflow = node.splittingLeaf(id: "p5", direction: .horizontal, newLeafId: "p6", currentCount: node.leafCount)
         XCTAssertNil(overflow)
     }
+
+    // MARK: - Row Count
+
+    func testSingleLeafHasOneRow() {
+        let node = PaneSplitNode.leaf(id: "a", entry: nil)
+        XCTAssertEqual(node.rowCount, 1)
+    }
+
+    func testVerticalSplitHasOneRow() {
+        let node = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .leaf(id: "b", entry: nil),
+            ratio: 0.5
+        )
+        XCTAssertEqual(node.rowCount, 1)
+    }
+
+    func testHorizontalSplitHasTwoRows() {
+        let node = PaneSplitNode.split(
+            direction: .horizontal,
+            first: .leaf(id: "a", entry: nil),
+            second: .leaf(id: "b", entry: nil),
+            ratio: 0.5
+        )
+        XCTAssertEqual(node.rowCount, 2)
+    }
+
+    // MARK: - Row For Leaf
+
+    func testRowForLeafInSingleLeaf() {
+        let node = PaneSplitNode.leaf(id: "a", entry: nil)
+        let row = node.rowForLeaf(id: "a")
+        XCTAssertNotNil(row)
+        XCTAssertEqual(row?.allLeafIds(), ["a"])
+    }
+
+    func testRowForLeafInHorizontalSplit() {
+        // H(V(a, b), V(c, d)) — top row has a,b; bottom row has c,d
+        let topRow = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .leaf(id: "b", entry: nil),
+            ratio: 0.5
+        )
+        let bottomRow = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "c", entry: nil),
+            second: .leaf(id: "d", entry: nil),
+            ratio: 0.5
+        )
+        let root = PaneSplitNode.split(
+            direction: .horizontal,
+            first: topRow,
+            second: bottomRow,
+            ratio: 0.5
+        )
+
+        // Leaf "a" should be in the top row
+        let rowA = root.rowForLeaf(id: "a")
+        XCTAssertNotNil(rowA)
+        XCTAssertEqual(rowA?.allLeafIds(), ["a", "b"])
+
+        // Leaf "d" should be in the bottom row
+        let rowD = root.rowForLeaf(id: "d")
+        XCTAssertNotNil(rowD)
+        XCTAssertEqual(rowD?.allLeafIds(), ["c", "d"])
+    }
+
+    func testRowForLeafNotFound() {
+        let node = PaneSplitNode.leaf(id: "a", entry: nil)
+        XCTAssertNil(node.rowForLeaf(id: "z"))
+    }
+
+    // MARK: - Columns In Row
+
+    func testSingleLeafIsOneColumn() {
+        let node = PaneSplitNode.leaf(id: "a", entry: nil)
+        XCTAssertEqual(node.columnsInRow, 1)
+    }
+
+    func testVerticalSplitTwoColumns() {
+        let node = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .leaf(id: "b", entry: nil),
+            ratio: 0.5
+        )
+        XCTAssertEqual(node.columnsInRow, 2)
+    }
+
+    func testVerticalChainThreeColumns() {
+        // V(a, V(b, c)) — chain of vertical splits = 3 columns
+        let node = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .split(
+                direction: .vertical,
+                first: .leaf(id: "b", entry: nil),
+                second: .leaf(id: "c", entry: nil),
+                ratio: 0.5
+            ),
+            ratio: 0.33
+        )
+        XCTAssertEqual(node.columnsInRow, 3)
+    }
+
+    // MARK: - canSplit (Grid Constraints)
+
+    func testCanSplitHOnSingleLeaf() {
+        let node = PaneSplitNode.leaf(id: "a", entry: nil)
+        XCTAssertTrue(node.canSplit(leafId: "a", direction: .horizontal))
+    }
+
+    func testCannotSplitHWhenTwoRows() {
+        // H(a, b) — already 2 rows
+        let node = PaneSplitNode.split(
+            direction: .horizontal,
+            first: .leaf(id: "a", entry: nil),
+            second: .leaf(id: "b", entry: nil),
+            ratio: 0.5
+        )
+        XCTAssertFalse(node.canSplit(leafId: "a", direction: .horizontal))
+        XCTAssertFalse(node.canSplit(leafId: "b", direction: .horizontal))
+    }
+
+    func testCanSplitVOnTwoColumns() {
+        // V(a, b) — 2 columns, can add a 3rd
+        let node = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .leaf(id: "b", entry: nil),
+            ratio: 0.5
+        )
+        XCTAssertTrue(node.canSplit(leafId: "a", direction: .vertical))
+        XCTAssertTrue(node.canSplit(leafId: "b", direction: .vertical))
+    }
+
+    func testCannotSplitVAtThreeColumns() {
+        // V(a, V(b, c)) — 3 columns in one row
+        let node = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .split(
+                direction: .vertical,
+                first: .leaf(id: "b", entry: nil),
+                second: .leaf(id: "c", entry: nil),
+                ratio: 0.5
+            ),
+            ratio: 0.33
+        )
+        XCTAssertFalse(node.canSplit(leafId: "a", direction: .vertical))
+        XCTAssertFalse(node.canSplit(leafId: "b", direction: .vertical))
+        XCTAssertFalse(node.canSplit(leafId: "c", direction: .vertical))
+    }
+
+    func testFullGridSixPanesNoMoreSplits() {
+        // Full 2×3 grid: H(V(a, V(b, c)), V(d, V(e, f)))
+        let topRow = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .split(
+                direction: .vertical,
+                first: .leaf(id: "b", entry: nil),
+                second: .leaf(id: "c", entry: nil),
+                ratio: 0.5
+            ),
+            ratio: 0.33
+        )
+        let bottomRow = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "d", entry: nil),
+            second: .split(
+                direction: .vertical,
+                first: .leaf(id: "e", entry: nil),
+                second: .leaf(id: "f", entry: nil),
+                ratio: 0.5
+            ),
+            ratio: 0.33
+        )
+        let grid = PaneSplitNode.split(
+            direction: .horizontal,
+            first: topRow,
+            second: bottomRow,
+            ratio: 0.5
+        )
+
+        XCTAssertEqual(grid.leafCount, 6)
+
+        // No leaf should allow any split in any direction
+        for leafId in grid.allLeafIds() {
+            XCTAssertFalse(grid.canSplit(leafId: leafId, direction: .horizontal),
+                          "Leaf \(leafId) should not allow horizontal split")
+            XCTAssertFalse(grid.canSplit(leafId: leafId, direction: .vertical),
+                          "Leaf \(leafId) should not allow vertical split")
+        }
+    }
+
+    func testCanSplitVInOneRowWhenOtherRowIsFull() {
+        // H(V(a, b), V(c, V(d, e))) — top row has 2 cols (can add 1 more), bottom has 3 (full)
+        let topRow = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "a", entry: nil),
+            second: .leaf(id: "b", entry: nil),
+            ratio: 0.5
+        )
+        let bottomRow = PaneSplitNode.split(
+            direction: .vertical,
+            first: .leaf(id: "c", entry: nil),
+            second: .split(
+                direction: .vertical,
+                first: .leaf(id: "d", entry: nil),
+                second: .leaf(id: "e", entry: nil),
+                ratio: 0.5
+            ),
+            ratio: 0.33
+        )
+        let grid = PaneSplitNode.split(
+            direction: .horizontal,
+            first: topRow,
+            second: bottomRow,
+            ratio: 0.5
+        )
+
+        // Top row: can split vertically
+        XCTAssertTrue(grid.canSplit(leafId: "a", direction: .vertical))
+        XCTAssertTrue(grid.canSplit(leafId: "b", direction: .vertical))
+
+        // Bottom row: cannot split vertically (3 columns already)
+        XCTAssertFalse(grid.canSplit(leafId: "c", direction: .vertical))
+        XCTAssertFalse(grid.canSplit(leafId: "d", direction: .vertical))
+        XCTAssertFalse(grid.canSplit(leafId: "e", direction: .vertical))
+
+        // No leaf can split horizontally (already 2 rows)
+        for leafId in grid.allLeafIds() {
+            XCTAssertFalse(grid.canSplit(leafId: leafId, direction: .horizontal))
+        }
+    }
 }
 
 // MARK: - SplitDirection Equatable (for test assertions)

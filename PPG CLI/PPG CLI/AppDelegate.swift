@@ -1,6 +1,6 @@
 import AppKit
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var window: NSWindow!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -457,5 +457,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         return false
+    }
+
+    // MARK: - Menu Validation
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.tag {
+        case kMenuTagSplitBelow:
+            guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return false }
+            return splitVC.canSplitFocusedPane(direction: .horizontal)
+        case kMenuTagSplitRight:
+            guard let splitVC = window?.contentViewController as? DashboardSplitViewController else { return false }
+            return splitVC.canSplitFocusedPane(direction: .vertical)
+        default:
+            return true
+        }
     }
 }
