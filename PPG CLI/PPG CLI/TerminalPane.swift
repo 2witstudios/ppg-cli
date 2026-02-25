@@ -82,7 +82,12 @@ class TerminalPane: NSView {
         // agent would hijack every other agent's view.
         let viewSession = "\(tmuxSession)-view-\(agent.id)"
 
-        var cmd = "tmux set-option -t \(shellEscape(target)) status off 2>/dev/null; "
+        // Source shell profiles so tmux is found on M-series Macs where
+        // /opt/homebrew/bin is not in the default GUI app PATH.
+        var cmd = "if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; "
+        cmd += "[ -f ~/.zprofile ] && source ~/.zprofile; "
+        cmd += "[ -f ~/.zshrc ] && source ~/.zshrc; "
+        cmd += "tmux set-option -t \(shellEscape(target)) status off 2>/dev/null; "
         cmd += "exec tmux new-session -t \(shellEscape(tmuxSession)) -s \(shellEscape(viewSession))"
         cmd += " \\; set-option destroy-unattached on"
         cmd += " \\; set-option status off"

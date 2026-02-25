@@ -12,7 +12,8 @@ export async function checkTmux(): Promise<void> {
 
 export async function sessionExists(name: string): Promise<boolean> {
   try {
-    await execa('tmux', ['has-session', '-t', name], execaEnv);
+    // Use '=' prefix for exact session name matching to avoid tmux prefix ambiguity
+    await execa('tmux', ['has-session', '-t', `=${name}`], execaEnv);
     return true;
   } catch {
     return false;
@@ -32,9 +33,11 @@ export async function createWindow(
   name: string,
   cwd: string,
 ): Promise<string> {
+  // Use '=' prefix for exact session name matching to avoid tmux prefix ambiguity
+  // (e.g., 'ppg' would otherwise match both 'ppg' and 'ppg-dashboard')
   const result = await execa('tmux', [
     'new-window',
-    '-t', session,
+    '-t', `=${session}`,
     '-n', name,
     '-c', cwd,
     '-P', '-F', '#{window_index}',
@@ -61,8 +64,12 @@ export async function splitPane(
 }
 
 export async function sendKeys(target: string, command: string): Promise<void> {
-  // Send command text with trailing newline in a single call
-  await execa('tmux', ['send-keys', '-t', target, '-l', command + '\n'], execaEnv);
+  // Send text as literal characters, then Enter as a named key.
+  // Using -l sends \n as LF (0x0a) which Ink-based CLIs like Claude Code
+  // treat as text insertion. Sending 'Enter' without -l sends CR (0x0d),
+  // which correctly triggers onSubmit in terminal apps.
+  await execa('tmux', ['send-keys', '-t', target, '-l', command], execaEnv);
+  await execa('tmux', ['send-keys', '-t', target, 'Enter'], execaEnv);
 }
 
 export async function sendLiteral(target: string, text: string): Promise<void> {
@@ -159,7 +166,7 @@ export async function listSessionPanes(session: string): Promise<Map<string, Pan
     const result = await execa('tmux', [
       'list-panes',
       '-s',
-      '-t', session,
+      '-t', `=${session}`,
       '-F', '#{session_name}:#{window_index}.#{pane_index}|#{pane_id}|#{pane_pid}|#{pane_current_command}|#{pane_dead}|#{pane_dead_status}',
     ], execaEnv);
     for (const line of result.stdout.trim().split('\n').filter(Boolean)) {
@@ -195,7 +202,8 @@ export async function selectWindow(target: string): Promise<void> {
 
 export async function attachSession(session: string): Promise<void> {
   // This replaces the current process, so it should be used from a non-tmux terminal
-  await execa('tmux', ['attach-session', '-t', session], { ...execaEnv, stdio: 'inherit' });
+  // Use '=' prefix for exact session name matching
+  await execa('tmux', ['attach-session', '-t', `=${session}`], { ...execaEnv, stdio: 'inherit' });
 }
 
 export async function isInsideTmux(): Promise<boolean> {

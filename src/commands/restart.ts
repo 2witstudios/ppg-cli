@@ -104,8 +104,8 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
     return m;
   });
 
-  // Fire-and-forget terminal open
-  if (options.open !== false) {
+  // Only open Terminal window when explicitly requested via --open (fire-and-forget)
+  if (options.open === true) {
     openTerminalWindow(manifest.sessionName, windowTarget, `${wt.name}-restart`).catch(() => {});
   }
 
