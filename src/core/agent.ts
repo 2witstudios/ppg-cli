@@ -19,6 +19,7 @@ export interface SpawnAgentOptions {
   projectRoot: string;
   branch: string;
   sessionId?: string;
+  skipResultInstructions?: boolean;
 }
 
 export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry> {
@@ -36,7 +37,7 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
 
   // Build full prompt with result instructions
   let fullPrompt = prompt;
-  if (agentConfig.resultInstructions) {
+  if (agentConfig.resultInstructions && !options.skipResultInstructions) {
     const ctx: TemplateContext = {
       WORKTREE_PATH: worktreePath,
       BRANCH: branch,
