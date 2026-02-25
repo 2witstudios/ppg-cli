@@ -67,11 +67,11 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
   try {
     const currentBranch = await getCurrentBranch(projectRoot);
     if (currentBranch !== wt.baseBranch) {
-      info(`Switching to base branch ${wt.baseBranch}`);
+      if (!options.json) info(`Switching to base branch ${wt.baseBranch}`);
       await execa('git', ['checkout', wt.baseBranch], { ...execaEnv, cwd: projectRoot });
     }
 
-    info(`Merging ${wt.branch} into ${wt.baseBranch} (${strategy})`);
+    if (!options.json) info(`Merging ${wt.branch} into ${wt.baseBranch} (${strategy})`);
 
     if (strategy === 'squash') {
       await execa('git', ['merge', '--squash', wt.branch], { ...execaEnv, cwd: projectRoot });
@@ -86,7 +86,7 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
       });
     }
 
-    success(`Merged ${wt.branch} into ${wt.baseBranch}`);
+    if (!options.json) success(`Merged ${wt.branch} into ${wt.baseBranch}`);
   } catch (err) {
     await updateManifest(projectRoot, (m) => {
       if (m.worktrees[wt.id]) {
@@ -111,7 +111,7 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
   // Cleanup with self-protection
   let selfProtected = false;
   if (options.cleanup !== false) {
-    info('Cleaning up...');
+    if (!options.json) info('Cleaning up...');
 
     const selfPaneId = getCurrentPaneId();
     let paneMap: Map<string, PaneInfo> | undefined;
@@ -122,10 +122,10 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
     const cleanupResult = await cleanupWorktree(projectRoot, wt, { selfPaneId, paneMap });
     selfProtected = cleanupResult.selfProtected;
 
-    if (selfProtected) {
+    if (selfProtected && !options.json) {
       warn(`Some tmux targets skipped during cleanup — contains current ppg process`);
     }
-    success(`Cleaned up worktree ${wt.id}`);
+    if (!options.json) success(`Cleaned up worktree ${wt.id}`);
   }
 
   if (options.json) {
