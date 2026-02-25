@@ -99,4 +99,19 @@ describe('normalizeName', () => {
   test('given unicode input, should pass through valid chars', () => {
     expect(normalizeName('café-résumé', 'fb')).toBe('café-résumé');
   });
+
+  test('given leading dot in a segment, should strip it', () => {
+    expect(normalizeName('a/.b', 'fb')).toBe('a/b');
+    expect(normalizeName('a/.hidden/b', 'fb')).toBe('a/hidden/b');
+  });
+
+  test('given .lock suffix in a mid-path segment, should strip it', () => {
+    expect(normalizeName('foo.lock/bar', 'fb')).toBe('foo/bar');
+    expect(normalizeName('a/b.lock/c', 'fb')).toBe('a/b/c');
+  });
+
+  test('given segment that normalizes to empty, should drop it', () => {
+    expect(normalizeName('a/.lock/b', 'fb')).toBe('a/b');
+    expect(normalizeName('a/---/b', 'fb')).toBe('a/b');
+  });
 });
