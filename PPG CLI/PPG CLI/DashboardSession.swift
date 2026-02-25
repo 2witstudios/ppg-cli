@@ -32,6 +32,8 @@ class DashboardSession {
         var sessionId: String?
         /// When set, this entry belongs to a grid owned by another entry and should not appear in the sidebar.
         var gridOwnerEntryId: String?
+        /// Agent variant identifier (e.g. "claude", "codex", "opencode"). Optional for backward compat.
+        var variantId: String?
 
         enum Kind: String, Codable {
             case agent
@@ -64,43 +66,66 @@ class DashboardSession {
     }
 
     @discardableResult
-    func addAgent(sessionName: String, parentWorktreeId: String?, command: String, workingDir: String) -> TerminalEntry {
+    func addAgent(sessionName: String, parentWorktreeId: String?, variant: AgentVariant, command: String, workingDir: String, initialPrompt: String? = nil) -> TerminalEntry {
         dispatchPrecondition(condition: .onQueue(.main))
         agentCounter += 1
         let entryId = "da-\(generateId(6))"
         let sid = UUID().uuidString.lowercased()
 
         let effectiveSession = sessionName.isEmpty ? "ppg" : sessionName
-        let tmuxTarget = createTmuxWindow(sessionName: effectiveSession, windowName: "claude-\(agentCounter)", cwd: workingDir)
+        let windowName = "\(variant.id)-\(agentCounter)"
+        let tmuxTarget = createTmuxWindow(sessionName: effectiveSession, windowName: windowName, cwd: workingDir)
 
         if let target = tmuxTarget {
-            let fullCommand: String
-            if command.contains("claude") {
-                var cmd = "unset CLAUDECODE; \(command) --session-id \(sid)"
-                if parentWorktreeId == nil {
-                    let contextPath = ((projectRoot as NSString)
-                        .appendingPathComponent(".pg") as NSString)
-                        .appendingPathComponent("conductor-context.md")
-                    if FileManager.default.fileExists(atPath: contextPath) {
-                        cmd += " --append-system-prompt \"$(cat \(shellEscape(contextPath)))\""
-                    }
-                }
-                fullCommand = cmd
-            } else {
-                fullCommand = command
+            var cmdParts: [String] = []
+
+            // 1. Environment prefix
+            if variant.needsUnsetClaudeCode {
+                cmdParts.append("unset CLAUDECODE")
             }
+
+            // 2. Base command + agent-specific flags
+            var agentCmd = command
+            if variant.needsSessionId {
+                agentCmd += " --session-id \(sid)"
+            }
+            if variant.needsConductorContext, parentWorktreeId == nil {
+                let contextPath = ((projectRoot as NSString)
+                    .appendingPathComponent(".pg") as NSString)
+                    .appendingPathComponent("conductor-context.md")
+                if FileManager.default.fileExists(atPath: contextPath) {
+                    agentCmd += " --append-system-prompt \"$(cat \(shellEscape(contextPath)))\""
+                }
+            }
+
+            // 3. Prompt delivery — positional arg mode
+            if case .positionalArg = variant.promptDelivery, let prompt = initialPrompt, !prompt.isEmpty {
+                agentCmd += " \(shellEscape(prompt))"
+            }
+
+            cmdParts.append(agentCmd)
+            let fullCommand = cmdParts.joined(separator: "; ")
             sendTmuxKeys(target: target, command: fullCommand)
+
+            // 4. Prompt delivery — sendKeys mode (after agent launches)
+            if case .sendKeys = variant.promptDelivery, let prompt = initialPrompt, !prompt.isEmpty {
+                let sendTarget = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    self?.sendTmuxKeys(target: sendTarget, command: prompt)
+                }
+            }
         }
 
         let entry = TerminalEntry(
             id: entryId,
-            label: "Claude \(agentCounter)",
+            label: "\(variant.displayName) \(agentCounter)",
             kind: .agent,
             parentWorktreeId: parentWorktreeId,
             workingDirectory: workingDir,
             command: command,
             tmuxTarget: tmuxTarget,
-            sessionId: tmuxTarget != nil ? sid : nil
+            sessionId: tmuxTarget != nil ? sid : nil,
+            variantId: variant.id
         )
         entries.append(entry)
         saveToDisk()
@@ -330,7 +355,7 @@ class DashboardSession {
         runTmux("kill-window -t \(shellEscape(target))")
     }
 
-    private func sendTmuxKeys(target: String, command: String) {
+    func sendTmuxKeys(target: String, command: String) {
         runTmux("send-keys -t \(shellEscape(target)) -l \(shellEscape(command + "\n"))")
     }
 

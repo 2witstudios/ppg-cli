@@ -435,14 +435,19 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     /// Add agent and fill the focused grid pane.
-    private func addAgentToGrid(project: ProjectContext, parentWorktreeId: String?) {
+    private func addAgentToGrid(project: ProjectContext, parentWorktreeId: String?,
+                                variant: AgentVariant = .claude, command: String? = nil,
+                                initialPrompt: String? = nil) {
         guard let gridOwnerId = content.activeGridOwnerId else { return }
         let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
+        let effectiveCommand = command ?? project.agentCommand(for: variant)
         let entry = project.dashboardSession.addAgent(
             sessionName: project.sessionName,
             parentWorktreeId: parentWorktreeId,
-            command: project.agentCommand,
-            workingDir: workingDir
+            variant: variant,
+            command: effectiveCommand,
+            workingDir: workingDir,
+            initialPrompt: initialPrompt
         )
         // Mark as grid-owned so it persists but doesn't appear in the sidebar.
         project.dashboardSession.setGridOwner(entryId: entry.id, gridOwnerEntryId: gridOwnerId)
@@ -451,13 +456,20 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     /// Add terminal and fill the focused grid pane.
-    private func addTerminalToGrid(project: ProjectContext, parentWorktreeId: String?) {
+    private func addTerminalToGrid(project: ProjectContext, parentWorktreeId: String?,
+                                   initialCommand: String? = nil) {
         guard let gridOwnerId = content.activeGridOwnerId else { return }
         let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
         let entry = project.dashboardSession.addTerminal(
             parentWorktreeId: parentWorktreeId,
             workingDir: workingDir
         )
+        // Send initial command as keystrokes if provided
+        if let cmd = initialCommand, !cmd.isEmpty, let target = entry.tmuxTarget {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                project.dashboardSession.sendTmuxKeys(target: target, command: cmd)
+            }
+        }
         // Mark as grid-owned so it persists but doesn't appear in the sidebar.
         project.dashboardSession.setGridOwner(entryId: entry.id, gridOwnerEntryId: gridOwnerId)
         content.paneGrid?.fillFocusedPane(with: .sessionEntry(entry, sessionName: project.sessionName))
@@ -633,24 +645,36 @@ class DashboardSplitViewController: NSSplitViewController {
 
     // MARK: - Add Agent / Terminal / Worktree
 
-    private func addAgent(project: ProjectContext, parentWorktreeId: String?) {
+    private func addAgent(project: ProjectContext, parentWorktreeId: String?,
+                          variant: AgentVariant = .claude, command: String? = nil,
+                          initialPrompt: String? = nil) {
         let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
+        let effectiveCommand = command ?? project.agentCommand(for: variant)
         let entry = project.dashboardSession.addAgent(
             sessionName: project.sessionName,
             parentWorktreeId: parentWorktreeId,
-            command: project.agentCommand,
-            workingDir: workingDir
+            variant: variant,
+            command: effectiveCommand,
+            workingDir: workingDir,
+            initialPrompt: initialPrompt
         )
         content.showEntry(.sessionEntry(entry, sessionName: project.sessionName))
         sidebar.refresh()
     }
 
-    private func addTerminal(project: ProjectContext, parentWorktreeId: String?) {
+    private func addTerminal(project: ProjectContext, parentWorktreeId: String?,
+                             initialCommand: String? = nil) {
         let workingDir = workingDirectory(project: project, worktreeId: parentWorktreeId)
         let entry = project.dashboardSession.addTerminal(
             parentWorktreeId: parentWorktreeId,
             workingDir: workingDir
         )
+        // Send initial command as keystrokes if provided
+        if let cmd = initialCommand, !cmd.isEmpty, let target = entry.tmuxTarget {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                project.dashboardSession.sendTmuxKeys(target: target, command: cmd)
+            }
+        }
         content.showEntry(.sessionEntry(entry, sessionName: project.sessionName))
         sidebar.refresh()
     }
@@ -671,6 +695,10 @@ class DashboardSplitViewController: NSSplitViewController {
         let name = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
 
+        createWorktreeWithName(project: project, name: name)
+    }
+
+    private func createWorktreeWithName(project: ProjectContext, name: String) {
         let projectRoot = project.projectRoot
         guard !projectRoot.isEmpty else { return }
 
@@ -791,57 +819,41 @@ class DashboardSplitViewController: NSSplitViewController {
         return FileManager.default.homeDirectoryForCurrentUser.path
     }
 
-    /// Show creation menu scoped to current sidebar selection's project.
+    /// Show Raycast-style command palette scoped to current sidebar selection's project.
     func showCreationMenu() {
         guard let ctx = sidebar.selectedProjectContext() else { return }
         let worktreeId = sidebar.selectedWorktreeId()
+        let isGrid = content.isGridMode
 
-        let menu = NSMenu()
-
-        let worktreeItem = NSMenuItem(title: "New Worktree", action: nil, keyEquivalent: "")
-        worktreeItem.target = self
-        menu.addItem(worktreeItem)
-        menu.addItem(.separator())
-
-        let agentItem = NSMenuItem(title: "New Agent", action: nil, keyEquivalent: "")
-        agentItem.target = self
-        menu.addItem(agentItem)
-
-        let termItem = NSMenuItem(title: "New Terminal", action: nil, keyEquivalent: "")
-        termItem.target = self
-        menu.addItem(termItem)
-
-        // Use action blocks via menu item targets
-        worktreeItem.action = #selector(creationMenuWorktree(_:))
-        worktreeItem.representedObject = ctx
-        agentItem.action = #selector(creationMenuAgent(_:))
-        agentItem.representedObject = [ctx, worktreeId as Any] as [Any]
-        termItem.action = #selector(creationMenuTerminal(_:))
-        termItem.representedObject = [ctx, worktreeId as Any] as [Any]
-
-        // Pop up near the center of the window
-        if let window = view.window {
-            let point = NSPoint(x: window.frame.width / 2, y: window.frame.height / 2)
-            menu.popUp(positioning: nil, at: view.convert(point, from: nil), in: view)
+        CommandPalettePanel.show(relativeTo: view.window) { [weak self] variant, prompt in
+            self?.handlePaletteSelection(variant: variant, prompt: prompt,
+                                          project: ctx, worktreeId: worktreeId, isGrid: isGrid)
         }
     }
 
-    @objc private func creationMenuWorktree(_ sender: NSMenuItem) {
-        guard let ctx = sender.representedObject as? ProjectContext else { return }
-        createWorktree(project: ctx)
-    }
-
-    @objc private func creationMenuAgent(_ sender: NSMenuItem) {
-        guard let arr = sender.representedObject as? [Any],
-              let ctx = arr.first as? ProjectContext else { return }
-        let worktreeId = arr.count > 1 ? arr[1] as? String : nil
-        addAgent(project: ctx, parentWorktreeId: worktreeId)
-    }
-
-    @objc private func creationMenuTerminal(_ sender: NSMenuItem) {
-        guard let arr = sender.representedObject as? [Any],
-              let ctx = arr.first as? ProjectContext else { return }
-        let worktreeId = arr.count > 1 ? arr[1] as? String : nil
-        addTerminal(project: ctx, parentWorktreeId: worktreeId)
+    private func handlePaletteSelection(variant: AgentVariant, prompt: String?,
+                                         project: ProjectContext, worktreeId: String?, isGrid: Bool) {
+        switch variant.kind {
+        case .agent:
+            let command = project.agentCommand(for: variant)
+            if isGrid {
+                addAgentToGrid(project: project, parentWorktreeId: worktreeId,
+                              variant: variant, command: command, initialPrompt: prompt)
+            } else {
+                addAgent(project: project, parentWorktreeId: worktreeId,
+                        variant: variant, command: command, initialPrompt: prompt)
+            }
+        case .terminal:
+            if isGrid {
+                addTerminalToGrid(project: project, parentWorktreeId: worktreeId,
+                                 initialCommand: prompt)
+            } else {
+                addTerminal(project: project, parentWorktreeId: worktreeId,
+                           initialCommand: prompt)
+            }
+        case .worktree:
+            guard let name = prompt, !name.isEmpty else { return }
+            createWorktreeWithName(project: project, name: name)
+        }
     }
 }

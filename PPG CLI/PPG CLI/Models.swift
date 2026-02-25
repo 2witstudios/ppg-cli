@@ -262,11 +262,19 @@ class ProjectContext {
     /// CLI --agent-command override takes priority, then AppSettingsManager, then hardcoded default.
     /// Computed so settings changes take effect immediately without reopening the project.
     var agentCommand: String {
-        let cliCommand = ProjectState.shared.agentCommand
-        if !cliCommand.isEmpty { return cliCommand }
-        let settingsCommand = AppSettingsManager.shared.agentCommand
-        if !settingsCommand.isEmpty { return settingsCommand }
-        return AppSettingsManager.defaultAgentCommand
+        agentCommand(for: .claude)
+    }
+
+    /// Variant-aware command resolution.
+    /// CLI --agent-command and settings override only apply to Claude (backward compat).
+    func agentCommand(for variant: AgentVariant) -> String {
+        if variant.id == "claude" {
+            let cliCommand = ProjectState.shared.agentCommand
+            if !cliCommand.isEmpty { return cliCommand }
+            let settingsCommand = AppSettingsManager.shared.agentCommand
+            if !settingsCommand.isEmpty { return settingsCommand }
+        }
+        return variant.defaultCommand
     }
 
     init(projectRoot: String) {
