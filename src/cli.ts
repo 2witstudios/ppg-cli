@@ -35,7 +35,7 @@ program
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
   .option('-c, --count <n>', 'Number of agents to spawn', (v: string) => Number(v), 1)
   .option('--split', 'Put all agents in one window as split panes')
-  .option('--no-open', 'Do not open a Terminal window for the spawned agents')
+  .option('--open', 'Open a Terminal window for the spawned agents')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { spawnCommand } = await import('./commands/spawn.js');
@@ -123,7 +123,7 @@ program
   .option('--var <key=value...>', 'Template variables', collectVars, [])
   .option('-n, --name <name>', 'Override worktree name')
   .option('-b, --base <branch>', 'Base branch for new worktree(s)')
-  .option('--no-open', 'Do not open Terminal windows')
+  .option('--open', 'Open Terminal windows for spawned agents')
   .option('--json', 'Output as JSON')
   .action(async (template, options) => {
     const { swarmCommand } = await import('./commands/swarm.js');
@@ -146,7 +146,7 @@ program
   .argument('<agent-id>', 'Agent ID to restart')
   .option('-p, --prompt <text>', 'Override the original prompt')
   .option('-a, --agent <type>', 'Override the agent type')
-  .option('--no-open', 'Do not open a Terminal window')
+  .option('--open', 'Open a Terminal window for the restarted agent')
   .option('--json', 'Output as JSON')
   .action(async (agentId, options) => {
     const { restartCommand } = await import('./commands/restart.js');
