@@ -852,7 +852,7 @@ class DashboardSplitViewController: NSSplitViewController {
         guard let ctx = sidebar.selectedProjectContext() else { return }
         let worktreeId = sidebar.selectedWorktreeId()
 
-        CommandPalettePanel.show(relativeTo: view.window) { [weak self] variant, prompt in
+        CommandPalettePanel.show(relativeTo: view.window, variants: AgentVariant.paneVariants) { [weak self] variant, prompt in
             self?.handlePaletteSelection(variant: variant, prompt: prompt,
                                           project: ctx, worktreeId: worktreeId, isGrid: true)
         }

@@ -98,4 +98,5 @@ struct AgentVariant {
     )
 
     static let allVariants: [AgentVariant] = [claude, codex, opencode, terminal, worktree]
+    static let paneVariants: [AgentVariant] = allVariants.filter { $0.kind != .worktree }
 }

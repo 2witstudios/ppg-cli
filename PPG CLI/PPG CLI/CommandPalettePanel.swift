@@ -68,11 +68,12 @@ class CommandPalettePanel: NSPanel {
     }
 
     @discardableResult
-    static func show(relativeTo window: NSWindow?, onSelect: @escaping (AgentVariant, String?) -> Void) -> CommandPalettePanel {
+    static func show(relativeTo window: NSWindow?, variants: [AgentVariant] = AgentVariant.allVariants, onSelect: @escaping (AgentVariant, String?) -> Void) -> CommandPalettePanel {
         let panel = CommandPalettePanel()
         guard let vc = panel.contentViewController as? CommandPaletteViewController else {
             return panel
         }
+        vc.availableVariants = variants
         vc.onSelect = { variant, prompt in
             panel.dismiss()
             onSelect(variant, prompt)
@@ -103,6 +104,7 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
     private let searchField = NSTextField()
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
+    var availableVariants: [AgentVariant] = AgentVariant.allVariants
     private var filteredVariants: [AgentVariant] = AgentVariant.allVariants
     private var selectedIndex = 0
 
@@ -283,7 +285,7 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
 
     private func showSelectionPhase() {
         phase = .selection
-        filteredVariants = AgentVariant.allVariants
+        filteredVariants = availableVariants
         selectedIndex = 0
 
         searchField.stringValue = ""
@@ -359,9 +361,9 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
     private func filterVariants(query: String) {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
         if q.isEmpty {
-            filteredVariants = AgentVariant.allVariants
+            filteredVariants = availableVariants
         } else {
-            filteredVariants = AgentVariant.allVariants.filter {
+            filteredVariants = availableVariants.filter {
                 $0.displayName.lowercased().contains(q) ||
                 $0.subtitle.lowercased().contains(q) ||
                 $0.id.lowercased().contains(q)
