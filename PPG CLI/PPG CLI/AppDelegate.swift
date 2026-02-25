@@ -445,6 +445,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        // Flush any debounced dashboard session writes before exit
+        for project in OpenProjects.shared.projects {
+            project.dashboardSession.flushToDisk()
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }

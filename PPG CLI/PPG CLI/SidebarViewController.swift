@@ -111,6 +111,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private var safetyTimer: Timer?
     private var manifestWatchers: [String: ManifestWatcher] = [:]  // projectRoot -> watcher
     private var debounceWorkItem: DispatchWorkItem?
+    /// Prevents overlapping background refreshes from piling up.
+    private var isRefreshing = false
     private(set) var activeTab: SidebarTab?
     var isDashboardSelected: Bool { activeTab == .dashboard }
     private var dashboardRow: SidebarNavRow!
@@ -359,23 +361,24 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     }
 
     func refresh() {
+        // Skip if a background refresh is already in flight — avoids piling up work
+        guard !isRefreshing else { return }
+        isRefreshing = true
+
         let openProjects = OpenProjects.shared.projects
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var results: [String: [WorktreeModel]] = [:]
-            let group = DispatchGroup()
 
             for ctx in openProjects {
-                group.enter()
                 let worktrees = PPGService.shared.refreshStatus(manifestPath: ctx.manifestPath)
                 results[ctx.projectRoot] = worktrees
-                group.leave()
             }
-
-            group.wait()
 
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                self.isRefreshing = false
+
                 self.projectWorktrees = results
                 let newTree = self.buildTree()
 
@@ -398,7 +401,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         }
     }
 
-    private func currentSelectedItem() -> SidebarItem? {
+    func currentSelectedItem() -> SidebarItem? {
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
         return node.item

@@ -537,6 +537,7 @@ class ContentViewController: NSViewController {
             NSLayoutConstraint.activate(dashboardConstraints)
         }
 
+        dashboard.setVisible(true)
         dashboard.configure(projects: projects, worktreesByProject: worktreesByProject)
     }
 
