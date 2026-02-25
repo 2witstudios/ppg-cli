@@ -114,8 +114,9 @@ async function spawnNewWorktree(
   // Setup env
   await setupWorktreeEnv(projectRoot, wtPath, config);
 
-  // Ensure tmux session (use config directly instead of re-reading manifest)
-  const sessionName = config.sessionName;
+  // Ensure tmux session (manifest is the source of truth for session name)
+  const manifest = await readManifest(projectRoot);
+  const sessionName = manifest.sessionName;
   await tmux.ensureSession(sessionName);
 
   // Create tmux window
