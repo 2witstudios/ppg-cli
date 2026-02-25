@@ -111,6 +111,7 @@ class TerminalPane: NSView {
         cmd += "exec tmux new-session -t \(shellEscape(tmuxSession)) -s \(shellEscape(viewSession))"
         cmd += " \\; set-option destroy-unattached on"
         cmd += " \\; set-option status off"
+        cmd += " \\; set-option mouse on"
         if let win = windowSpec {
             cmd += " \\; select-window -t :\(shellEscape(win))"
         }

@@ -157,7 +157,7 @@
 						CreatedOnToolsVersion = 26.1.1;
 						TestTargetID = FB6FFC032F4C81C600C8D98B;
 					};
-					};
+				};
 			};
 			buildConfigurationList = FB6FFBFF2F4C81C600C8D98B /* Build configuration list for PBXProject "PPG CLI" */;
 			developmentRegion = en;
@@ -356,7 +356,7 @@
 				INFOPLIST_FILE = "PPG CLI/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.1.9;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.2wit.PPG-CLI";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -384,7 +384,7 @@
 				INFOPLIST_FILE = "PPG CLI/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.1.9;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.2wit.PPG-CLI";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
