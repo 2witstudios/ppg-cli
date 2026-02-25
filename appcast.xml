@@ -45,5 +45,15 @@
                  sparkle:edSignature="TlwF7HjKapGDl7VrNI8U8931kEL66DcOUaOP0bpmnddkq+ZYLu1H/ilWg1MfYBF110/qCKW7LrUSHHikDfmDAw=="
                  length="5576437" />
     </item>
+    <item>
+      <title>Version 0.2.1</title>
+      <pubDate>Wed, 25 Feb 2026 15:09:42 +0000</pubDate>
+      <sparkle:version>021</sparkle:version>
+      <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+      <enclosure url="https://github.com/2witstudios/ppg-cli/releases/download/v0.2.1/PPG-CLI-Dashboard.dmg"
+                 type="application/octet-stream"
+                 sparkle:edSignature="OMfAX87BOJap/cBx0ohEssO4qWVp5ZnHDnycyX6imN8hvcylCk3WF2MjTbOnD4K0Y/M3bhEz3so/WdYCNA8ECA=="
+                 length="5575793" />
+    </item>
   </channel>
 </rss>
