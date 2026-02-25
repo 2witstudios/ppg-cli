@@ -44,11 +44,29 @@ enum SidebarItem {
         case .terminal(let te): return te.id
         }
     }
+
+    /// Signature capturing mutable display-relevant fields.
+    /// When this changes for the same `id`, the cell needs a visual refresh.
+    var contentSignature: String {
+        switch self {
+        case .project(let ctx):
+            let idx = OpenProjects.shared.indexOf(root: ctx.projectRoot) ?? -1
+            return "\(ctx.projectName)|\(idx)"
+        case .worktree(let wt):
+            return "\(wt.name)|\(wt.branch)|\(wt.status)|\(wt.agents.count)"
+        case .agent(let ag):
+            return "\(ag.name)|\(ag.agentType)|\(ag.status.rawValue)"
+        case .agentGroup(let agents, _):
+            return agents.map { "\($0.id):\($0.status.rawValue)" }.joined(separator: ",")
+        case .terminal(let te):
+            return "\(te.label)|\(te.kind.rawValue)"
+        }
+    }
 }
 
 // Wrapper class for use as NSOutlineView item (requires reference type identity)
 class SidebarNode {
-    let item: SidebarItem
+    var item: SidebarItem
     var children: [SidebarNode] = []
 
     init(_ item: SidebarItem) {
@@ -99,9 +117,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private var swarmsRow: SidebarNavRow!
     private var promptsRow: SidebarNavRow!
     var projectNodes: [SidebarNode] = []
-    private var selectedItemId: String?
     private var suppressSelectionCallback = false
-    private var userIsSelecting = false
     private var contextClickedNode: SidebarNode?
 
     override func loadView() {
@@ -291,6 +307,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     // MARK: - Refresh
 
+    /// Whether the very first load has happened (uses full reloadData).
+    private var hasPerformedInitialLoad = false
+
     private func startRefreshTimer() {
         refresh()
         syncManifestWatchers()
@@ -357,27 +376,26 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.selectedItemId = self.currentSelectedId()
                 self.projectWorktrees = results
-                self.rebuildTree()
-                self.suppressSelectionCallback = true
-                self.outlineView.reloadData()
-                self.expandAll()
-                if !self.userIsSelecting {
-                    self.restoreSelection()
+                let newTree = self.buildTree()
+
+                if !self.hasPerformedInitialLoad {
+                    // First load — full reload
+                    self.projectNodes = newTree
+                    self.outlineView.reloadData()
+                    self.expandAll()
+                    self.hasPerformedInitialLoad = true
+                } else {
+                    // Incremental diff
+                    self.suppressSelectionCallback = true
+                    self.applyTreeDiff(from: self.projectNodes, to: newTree)
+                    self.suppressSelectionCallback = false
                 }
-                self.suppressSelectionCallback = false
 
                 let currentItem = self.currentSelectedItem()
                 self.onDataRefreshed?(currentItem)
             }
         }
-    }
-
-    private func currentSelectedId() -> String? {
-        let row = outlineView.selectedRow
-        guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else { return nil }
-        return node.item.id
     }
 
     private func currentSelectedItem() -> SidebarItem? {
@@ -386,8 +404,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         return node.item
     }
 
-    private func rebuildTree() {
-        projectNodes = []
+    /// Build a fresh tree from current data without mutating `projectNodes`.
+    private func buildTree() -> [SidebarNode] {
+        var result: [SidebarNode] = []
 
         for ctx in OpenProjects.shared.projects {
             let projectNode = SidebarNode(.project(ctx))
@@ -402,7 +421,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             for wt in worktrees {
                 let wtNode = SidebarNode(.worktree(wt))
 
-                // Group agents that share the same tmux window
+                // Group agents by tmux window using Dictionary
                 var windowGroups: [String: [AgentModel]] = [:]
                 var agentOrder: [String] = []  // preserve first-seen order
                 for agent in wt.agents {
@@ -433,7 +452,117 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
                 projectNode.children.append(wtNode)
             }
 
-            projectNodes.append(projectNode)
+            result.append(projectNode)
+        }
+
+        return result
+    }
+
+    // MARK: - Incremental Diff
+
+    /// Compare old and new tree, apply minimal NSOutlineView mutations.
+    /// Reuses existing SidebarNode objects where IDs match to preserve selection and expansion.
+    private func applyTreeDiff(from oldTree: [SidebarNode], to newTree: [SidebarNode]) {
+        outlineView.beginUpdates()
+        diffChildren(old: oldTree, new: newTree, parent: nil)
+        outlineView.endUpdates()
+    }
+
+    /// Recursively diff children of a parent node (nil = root).
+    /// Mutates `projectNodes` (or parent's `children`) in-place so the data source stays consistent.
+    private func diffChildren(old oldChildren: [SidebarNode], new newChildren: [SidebarNode], parent: SidebarNode?) {
+        let oldIds = oldChildren.map { $0.item.id }
+        let newIds = newChildren.map { $0.item.id }
+
+        // Build lookup of old nodes by id
+        var oldMap: [String: SidebarNode] = [:]
+        for node in oldChildren {
+            oldMap[node.item.id] = node
+        }
+
+        // Build lookup of new nodes by id
+        var newMap: [String: SidebarNode] = [:]
+        for node in newChildren {
+            newMap[node.item.id] = node
+        }
+
+        // 1. Remove items that no longer exist (iterate in reverse to keep indices stable)
+        var removedIndices = IndexSet()
+        for (index, oldId) in oldIds.enumerated().reversed() {
+            if newMap[oldId] == nil {
+                removedIndices.insert(index)
+            }
+        }
+        if !removedIndices.isEmpty {
+            // Update backing store first
+            if let parent = parent {
+                for i in removedIndices.reversed() {
+                    parent.children.remove(at: i)
+                }
+            } else {
+                for i in removedIndices.reversed() {
+                    projectNodes.remove(at: i)
+                }
+            }
+            outlineView.removeItems(at: removedIndices, inParent: parent, withAnimation: .slideUp)
+        }
+
+        // 2. Build the surviving list (old items that are still in new, in their old order)
+        let survivingOldIds = oldIds.filter { newMap[$0] != nil }
+
+        // 3. Insert new items and reorder to match newIds
+        //    Walk through newIds and insert anything not yet present at the right position.
+        var currentList = survivingOldIds
+        for (targetIndex, newId) in newIds.enumerated() {
+            if let currentIndex = currentList.firstIndex(of: newId) {
+                if currentIndex != targetIndex {
+                    // Move: remove from old position, insert at new position
+                    let movingNode = oldMap[newId]!
+                    currentList.remove(at: currentIndex)
+                    currentList.insert(newId, at: targetIndex)
+                    // Update backing store
+                    if let parent = parent {
+                        parent.children.remove(at: currentIndex)
+                        parent.children.insert(movingNode, at: targetIndex)
+                    } else {
+                        projectNodes.remove(at: currentIndex)
+                        projectNodes.insert(movingNode, at: targetIndex)
+                    }
+                    outlineView.moveItem(at: currentIndex, inParent: parent, to: targetIndex, inParent: parent)
+                }
+            } else {
+                // Genuinely new item — insert
+                let newNode = newChildren[targetIndex]
+                currentList.insert(newId, at: targetIndex)
+                if let parent = parent {
+                    parent.children.insert(newNode, at: targetIndex)
+                } else {
+                    projectNodes.insert(newNode, at: targetIndex)
+                }
+                outlineView.insertItems(at: IndexSet(integer: targetIndex), inParent: parent, withAnimation: .slideDown)
+                // Auto-expand new expandable items
+                if case .project = newNode.item {
+                    outlineView.expandItem(newNode)
+                } else if case .worktree = newNode.item {
+                    outlineView.expandItem(newNode)
+                }
+            }
+        }
+
+        // 4. For surviving items: update content if changed, then recurse into children
+        for newNode in newChildren {
+            guard let oldNode = oldMap[newNode.item.id] else { continue }
+
+            // Update the SidebarItem in-place if content changed
+            if oldNode.item.contentSignature != newNode.item.contentSignature {
+                oldNode.item = newNode.item
+                outlineView.reloadItem(oldNode, reloadChildren: false)
+            }
+
+            // Recurse into children for expandable items
+            if !oldNode.children.isEmpty || !newNode.children.isEmpty {
+                diffChildren(old: oldNode.children, new: newNode.children, parent: oldNode)
+            }
         }
     }
 
@@ -442,16 +571,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             outlineView.expandItem(projectNode)
             for child in projectNode.children {
                 outlineView.expandItem(child)
-            }
-        }
-    }
-
-    private func restoreSelection() {
-        guard let targetId = selectedItemId else { return }
-        for row in 0..<outlineView.numberOfRows {
-            if let node = outlineView.item(atRow: row) as? SidebarNode, node.item.id == targetId {
-                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                return
             }
         }
     }
@@ -1001,7 +1120,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionCallback else { return }
-        userIsSelecting = true
 
         if activeTab != nil {
             deselectAllTabs()
@@ -1009,13 +1127,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         let row = outlineView.selectedRow
         guard row >= 0, let node = outlineView.item(atRow: row) as? SidebarNode else {
-            userIsSelecting = false
             return
         }
         onItemSelected?(node.item)
-        DispatchQueue.main.async { [weak self] in
-            self?.userIsSelecting = false
-        }
     }
 }
 
