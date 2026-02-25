@@ -139,7 +139,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         outlineView.headerView = nil
         outlineView.dataSource = self
         outlineView.delegate = self
-        outlineView.rowSizeStyle = .medium
+        outlineView.rowSizeStyle = .custom
         outlineView.style = .sourceList
         outlineView.indentationPerLevel = 10
 
@@ -812,7 +812,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         case .project(let ctx):
             return makeProjectCell(ctx)
         case .worktree(let wt):
-            return makeWorktreeCell(wt)
+            return makeWorktreeCell(wt, node: node)
         case .agent(let ag):
             return makeAgentCell(ag)
         case .agentGroup(let agents, _):
@@ -822,15 +822,16 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         }
     }
 
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        return 24
+    }
+
     private func makeProjectCell(_ ctx: ProjectContext) -> NSView {
         let cell = NSTableCellView()
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let icon = NSImageView(image: NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: "Project")!)
-        icon.setContentHuggingPriority(.required, for: .horizontal)
 
         let name = NSTextField(labelWithString: ctx.projectName.isEmpty ? "master" : ctx.projectName)
         name.font = .boldSystemFont(ofSize: 13)
@@ -844,7 +845,6 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         addBtn.tag = OpenProjects.shared.indexOf(root: ctx.projectRoot) ?? 0
         addBtn.setContentHuggingPriority(.required, for: .horizontal)
 
-        stack.addArrangedSubview(icon)
         stack.addArrangedSubview(name)
         stack.addArrangedSubview(NSView()) // spacer
         stack.addArrangedSubview(addBtn)
@@ -858,7 +858,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         return cell
     }
 
-    private func makeWorktreeCell(_ worktree: WorktreeModel) -> NSView {
+    private func makeWorktreeCell(_ worktree: WorktreeModel, node: SidebarNode) -> NSView {
         let cell = NSTableCellView()
         let stack = NSStackView()
         stack.orientation = .horizontal
@@ -868,20 +868,17 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         let icon = NSImageView(image: NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "Worktree")!)
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
-        let textStack = NSStackView()
-        textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 2
-
         let name = NSTextField(labelWithString: worktree.name)
-        name.font = .boldSystemFont(ofSize: 13)
+        name.font = .systemFont(ofSize: 13)
 
-        let detail = NSTextField(labelWithString: "\(worktree.branch) · \(worktree.status)")
-        detail.font = .systemFont(ofSize: 11)
-        detail.textColor = .secondaryLabelColor
-
-        textStack.addArrangedSubview(name)
-        textStack.addArrangedSubview(detail)
+        // Show agent count badge when collapsed
+        let isCollapsed = !outlineView.isItemExpanded(node)
+        let childCount = worktree.agents.count
+        let badge = NSTextField(labelWithString: "(\(childCount))")
+        badge.font = .systemFont(ofSize: 11)
+        badge.textColor = .secondaryLabelColor
+        badge.isHidden = !isCollapsed || childCount == 0
+        badge.setContentHuggingPriority(.required, for: .horizontal)
 
         // Inline "+" button for adding agents/terminals to this worktree
         let addBtn = NSButton()
@@ -893,7 +890,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         addBtn.setContentHuggingPriority(.required, for: .horizontal)
 
         stack.addArrangedSubview(icon)
-        stack.addArrangedSubview(textStack)
+        stack.addArrangedSubview(name)
+        stack.addArrangedSubview(badge)
         stack.addArrangedSubview(NSView()) // spacer
         stack.addArrangedSubview(addBtn)
 
@@ -1124,6 +1122,22 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         default:
             break
+        }
+    }
+
+    // MARK: - Expand / Collapse
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        guard let node = notification.userInfo?["NSObject"] as? SidebarNode else { return }
+        if case .worktree = node.item {
+            outlineView.reloadItem(node, reloadChildren: false)
+        }
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        guard let node = notification.userInfo?["NSObject"] as? SidebarNode else { return }
+        if case .worktree = node.item {
+            outlineView.reloadItem(node, reloadChildren: false)
         }
     }
 
