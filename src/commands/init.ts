@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir } from '../lib/paths.js';
+import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir, configPath } from '../lib/paths.js';
 import { NotGitRepoError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
@@ -90,9 +90,15 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
 
   info('Created .pg/ directory structure');
 
-  // 4. Write default config
-  await writeDefaultConfig(projectRoot);
-  info('Wrote default config.yaml');
+  // 4. Write default config (skip if exists)
+  const cfgPath = configPath(projectRoot);
+  try {
+    await fs.access(cfgPath);
+    info('config.yaml already exists, skipping');
+  } catch {
+    await writeDefaultConfig(projectRoot);
+    info('Wrote default config.yaml');
+  }
 
   // 5. Write empty manifest
   const dirName = path.basename(projectRoot);
