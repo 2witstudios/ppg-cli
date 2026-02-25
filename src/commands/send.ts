@@ -1,7 +1,7 @@
-import { readManifest, findAgent } from '../core/manifest.js';
+import { requireManifest, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
-import { NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
+import { AgentNotFoundError } from '../lib/errors.js';
 import { output, success } from '../lib/output.js';
 
 export interface SendOptions {
@@ -13,12 +13,7 @@ export interface SendOptions {
 export async function sendCommand(agentId: string, text: string, options: SendOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  let manifest;
-  try {
-    manifest = await readManifest(projectRoot);
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  const manifest = await requireManifest(projectRoot);
 
   const found = findAgent(manifest, agentId);
   if (!found) throw new AgentNotFoundError(agentId);

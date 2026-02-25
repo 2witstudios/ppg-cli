@@ -1,7 +1,7 @@
 import { execa } from 'execa';
-import { readManifest, resolveWorktree } from '../core/manifest.js';
+import { requireManifest, resolveWorktree } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { WorktreeNotFoundError } from '../lib/errors.js';
 import { output } from '../lib/output.js';
 import { execaEnv } from '../lib/env.js';
 
@@ -14,12 +14,7 @@ export interface DiffOptions {
 export async function diffCommand(worktreeRef: string, options: DiffOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  let manifest;
-  try {
-    manifest = await readManifest(projectRoot);
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  const manifest = await requireManifest(projectRoot);
 
   const wt = resolveWorktree(manifest, worktreeRef);
 

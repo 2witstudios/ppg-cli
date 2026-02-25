@@ -1,7 +1,7 @@
-import { readManifest, findAgent } from '../core/manifest.js';
+import { requireManifest, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
-import { PgError, NotInitializedError, AgentNotFoundError } from '../lib/errors.js';
+import { PgError, AgentNotFoundError } from '../lib/errors.js';
 import { output, outputError } from '../lib/output.js';
 
 export interface LogsOptions {
@@ -14,12 +14,7 @@ export interface LogsOptions {
 export async function logsCommand(agentId: string, options: LogsOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  let manifest;
-  try {
-    manifest = await readManifest(projectRoot);
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
+  const manifest = await requireManifest(projectRoot);
 
   const found = findAgent(manifest, agentId);
   if (!found) throw new AgentNotFoundError(agentId);

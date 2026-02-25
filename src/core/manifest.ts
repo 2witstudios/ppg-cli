@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { manifestPath } from '../lib/paths.js';
 import { getLockfile, getWriteFileAtomic } from '../lib/cjs-compat.js';
-import { ManifestLockError } from '../lib/errors.js';
+import { ManifestLockError, NotInitializedError } from '../lib/errors.js';
 import type { Manifest, WorktreeEntry, AgentEntry } from '../types/manifest.js';
 
 export function createEmptyManifest(projectRoot: string, sessionName: string): Manifest {
@@ -20,6 +20,17 @@ export async function readManifest(projectRoot: string): Promise<Manifest> {
   const mPath = manifestPath(projectRoot);
   const raw = await fs.readFile(mPath, 'utf-8');
   return JSON.parse(raw) as Manifest;
+}
+
+export async function requireManifest(projectRoot: string): Promise<Manifest> {
+  try {
+    return await readManifest(projectRoot);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new NotInitializedError(projectRoot);
+    }
+    throw err;
+  }
 }
 
 export async function writeManifest(projectRoot: string, manifest: Manifest): Promise<void> {
