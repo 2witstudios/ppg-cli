@@ -115,13 +115,13 @@ class TerminalPane: NSView {
             cmd += " \\; select-window -t :\(shellEscape(win))"
         }
 
-        let shellPath = AppSettingsManager.shared.shell
-        let shellName = (shellPath as NSString).lastPathComponent
+        // Internal tmux boot command uses Bourne syntax — always run under /bin/zsh
+        // regardless of the user's shell preference (which is for interactive terminals).
         terminalView?.startProcess(
-            executable: shellPath,
+            executable: "/bin/zsh",
             args: ["-c", cmd],
             environment: nil,
-            execName: shellName
+            execName: "zsh"
         )
     }
 

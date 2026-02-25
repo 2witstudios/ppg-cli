@@ -732,18 +732,18 @@ class ContentViewController: NSViewController {
                 termView = pane
             } else {
                 let localTerm = ScrollableTerminalView(frame: containerView.bounds)
-                let shellPath = AppSettingsManager.shared.shell
-                let shellName = (shellPath as NSString).lastPathComponent
-                let initScript = shellProfileScript(for: shellPath)
+                // The cd/exec wrapper uses Bourne syntax — always run under /bin/zsh.
+                // The inner command (entry.command) may itself be the user's preferred shell.
+                let initScript = shellProfileScript(for: "/bin/zsh")
                 let cmd = """
                 \(initScript) \
                 cd \(shellEscape(entry.workingDirectory)) && exec \(entry.command)
                 """
                 localTerm.startProcess(
-                    executable: shellPath,
+                    executable: "/bin/zsh",
                     args: ["-c", cmd],
                     environment: nil,
-                    execName: shellName
+                    execName: "zsh"
                 )
                 termView = localTerm
             }
