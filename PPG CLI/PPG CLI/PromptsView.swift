@@ -26,8 +26,10 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
     private let saveButton = NSButton()
     private let deleteButton = NSButton()
     private let emptyLabel = NSTextField(labelWithString: "No prompts found")
+    private let filterControl = NSSegmentedControl()
 
-    private var prompts: [PromptFileInfo] = []
+    private var allPrompts: [PromptFileInfo] = []
+    private var prompts: [PromptFileInfo] = []  // filtered view
     private var selectedIndex: Int? = nil
     private var isDirty = false
     private var contextClickedRow: Int?
@@ -45,8 +47,19 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
     // MARK: - Configure
 
     func configure(projects: [ProjectContext]) {
-        prompts = Self.scanPrompts(projects: projects)
-        headerLabel.stringValue = "Prompts (\(prompts.count))"
+        allPrompts = Self.scanPrompts(projects: projects)
+        applyFilter()
+    }
+
+    private func applyFilter() {
+        let segment = filterControl.selectedSegment
+        switch segment {
+        case 1:  prompts = allPrompts.filter { $0.directory == "prompts" }
+        case 2:  prompts = allPrompts.filter { $0.directory == "templates" }
+        default: prompts = allPrompts
+        }
+        let label = segment == 1 ? "Prompts" : segment == 2 ? "Templates" : "Prompts & Templates"
+        headerLabel.stringValue = "\(label) (\(prompts.count))"
         tableView.reloadData()
         emptyLabel.isHidden = !prompts.isEmpty
         if let idx = selectedIndex, idx < prompts.count {
@@ -164,9 +177,24 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         headerLabel.translatesAutoresizingMaskIntoConstraints = false
         headerBar.addSubview(headerLabel)
 
+        filterControl.segmentCount = 3
+        filterControl.setLabel("All", forSegment: 0)
+        filterControl.setLabel("Prompts", forSegment: 1)
+        filterControl.setLabel("Templates", forSegment: 2)
+        filterControl.setWidth(40, forSegment: 0)
+        filterControl.setWidth(60, forSegment: 1)
+        filterControl.setWidth(70, forSegment: 2)
+        filterControl.selectedSegment = 0
+        filterControl.segmentStyle = .roundRect
+        filterControl.font = .systemFont(ofSize: 10)
+        filterControl.target = self
+        filterControl.action = #selector(filterChanged)
+        filterControl.translatesAutoresizingMaskIntoConstraints = false
+        headerBar.addSubview(filterControl)
+
         newButton.bezelStyle = .accessoryBarAction
         newButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "New Prompt")
-        newButton.title = "New Prompt"
+        newButton.title = "New"
         newButton.imagePosition = .imageLeading
         newButton.font = .systemFont(ofSize: 11)
         newButton.isBordered = false
@@ -313,6 +341,9 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
             headerLabel.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: 12),
             headerLabel.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
 
+            filterControl.centerXAnchor.constraint(equalTo: headerBar.centerXAnchor),
+            filterControl.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
+
             newButton.trailingAnchor.constraint(equalTo: headerBar.trailingAnchor, constant: -8),
             newButton.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
 
@@ -448,6 +479,10 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
 
     // MARK: - Actions
 
+    @objc private func filterChanged() {
+        applyFilter()
+    }
+
     @objc private func saveClicked() {
         guard let idx = selectedIndex, idx < prompts.count else { return }
         let prompt = prompts[idx]
@@ -537,9 +572,8 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
             try FileManager.default.moveItem(atPath: prompt.path, toPath: newPath)
             // Refresh the list
             let projects = OpenProjects.shared.projects
-            prompts = Self.scanPrompts(projects: projects)
-            headerLabel.stringValue = "Prompts (\(prompts.count))"
-            tableView.reloadData()
+            allPrompts = Self.scanPrompts(projects: projects)
+            applyFilter()
             // Re-select the renamed item
             if let newIdx = prompts.firstIndex(where: { $0.path == newPath }) {
                 selectedIndex = newIdx
