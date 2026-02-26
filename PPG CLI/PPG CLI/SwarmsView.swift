@@ -27,7 +27,7 @@ struct SwarmAgentInfo {
 
 // MARK: - SwarmsView
 
-class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
+class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
 
     private let splitView = NSSplitView()
     private let listScrollView = NSScrollView()
@@ -53,6 +53,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var currentDetail: SwarmDetail? = nil
     private var currentPath: String? = nil
     private var agentRows: [AgentRowView] = []
+    private var contextClickedRow: Int?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -292,6 +293,10 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.rowSizeStyle = .medium
         tableView.style = .sourceList
         tableView.backgroundColor = .clear
+
+        let contextMenu = NSMenu()
+        contextMenu.delegate = self
+        tableView.menu = contextMenu
 
         listScrollView.documentView = tableView
         listScrollView.hasVerticalScroller = true
@@ -709,6 +714,81 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             errAlert.alertStyle = .warning
             errAlert.runModal()
         }
+    }
+
+    // MARK: - Context Menu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = tableView.clickedRow
+        guard row >= 0, row < swarms.count else { return }
+        contextClickedRow = row
+
+        let renameItem = NSMenuItem(title: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "")
+        renameItem.target = self
+        menu.addItem(renameItem)
+
+        let deleteItem = NSMenuItem(title: "Delete", action: #selector(contextDelete(_:)), keyEquivalent: "")
+        deleteItem.target = self
+        menu.addItem(deleteItem)
+    }
+
+    @objc private func contextRename(_ sender: Any) {
+        guard let row = contextClickedRow, row < swarms.count else { return }
+        let swarm = swarms[row]
+
+        let alert = NSAlert()
+        alert.messageText = "Rename \"\(swarm.name)\""
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let nameField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        nameField.stringValue = swarm.name
+        alert.accessoryView = nameField
+        alert.window.initialFirstResponder = nameField
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let newName = nameField.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !newName.isEmpty, newName != swarm.name else { return }
+
+        let dir = (swarm.path as NSString).deletingLastPathComponent
+        let ext = (swarm.path as NSString).pathExtension
+        let newPath = (dir as NSString).appendingPathComponent("\(newName).\(ext)")
+
+        do {
+            // Rename the file
+            try FileManager.default.moveItem(atPath: swarm.path, toPath: newPath)
+            // Also update the name field inside the YAML
+            if var content = try? String(contentsOfFile: newPath, encoding: .utf8) {
+                // Replace the first name: line
+                if let range = content.range(of: #"(?m)^name:\s*.*$"#, options: .regularExpression) {
+                    content.replaceSubrange(range, with: "name: \(newName)")
+                    try content.write(toFile: newPath, atomically: true, encoding: .utf8)
+                }
+            }
+            // Refresh the list
+            let projects = OpenProjects.shared.projects
+            swarms = Self.scanSwarms(projects: projects)
+            headerLabel.stringValue = "Swarms (\(swarms.count))"
+            tableView.reloadData()
+            if let newIdx = swarms.firstIndex(where: { $0.path == newPath }) {
+                selectedIndex = newIdx
+                tableView.selectRowIndexes(IndexSet(integer: newIdx), byExtendingSelection: false)
+            }
+        } catch {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Failed to Rename"
+            errAlert.informativeText = error.localizedDescription
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+        }
+    }
+
+    @objc private func contextDelete(_ sender: Any) {
+        guard let row = contextClickedRow, row < swarms.count else { return }
+        selectedIndex = row
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        deleteClicked()
     }
 
     @objc private func newSwarmClicked() {

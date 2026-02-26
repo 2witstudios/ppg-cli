@@ -14,7 +14,7 @@ struct PromptFileInfo {
 
 // MARK: - PromptsView
 
-class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStorageDelegate {
+class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStorageDelegate, NSMenuDelegate {
 
     private let splitView = NSSplitView()
     private let listScrollView = NSScrollView()
@@ -30,6 +30,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
     private var prompts: [PromptFileInfo] = []
     private var selectedIndex: Int? = nil
     private var isDirty = false
+    private var contextClickedRow: Int?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -198,6 +199,10 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         tableView.rowSizeStyle = .medium
         tableView.style = .sourceList
         tableView.backgroundColor = .clear
+
+        let contextMenu = NSMenu()
+        contextMenu.delegate = self
+        tableView.menu = contextMenu
 
         listScrollView.documentView = tableView
         listScrollView.hasVerticalScroller = true
@@ -488,6 +493,73 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
             errAlert.alertStyle = .warning
             errAlert.runModal()
         }
+    }
+
+    // MARK: - Context Menu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = tableView.clickedRow
+        guard row >= 0, row < prompts.count else { return }
+        contextClickedRow = row
+
+        let renameItem = NSMenuItem(title: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "")
+        renameItem.target = self
+        menu.addItem(renameItem)
+
+        let deleteItem = NSMenuItem(title: "Delete", action: #selector(contextDelete(_:)), keyEquivalent: "")
+        deleteItem.target = self
+        menu.addItem(deleteItem)
+    }
+
+    @objc private func contextRename(_ sender: Any) {
+        guard let row = contextClickedRow, row < prompts.count else { return }
+        let prompt = prompts[row]
+
+        let alert = NSAlert()
+        alert.messageText = "Rename \"\(prompt.name)\""
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let nameField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        nameField.stringValue = prompt.name
+        alert.accessoryView = nameField
+        alert.window.initialFirstResponder = nameField
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let newName = nameField.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !newName.isEmpty, newName != prompt.name else { return }
+
+        let dir = (prompt.path as NSString).deletingLastPathComponent
+        let newPath = (dir as NSString).appendingPathComponent("\(newName).md")
+
+        do {
+            try FileManager.default.moveItem(atPath: prompt.path, toPath: newPath)
+            // Refresh the list
+            let projects = OpenProjects.shared.projects
+            prompts = Self.scanPrompts(projects: projects)
+            headerLabel.stringValue = "Prompts (\(prompts.count))"
+            tableView.reloadData()
+            // Re-select the renamed item
+            if let newIdx = prompts.firstIndex(where: { $0.path == newPath }) {
+                selectedIndex = newIdx
+                tableView.selectRowIndexes(IndexSet(integer: newIdx), byExtendingSelection: false)
+            }
+        } catch {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Failed to Rename"
+            errAlert.informativeText = error.localizedDescription
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+        }
+    }
+
+    @objc private func contextDelete(_ sender: Any) {
+        guard let row = contextClickedRow, row < prompts.count else { return }
+        // Select the row so the existing delete logic works
+        selectedIndex = row
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        deleteClicked()
     }
 
     @objc private func newPromptClicked() {
