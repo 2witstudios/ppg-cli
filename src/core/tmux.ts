@@ -240,13 +240,42 @@ export async function listSessionWindows(session: string): Promise<WindowInfo[]>
 /**
  * Kill all non-base windows in a session (orphan cleanup).
  * Window 0 is preserved as the base shell window.
+ * If selfPaneId is provided, windows containing that pane are skipped.
  * Returns the number of windows killed.
  */
-export async function killOrphanWindows(session: string): Promise<number> {
+export async function killOrphanWindows(
+  session: string,
+  selfPaneId?: string | null,
+): Promise<number> {
   const windows = await listSessionWindows(session);
   let killed = 0;
+
+  // Build pane map for self-protection if needed
+  let paneMap: Map<string, PaneInfo> | undefined;
+  if (selfPaneId) {
+    paneMap = await listSessionPanes(session);
+  }
+
   for (const win of windows) {
     if (win.index === 0) continue;
+
+    // Self-protection: skip windows containing the current process
+    if (selfPaneId && paneMap) {
+      const windowTarget = `${session}:${win.index}`;
+      let containsSelf = false;
+      for (const [key, info] of paneMap) {
+        if (key.startsWith(windowTarget + '.') && info.paneId === selfPaneId) {
+          containsSelf = true;
+          break;
+        }
+        if (key === windowTarget && info.paneId === selfPaneId) {
+          containsSelf = true;
+          break;
+        }
+      }
+      if (containsSelf) continue;
+    }
+
     try {
       await killWindow(`${session}:${win.index}`);
       killed++;

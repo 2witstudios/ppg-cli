@@ -158,7 +158,8 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
   }
 
   // Kill any orphaned tmux windows left in the session (e.g., from failed cleanups)
-  const orphansKilled = await killOrphanWindows(manifest.sessionName);
+  // Pass selfPaneId so we don't kill the conductor's own window
+  const orphansKilled = await killOrphanWindows(manifest.sessionName, selfPaneId);
   if (orphansKilled > 0) {
     info(`Killed ${orphansKilled} orphaned tmux window(s)`);
   }
