@@ -140,29 +140,29 @@ Returns:
 
 **For batch mode:**
 
-Present a results table:
+Present a results table with PR links:
 ```
 Completed:
-  [1] fix-auth-bug (wt-abc123) — ppg/fix-auth-bug
-  [2] add-dark-mode (wt-def456) — ppg/add-dark-mode
+  [1] fix-auth-bug (wt-abc123) — PR: https://github.com/org/repo/pull/42
+  [2] add-dark-mode (wt-def456) — PR: https://github.com/org/repo/pull/43
 
 Failed:
-  [3] issue-15 (wt-ghi789) — ppg/issue-15
+  [3] issue-15 (wt-ghi789) — no PR created
 
 What would you like to do?
-  - Create PRs: "pr 1,2" or "pr all"
-  - Merge directly: "merge 1,2" or "merge all"
-  - Review diffs first: "diff 1"
+  - Review PRs on GitHub
+  - Merge remotely: "gh pr merge <url> --squash --delete-branch"
+  - Merge locally (power-user): "ppg merge <wt-id>"
+  - Iterate: send more prompts to agents
   - Do nothing for now
 ```
 
-**When the user chooses PRs:**
+**When the user chooses remote merge:**
 ```bash
-ppg pr <wt-id> --json
+gh pr merge <url> --squash --delete-branch
 ```
-This pushes the branch and creates a GitHub PR. The worktree stays alive for the PR lifecycle.
 
-**When the user chooses direct merge:**
+**When the user chooses local merge (power-user):**
 ```bash
 ppg merge <wt-id> --json
 ```
@@ -173,10 +173,10 @@ ppg merge <wt-id> --json
 - Offer options: "resolve manually", "skip this merge", "force merge"
 - **Never auto-resolve conflicts** — the user must decide
 
-**Cleanup after PRs are merged externally:**
+**Cleanup:**
 ```bash
-ppg reset --json        # Refuses if unmerged work exists
-ppg reset --force --json  # Force cleanup
+ppg reset --json        # Skips worktrees with open PRs
+ppg reset --force --json  # Force cleanup including open PRs
 ppg clean --json        # Clean only terminal-state worktrees
 ```
 

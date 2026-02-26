@@ -46,8 +46,9 @@ After classifying the mode:
 - **Always use `--no-open`** to suppress Terminal.app windows (you're driving programmatically, not watching panes)
 - **Poll every 5 seconds** — `ppg status --json` in a loop until all agents reach a terminal state
 - **One concern per worktree** — in batch mode, each task gets its own isolated worktree for clean merges
-- **Surface results and let the user decide next steps** — present what agents produced, then ask: create PRs, merge directly, review diffs, or do nothing
-- **Never auto-merge or auto-PR** — always stop after presenting results and wait for the user to choose
+- **Agents create PRs** — agents handle the full lifecycle (commit, push, PR creation). Conductor reads PR URLs from result files and presents them.
+- **Surface PR links and let the user decide next steps** — present PR URLs and summaries from agent results, then ask what to do next
+- **Prefer `gh pr merge` over `ppg merge`** — for integration, prefer remote merge via `gh pr merge <url> --squash --delete-branch`. `ppg merge` is a power-user tool for local squash merge.
 - **Report failures clearly** — if an agent fails, show its ID, the error, and offer to re-spawn or skip
 - **Never auto-resolve merge conflicts** — escalate to the user with the conflict details
 - **Prompt quality matters** — each agent prompt must be self-contained with full context. The agent has no memory of this conversation.

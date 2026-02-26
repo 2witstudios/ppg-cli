@@ -20,27 +20,24 @@ You are operating on the master branch of a ppg-managed project.
 **NEVER make code changes directly on the master branch.** Use \`ppg spawn\` to create worktrees.
 
 ## Quick Reference
-- \`ppg spawn --name <name> --prompt "<task>" --json --no-open\` — Spawn worktree + agent
+- \`ppg spawn --name <name> --prompt "<task>" --json\` — Spawn worktree + agent
 - \`ppg status --json\` — Check statuses
-- \`ppg aggregate --all --json\` — Collect results
-- \`ppg pr <wt-id> --json\` — Create PR from worktree branch
+- \`ppg aggregate --all --json\` — Collect results (includes PR URLs)
 - \`ppg kill --agent <id> --json\` — Kill agent
-- \`ppg reset --json\` — Clean up all worktrees
+- \`ppg reset --json\` — Clean up all worktrees (skips worktrees with open PRs)
 
 ## Workflow
 1. Break request into parallelizable tasks
-2. Spawn each: \`ppg spawn --name <name> --prompt "<self-contained prompt>" --json --no-open\`
+2. Spawn: \`ppg spawn --name <name> --prompt "<prompt>" --json\`
 3. Poll: \`ppg status --json\` every 5s
-4. Aggregate: \`ppg aggregate --all --json\`
-5. Present results to the user and ask what they'd like to do next
-6. If the user wants PRs: \`ppg pr <wt-id> --json\`
-7. If the user wants direct merge: \`ppg merge <wt-id> --json\`
-8. Cleanup when done: \`ppg reset --json\` or \`ppg clean --json\`
-
-**Stop at step 5** — do not auto-merge or auto-PR. Let the user decide.
+4. Aggregate: \`ppg aggregate --all --json\` — result files include PR URLs
+5. Present PR links and summaries — let user decide next steps
+6. To merge remotely: \`gh pr merge <url> --squash --delete-branch\`
+7. To merge locally (power-user): \`ppg merge <wt-id> --json\`
+8. Cleanup: \`ppg reset --json\` (skips worktrees with open PRs)
 
 Each agent prompt must be self-contained — agents have no memory of this conversation.
-Always use \`--json --no-open\`.
+Always use \`--json\`.
 `;
 
 const DEFAULT_TEMPLATE = `# Task: {{TASK_NAME}}

@@ -81,12 +81,13 @@ Each command creates a separate worktree on its own `ppg/<name>` branch.
 **Post-completion:**
 1. Aggregate results: `ppg aggregate --all --json`
 2. Present a summary table: task name, status, branch, key findings
-3. **Stop and ask the user what to do next.** Options:
-   - Create PRs: `ppg pr <wt-id> --json` (pushes branch, creates GitHub PR)
-   - Merge directly: `ppg merge <wt-id> --json` (squash by default)
-   - Review diffs first: `ppg diff <wt-id> --json`
+3. **Stop and ask the user what to do next.** Agents already created PRs. Options:
+   - Review PRs on GitHub (present the PR URLs from result files)
+   - Merge remotely: `gh pr merge <url> --squash --delete-branch`
+   - Merge locally (power-user): `ppg merge <wt-id> --json`
+   - Iterate: send more prompts to agents
    - Do nothing — leave worktrees for manual review
-4. After PRs are merged externally: `ppg reset --json` to clean up
+4. After PRs are merged: `ppg reset --json` to clean up (skips worktrees with open PRs)
 
 **Important:** Never auto-merge or auto-PR. Always present results and let the user choose the next step.
 

@@ -8,6 +8,6 @@ user-invocable: true
 
 Read and follow the conductor hub instructions in `~/.claude/skills/ppg-conductor/SKILL.md`.
 
-Run pre-flight checks. Classify the user's request as swarm or batch mode. Decompose into concrete tasks with descriptive names and self-contained prompts. Spawn immediately — do not ask for confirmation. Drive the full conductor loop: spawn, poll, aggregate, (merge if batch), summarize.
+Run pre-flight checks. Classify the user's request as swarm or batch mode. Decompose into concrete tasks with descriptive names and self-contained prompts. Spawn immediately — do not ask for confirmation. Drive the full conductor loop: spawn, poll, aggregate, (agents create PRs), summarize.
 
 If the user provides no arguments (just `/ppg`), ask what they'd like to parallelize.
