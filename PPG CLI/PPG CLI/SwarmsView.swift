@@ -105,6 +105,27 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 ))
             }
         }
+        // Scan global ~/.ppg/swarms/
+        let globalFolder = (NSHomeDirectory() as NSString).appendingPathComponent(".ppg/swarms")
+        if let files = try? fm.contentsOfDirectory(atPath: globalFolder) {
+            for file in files where file.hasSuffix(".yaml") || file.hasSuffix(".yml") {
+                let path = (globalFolder as NSString).appendingPathComponent(file)
+                guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+
+                let detail = Self.parseYAML(content)
+                let name = (file as NSString).deletingPathExtension
+                results.append(SwarmFileInfo(
+                    name: detail.name.isEmpty ? name : detail.name,
+                    path: path,
+                    projectRoot: NSHomeDirectory(),
+                    projectName: "Global",
+                    description: detail.description,
+                    strategy: detail.strategy,
+                    agentCount: detail.agents.count
+                ))
+            }
+        }
+
         return results.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -692,7 +713,6 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     @objc private func newSwarmClicked() {
         let projects = OpenProjects.shared.projects
-        guard !projects.isEmpty else { return }
 
         let alert = NSAlert()
         alert.messageText = "New Swarm"
@@ -712,6 +732,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         for ctx in projects {
             projectPopup.addItem(withTitle: ctx.projectName.isEmpty ? ctx.projectRoot : ctx.projectName)
         }
+        projectPopup.addItem(withTitle: "Global")
         accessory.addArrangedSubview(projectPopup)
 
         accessory.translatesAutoresizingMaskIntoConstraints = false
@@ -727,10 +748,16 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         guard !name.isEmpty else { return }
 
         let projectIdx = projectPopup.indexOfSelectedItem
-        guard projectIdx >= 0, projectIdx < projects.count else { return }
-        let ctx = projects[projectIdx]
+        guard projectIdx >= 0 else { return }
 
-        let folder = (ctx.projectRoot as NSString).appendingPathComponent(".ppg/swarms")
+        let projectRoot: String
+        if projectIdx >= projects.count {
+            // Global selected
+            projectRoot = NSHomeDirectory()
+        } else {
+            projectRoot = projects[projectIdx].projectRoot
+        }
+        let folder = (projectRoot as NSString).appendingPathComponent(".ppg/swarms")
         let fm = FileManager.default
         if !fm.fileExists(atPath: folder) {
             try? fm.createDirectory(atPath: folder, withIntermediateDirectories: true)
