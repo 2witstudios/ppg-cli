@@ -124,3 +124,44 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Smooth scrolling for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Brand selection highlight */
+::selection {
+  background-color: oklch(0.488 0.243 264.376 / 30%);
+  color: inherit;
+}
+
+/* Code block base styling */
+pre {
+  @apply bg-muted overflow-x-auto rounded-lg p-4 font-mono text-sm;
+}
+
+code {
+  @apply bg-muted rounded px-1.5 py-0.5 font-mono text-sm;
+}
+
+pre code {
+  @apply bg-transparent p-0;
+}
+
+/* Prose-like headings for docs pages */
+.prose-like h1 {
+  @apply text-3xl font-bold tracking-tight sm:text-4xl;
+}
+
+.prose-like h2 {
+  @apply text-2xl font-semibold tracking-tight;
+}
+
+.prose-like h3 {
+  @apply text-xl font-semibold tracking-tight;
+}
+
+.prose-like h4 {
+  @apply text-lg font-semibold;
+}
