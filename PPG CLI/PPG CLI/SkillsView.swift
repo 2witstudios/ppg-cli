@@ -6,8 +6,15 @@ struct SkillFileInfo {
     let name: String            // skill directory name (kebab-case)
     let path: String            // path to SKILL.md
     let skillDir: String        // path to skill directory
+    let location: String        // "Personal" or project name
     let description: String     // from YAML frontmatter
     let userInvocable: Bool     // from YAML frontmatter
+    let disableModelInvocation: Bool  // from YAML frontmatter
+    let argumentHint: String    // from YAML frontmatter (e.g. "[issue-number]")
+    let allowedTools: String    // from YAML frontmatter (comma-separated)
+    let model: String           // from YAML frontmatter (e.g. "sonnet", "opus")
+    let context: String         // from YAML frontmatter ("" or "fork")
+    let agent: String           // from YAML frontmatter (e.g. "Explore", "Plan")
     let body: String            // markdown body after frontmatter
     let referenceFiles: [String] // filenames in references/ subdirectory
 }
@@ -32,6 +39,12 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
     private let nameField = NSTextField()
     private let descField = NSTextField()
     private let invocableCheckbox = NSButton(checkboxWithTitle: "User-invocable", target: nil, action: nil)
+    private let disableModelInvocationCheckbox = NSButton(checkboxWithTitle: "Disable model invocation", target: nil, action: nil)
+    private let argumentHintField = NSTextField()
+    private let allowedToolsField = NSTextField()
+    private let modelField = NSTextField()
+    private let contextPopup = NSPopUpButton()
+    private let agentField = NSTextField()
     private let editorScrollView = NSScrollView()
     private let editorTextView = NSTextView()
 
@@ -67,10 +80,15 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         setupViews()
     }
 
+    private var projects: [ProjectContext] = []
+
     // MARK: - Configure
 
-    func configure() {
-        skills = Self.scanSkills()
+    func configure(projects: [ProjectContext]? = nil) {
+        if let projects = projects {
+            self.projects = projects
+        }
+        skills = Self.scanSkills(projects: self.projects)
         headerLabel.stringValue = "Skills (\(skills.count))"
         tableView.reloadData()
         emptyLabel.isHidden = !skills.isEmpty
@@ -84,54 +102,99 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
 
     // MARK: - File Scanning
 
-    static func scanSkills() -> [SkillFileInfo] {
+    static func scanSkills(projects: [ProjectContext] = []) -> [SkillFileInfo] {
         let fm = FileManager.default
-        let skillsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/skills")
-        guard let dirs = try? fm.contentsOfDirectory(atPath: skillsDir) else { return [] }
         var results: [SkillFileInfo] = []
-        for dir in dirs {
-            let skillDir = (skillsDir as NSString).appendingPathComponent(dir)
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: skillDir, isDirectory: &isDir), isDir.boolValue else { continue }
-            let skillFile = (skillDir as NSString).appendingPathComponent("SKILL.md")
-            guard let content = try? String(contentsOfFile: skillFile, encoding: .utf8) else { continue }
-            let parsed = parseFrontmatter(content)
-            // Scan references
-            let refsDir = (skillDir as NSString).appendingPathComponent("references")
-            let refFiles = (try? fm.contentsOfDirectory(atPath: refsDir))?.filter { $0.hasSuffix(".md") }.sorted() ?? []
-            results.append(SkillFileInfo(
-                name: dir, path: skillFile, skillDir: skillDir,
-                description: parsed.description, userInvocable: parsed.userInvocable,
-                body: parsed.body, referenceFiles: refFiles
-            ))
+
+        // Helper to scan a single skills directory
+        func scanDir(_ skillsDir: String, location: String) {
+            guard let dirs = try? fm.contentsOfDirectory(atPath: skillsDir) else { return }
+            for dir in dirs {
+                let skillDir = (skillsDir as NSString).appendingPathComponent(dir)
+                var isDir: ObjCBool = false
+                guard fm.fileExists(atPath: skillDir, isDirectory: &isDir), isDir.boolValue else { continue }
+                let skillFile = (skillDir as NSString).appendingPathComponent("SKILL.md")
+                guard let content = try? String(contentsOfFile: skillFile, encoding: .utf8) else { continue }
+                let parsed = parseFrontmatter(content)
+                let refsDir = (skillDir as NSString).appendingPathComponent("references")
+                let refFiles = (try? fm.contentsOfDirectory(atPath: refsDir))?.filter { $0.hasSuffix(".md") }.sorted() ?? []
+                results.append(SkillFileInfo(
+                    name: dir, path: skillFile, skillDir: skillDir,
+                    location: location,
+                    description: parsed.description, userInvocable: parsed.userInvocable,
+                    disableModelInvocation: parsed.disableModelInvocation,
+                    argumentHint: parsed.argumentHint,
+                    allowedTools: parsed.allowedTools, model: parsed.model,
+                    context: parsed.context, agent: parsed.agent,
+                    body: parsed.body, referenceFiles: refFiles
+                ))
+            }
         }
+
+        // Personal skills: ~/.claude/skills/
+        let personalDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/skills")
+        scanDir(personalDir, location: "Personal")
+
+        // Project skills: .claude/skills/ in each project
+        for ctx in projects {
+            let projectDir = (ctx.projectRoot as NSString).appendingPathComponent(".claude/skills")
+            scanDir(projectDir, location: ctx.projectName)
+        }
+
         return results.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     // MARK: - Frontmatter Parsing
 
-    static func parseFrontmatter(_ content: String) -> (name: String, description: String, userInvocable: Bool, body: String) {
+    struct ParsedFrontmatter {
+        var name = ""
+        var description = ""
+        var userInvocable = false
+        var disableModelInvocation = false
+        var argumentHint = ""
+        var allowedTools = ""
+        var model = ""
+        var context = ""
+        var agent = ""
+        var body = ""
+    }
+
+    static func parseFrontmatter(_ content: String) -> ParsedFrontmatter {
         let lines = content.components(separatedBy: .newlines)
         guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
-            return ("", "", false, content)
+            return ParsedFrontmatter(body: content)
         }
-        var name = "", description = "", userInvocable = false
+        var result = ParsedFrontmatter()
         var endIdx = 1
         for i in 1..<lines.count {
             let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
             if trimmed == "---" { endIdx = i; break }
             if trimmed.hasPrefix("name:") {
-                name = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                result.name = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespaces)
             } else if trimmed.hasPrefix("description:") {
-                description = String(trimmed.dropFirst(12)).trimmingCharacters(in: .whitespaces)
+                result.description = String(trimmed.dropFirst(12)).trimmingCharacters(in: .whitespaces)
             } else if trimmed.hasPrefix("user-invocable:") {
                 let val = String(trimmed.dropFirst(15)).trimmingCharacters(in: .whitespaces).lowercased()
-                userInvocable = val == "true" || val == "yes"
+                result.userInvocable = val == "true" || val == "yes"
+            } else if trimmed.hasPrefix("disable-model-invocation:") {
+                let val = String(trimmed.dropFirst(25)).trimmingCharacters(in: .whitespaces).lowercased()
+                result.disableModelInvocation = val == "true" || val == "yes"
+            } else if trimmed.hasPrefix("argument-hint:") {
+                result.argumentHint = String(trimmed.dropFirst(14)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("allowed-tools:") {
+                result.allowedTools = String(trimmed.dropFirst(14)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("model:") {
+                result.model = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("context:") {
+                result.context = String(trimmed.dropFirst(8)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("agent:") {
+                result.agent = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
             }
         }
         let bodyLines = Array(lines.dropFirst(endIdx + 1))
         let body = bodyLines.joined(separator: "\n")
-        return (name, description, userInvocable, body.drop(while: { $0.isNewline }).description)
+        result.body = body.drop(while: { $0.isNewline }).description
+        return result
     }
 
     // MARK: - Validation
@@ -148,11 +211,35 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
 
     // MARK: - Serialization
 
-    static func serializeSkill(name: String, description: String, userInvocable: Bool, body: String) -> String {
+    static func serializeSkill(
+        name: String, description: String, userInvocable: Bool,
+        disableModelInvocation: Bool = false, argumentHint: String = "",
+        allowedTools: String = "", model: String = "",
+        context: String = "", agent: String = "",
+        body: String
+    ) -> String {
         var lines = ["---"]
         lines.append("name: \(name)")
         lines.append("description: \(description)")
         lines.append("user-invocable: \(userInvocable)")
+        if disableModelInvocation {
+            lines.append("disable-model-invocation: true")
+        }
+        if !argumentHint.isEmpty {
+            lines.append("argument-hint: \(argumentHint)")
+        }
+        if !allowedTools.isEmpty {
+            lines.append("allowed-tools: \(allowedTools)")
+        }
+        if !model.isEmpty {
+            lines.append("model: \(model)")
+        }
+        if !context.isEmpty {
+            lines.append("context: \(context)")
+        }
+        if !agent.isEmpty {
+            lines.append("agent: \(agent)")
+        }
         lines.append("---")
         lines.append("")
         lines.append(body)
@@ -389,6 +476,70 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         invocableCheckbox.contentTintColor = Theme.primaryText
         detailStack.addArrangedSubview(invocableCheckbox)
 
+        // Disable model invocation checkbox
+        disableModelInvocationCheckbox.contentTintColor = Theme.primaryText
+        detailStack.addArrangedSubview(disableModelInvocationCheckbox)
+
+        // Argument hint
+        let hintRow = makeFormRow(label: "Argument Hint:", field: argumentHintField)
+        argumentHintField.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        argumentHintField.textColor = Theme.primaryText
+        argumentHintField.backgroundColor = Theme.contentBackground
+        argumentHintField.drawsBackground = true
+        argumentHintField.placeholderString = "e.g. [issue-number] or [filename]"
+        detailStack.addArrangedSubview(hintRow)
+        hintRow.translatesAutoresizingMaskIntoConstraints = false
+        hintRow.widthAnchor.constraint(equalTo: detailStack.widthAnchor, constant: -24).isActive = true
+
+        // Allowed tools
+        let toolsRow = makeFormRow(label: "Allowed Tools:", field: allowedToolsField)
+        allowedToolsField.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        allowedToolsField.textColor = Theme.primaryText
+        allowedToolsField.backgroundColor = Theme.contentBackground
+        allowedToolsField.drawsBackground = true
+        allowedToolsField.placeholderString = "e.g. Read, Grep, Glob"
+        detailStack.addArrangedSubview(toolsRow)
+        toolsRow.translatesAutoresizingMaskIntoConstraints = false
+        toolsRow.widthAnchor.constraint(equalTo: detailStack.widthAnchor, constant: -24).isActive = true
+
+        // Model
+        let modelRow = makeFormRow(label: "Model:", field: modelField)
+        modelField.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        modelField.textColor = Theme.primaryText
+        modelField.backgroundColor = Theme.contentBackground
+        modelField.drawsBackground = true
+        modelField.placeholderString = "e.g. sonnet, opus"
+        detailStack.addArrangedSubview(modelRow)
+        modelRow.translatesAutoresizingMaskIntoConstraints = false
+        modelRow.widthAnchor.constraint(equalTo: detailStack.widthAnchor, constant: -24).isActive = true
+
+        // Context
+        let contextLabel = NSTextField(labelWithString: "Context:")
+        contextLabel.font = .systemFont(ofSize: 12)
+        contextLabel.textColor = .secondaryLabelColor
+        contextLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        contextPopup.pullsDown = false
+        contextPopup.addItem(withTitle: "(none)")
+        contextPopup.addItem(withTitle: "fork")
+        let contextRow = NSStackView(views: [contextLabel, contextPopup])
+        contextRow.orientation = .horizontal
+        contextRow.spacing = 8
+        detailStack.addArrangedSubview(contextRow)
+        contextRow.translatesAutoresizingMaskIntoConstraints = false
+        contextRow.widthAnchor.constraint(equalTo: detailStack.widthAnchor, constant: -24).isActive = true
+
+        // Agent
+        let agentRow = makeFormRow(label: "Agent:", field: agentField)
+        agentField.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        agentField.textColor = Theme.primaryText
+        agentField.backgroundColor = Theme.contentBackground
+        agentField.drawsBackground = true
+        agentField.placeholderString = "e.g. Explore, Plan"
+        detailStack.addArrangedSubview(agentRow)
+        agentRow.translatesAutoresizingMaskIntoConstraints = false
+        agentRow.widthAnchor.constraint(equalTo: detailStack.widthAnchor, constant: -24).isActive = true
+
         // Back button (hidden by default)
         backButton.bezelStyle = .accessoryBarAction
         backButton.image = NSImage(systemSymbolName: "arrow.left", accessibilityDescription: "Back")
@@ -542,7 +693,7 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         nameLabel.font = .boldSystemFont(ofSize: 12)
         nameLabel.textColor = Theme.primaryText
 
-        var detailParts: [String] = []
+        var detailParts: [String] = [skill.location]
         if !skill.description.isEmpty {
             let truncDesc = skill.description.count > 40 ? String(skill.description.prefix(40)) + "..." : skill.description
             detailParts.append(truncDesc)
@@ -593,6 +744,16 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         nameField.stringValue = skill.name
         descField.stringValue = skill.description
         invocableCheckbox.state = skill.userInvocable ? .on : .off
+        disableModelInvocationCheckbox.state = skill.disableModelInvocation ? .on : .off
+        argumentHintField.stringValue = skill.argumentHint
+        allowedToolsField.stringValue = skill.allowedTools
+        modelField.stringValue = skill.model
+        if skill.context.isEmpty {
+            contextPopup.selectItem(at: 0) // "(none)"
+        } else {
+            contextPopup.selectItem(withTitle: skill.context)
+        }
+        agentField.stringValue = skill.agent
         editorTextView.string = skill.body
         editingRefFile = nil
         pendingBodyText = nil
@@ -604,6 +765,12 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         nameField.stringValue = ""
         descField.stringValue = ""
         invocableCheckbox.state = .off
+        disableModelInvocationCheckbox.state = .off
+        argumentHintField.stringValue = ""
+        allowedToolsField.stringValue = ""
+        modelField.stringValue = ""
+        contextPopup.selectItem(at: 0)
+        agentField.stringValue = ""
         editorTextView.string = ""
         editingRefFile = nil
         pendingBodyText = nil
@@ -648,10 +815,17 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
             return
         }
 
+        let contextValue = contextPopup.indexOfSelectedItem == 0 ? "" : (contextPopup.titleOfSelectedItem ?? "")
         let content = Self.serializeSkill(
             name: newName,
             description: descField.stringValue,
             userInvocable: invocableCheckbox.state == .on,
+            disableModelInvocation: disableModelInvocationCheckbox.state == .on,
+            argumentHint: argumentHintField.stringValue.trimmingCharacters(in: .whitespaces),
+            allowedTools: allowedToolsField.stringValue.trimmingCharacters(in: .whitespaces),
+            model: modelField.stringValue.trimmingCharacters(in: .whitespaces),
+            context: contextValue,
+            agent: agentField.stringValue.trimmingCharacters(in: .whitespaces),
             body: editorTextView.string
         )
 
@@ -738,15 +912,39 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 42))
+        let hasProjects = !projects.isEmpty
+        let accessoryHeight: CGFloat = hasProjects ? 84 : 42
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: accessoryHeight))
+        var y = accessoryHeight
 
+        // Location picker (only if projects are open)
+        let locationPopup = NSPopUpButton()
+        if hasProjects {
+            y -= 16
+            let locLabel = NSTextField(labelWithString: "Location:")
+            locLabel.font = .systemFont(ofSize: 11, weight: .medium)
+            locLabel.textColor = .secondaryLabelColor
+            locLabel.frame = NSRect(x: 0, y: y, width: 260, height: 16)
+            accessory.addSubview(locLabel)
+            y -= 26
+            locationPopup.frame = NSRect(x: 0, y: y, width: 260, height: 24)
+            locationPopup.addItem(withTitle: "Personal (~/.claude/skills/)")
+            for ctx in projects {
+                locationPopup.addItem(withTitle: "Project: \(ctx.projectName)")
+            }
+            accessory.addSubview(locationPopup)
+            y -= 2
+        }
+
+        y -= 16
         let label = NSTextField(labelWithString: "Name:")
         label.font = .systemFont(ofSize: 11, weight: .medium)
         label.textColor = .secondaryLabelColor
-        label.frame = NSRect(x: 0, y: 24, width: 260, height: 16)
+        label.frame = NSRect(x: 0, y: y, width: 260, height: 16)
         accessory.addSubview(label)
+        y -= 26
 
-        let nameInput = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        let nameInput = NSTextField(frame: NSRect(x: 0, y: max(y, 0), width: 260, height: 24))
         nameInput.placeholderString = "skill-name"
         accessory.addSubview(nameInput)
 
@@ -766,7 +964,14 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
             return
         }
 
-        let skillsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/skills")
+        // Determine base skills directory
+        let skillsDir: String
+        let locIdx = locationPopup.indexOfSelectedItem
+        if hasProjects && locIdx > 0 && (locIdx - 1) < projects.count {
+            skillsDir = (projects[locIdx - 1].projectRoot as NSString).appendingPathComponent(".claude/skills")
+        } else {
+            skillsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/skills")
+        }
         let skillDir = (skillsDir as NSString).appendingPathComponent(name)
         let fm = FileManager.default
 
@@ -781,7 +986,7 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
 
         do {
             try fm.createDirectory(atPath: skillDir, withIntermediateDirectories: true)
-            let skeleton = Self.serializeSkill(name: name, description: "", userInvocable: false, body: "")
+            let skeleton = Self.serializeSkill(name: name, description: "", userInvocable: true, body: "")
             let path = (skillDir as NSString).appendingPathComponent("SKILL.md")
             try skeleton.write(toFile: path, atomically: true, encoding: .utf8)
             configure()

@@ -117,8 +117,8 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.showSchedulesView()
         }
 
-        sidebar.onSkillsClicked = { [weak self] in
-            self?.showSkillsView()
+        sidebar.onAgentConfigClicked = { [weak self] in
+            self?.showAgentConfigView()
         }
 
         // Save grid layout when a grid is suspended (navigate away)
@@ -589,11 +589,12 @@ class DashboardSplitViewController: NSSplitViewController {
         titleAccessory?.setTitle("ppg - Schedules", editable: false)
     }
 
-    func showSkillsView() {
-        content.showSkillsView()
+    func showAgentConfigView() {
+        let projects = OpenProjects.shared.projects
+        content.showAgentConfigView(projects: projects)
         currentSidebarItem = nil
-        view.window?.title = "ppg - Skills"
-        titleAccessory?.setTitle("ppg - Skills", editable: false)
+        view.window?.title = "ppg - Agent Config"
+        titleAccessory?.setTitle("ppg - Agent Config", editable: false)
     }
 
     // MARK: - Selection & Refresh
@@ -704,7 +705,7 @@ class DashboardSplitViewController: NSSplitViewController {
     /// Actual refresh logic, invoked after coalescing delay.
     private func performRefresh(_ currentItem: SidebarItem?) {
         // If prompts, swarms, or schedules view is visible, just clean stale views
-        if content.isShowingPromptsView || content.isShowingSwarmsView || content.isShowingSchedulesView || content.isShowingSkillsView {
+        if content.isShowingPromptsView || content.isShowingSwarmsView || content.isShowingSchedulesView || content.isShowingAgentConfigView {
             let validIds = collectAllTerminalIds()
             content.clearStaleViews(validIds: validIds)
             return

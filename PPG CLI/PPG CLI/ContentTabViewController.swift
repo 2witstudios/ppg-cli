@@ -45,8 +45,8 @@ class ContentViewController: NSViewController {
     private var promptsConstraints: [NSLayoutConstraint] = []
     private var swarmsConstraints: [NSLayoutConstraint] = []
     private var schedulesConstraints: [NSLayoutConstraint] = []
-    private var skillsView: SkillsView?
-    private var skillsConstraints: [NSLayoutConstraint] = []
+    private var agentConfigView: AgentConfigView?
+    private var agentConfigConstraints: [NSLayoutConstraint] = []
 
     // MARK: - Terminal Tracking (LRU eviction + status dedup)
     private struct TerminalTrackingState {
@@ -84,7 +84,7 @@ class ContentViewController: NSViewController {
     var isShowingPromptsView: Bool { promptsView?.superview != nil }
     var isShowingSwarmsView: Bool { swarmsView?.superview != nil }
     var isShowingSchedulesView: Bool { schedulesView?.superview != nil }
-    var isShowingSkillsView: Bool { skillsView?.superview != nil }
+    var isShowingAgentConfigView: Bool { agentConfigView?.superview != nil }
 
     override func loadView() {
         let root = ThemeAwareView()
@@ -177,7 +177,7 @@ class ContentViewController: NSViewController {
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
         schedulesView?.removeFromSuperview()
-        skillsView?.removeFromSuperview()
+        agentConfigView?.removeFromSuperview()
 
         // Suspend any active grid — sidebar clicks always navigate, never fill panes
         suspendGrid()
@@ -541,7 +541,7 @@ class ContentViewController: NSViewController {
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
         schedulesView?.removeFromSuperview()
-        skillsView?.removeFromSuperview()
+        agentConfigView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -586,7 +586,7 @@ class ContentViewController: NSViewController {
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
         schedulesView?.removeFromSuperview()
-        skillsView?.removeFromSuperview()
+        agentConfigView?.removeFromSuperview()
         suspendGrid()
         // Hide terminal views and clear current entry (only containerView-owned, not grid-owned)
         for (_, termView) in terminalViews where termView.superview === containerView {
@@ -656,7 +656,7 @@ class ContentViewController: NSViewController {
         worktreeDetailView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
         schedulesView?.removeFromSuperview()
-        skillsView?.removeFromSuperview()
+        agentConfigView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -693,7 +693,7 @@ class ContentViewController: NSViewController {
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         schedulesView?.removeFromSuperview()
-        skillsView?.removeFromSuperview()
+        agentConfigView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -730,7 +730,7 @@ class ContentViewController: NSViewController {
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
-        skillsView?.removeFromSuperview()
+        agentConfigView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -757,7 +757,7 @@ class ContentViewController: NSViewController {
         schv.configure(projects: projects)
     }
 
-    func showSkillsView() {
+    func showAgentConfigView(projects: [ProjectContext]) {
         suspendGrid()
         for (_, termView) in terminalViews where termView.superview === containerView {
             termView.isHidden = true
@@ -771,27 +771,27 @@ class ContentViewController: NSViewController {
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
-        if skillsView == nil {
-            skillsView = SkillsView()
+        if agentConfigView == nil {
+            agentConfigView = AgentConfigView()
         }
-        guard let skv = skillsView else { return }
+        guard let acv = agentConfigView else { return }
 
-        if skv.superview != view {
-            skv.removeFromSuperview()
-            skv.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(skv)
-            if skillsConstraints.isEmpty {
-                skillsConstraints = [
-                    skv.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-                    skv.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-                    skv.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-                    skv.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        if acv.superview != view {
+            acv.removeFromSuperview()
+            acv.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(acv)
+            if agentConfigConstraints.isEmpty {
+                agentConfigConstraints = [
+                    acv.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                    acv.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                    acv.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+                    acv.bottomAnchor.constraint(equalTo: view.bottomAnchor),
                 ]
             }
-            NSLayoutConstraint.activate(skillsConstraints)
+            NSLayoutConstraint.activate(agentConfigConstraints)
         }
 
-        skv.configure()
+        acv.configure(projects: projects)
     }
 
     // MARK: - Private

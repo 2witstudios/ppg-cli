@@ -3,7 +3,7 @@ import AppKit
 // MARK: - Sidebar Tab
 
 enum SidebarTab {
-    case dashboard, swarms, prompts, schedules, skills
+    case dashboard, swarms, prompts, schedules, agentConfig
 }
 
 // MARK: - Sidebar Item
@@ -91,7 +91,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onSwarmsClicked: (() -> Void)?
     var onPromptsClicked: (() -> Void)?
     var onSchedulesClicked: (() -> Void)?
-    var onSkillsClicked: (() -> Void)?
+    var onAgentConfigClicked: (() -> Void)?
 
     private var safetyTimer: Timer?
     private var settingsObserver: NSObjectProtocol?
@@ -105,7 +105,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private var swarmsRow: SidebarNavRow!
     private var promptsRow: SidebarNavRow!
     private var schedulesRow: SidebarNavRow!
-    private var skillsRow: SidebarNavRow!
+    private var agentConfigRow: SidebarNavRow!
     var projectNodes: [SidebarNode] = []
     private var suppressSelectionCallback = false
     private var contextClickedNode: SidebarNode?
@@ -161,11 +161,11 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         schedulesRow = SidebarNavRow(title: "Schedules", icon: "clock") { [weak self] in
             self?.schedulesButtonClicked()
         }
-        skillsRow = SidebarNavRow(title: "Skills", icon: "sparkles") { [weak self] in
-            self?.skillsButtonClicked()
+        agentConfigRow = SidebarNavRow(title: "Agent Config", icon: "gearshape.2") { [weak self] in
+            self?.agentConfigButtonClicked()
         }
 
-        let navStack = NSStackView(views: [dashboardRow, swarmsRow, promptsRow, schedulesRow, skillsRow])
+        let navStack = NSStackView(views: [dashboardRow, swarmsRow, promptsRow, schedulesRow, agentConfigRow])
         navStack.orientation = .vertical
         navStack.alignment = .leading
         navStack.spacing = 2
@@ -193,7 +193,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             swarmsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
             promptsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
             schedulesRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
-            skillsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
+            agentConfigRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
 
             dashSeparator.bottomAnchor.constraint(equalTo: navBar.bottomAnchor),
             dashSeparator.leadingAnchor.constraint(equalTo: navBar.leadingAnchor),
@@ -285,7 +285,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         swarmsRow.isSelected = (tab == .swarms)
         promptsRow.isSelected = (tab == .prompts)
         schedulesRow.isSelected = (tab == .schedules)
-        skillsRow.isSelected = (tab == .skills)
+        agentConfigRow.isSelected = (tab == .agentConfig)
     }
 
     private func deselectAllTabs() {
@@ -294,7 +294,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         swarmsRow.isSelected = false
         promptsRow.isSelected = false
         schedulesRow.isSelected = false
-        skillsRow.isSelected = false
+        agentConfigRow.isSelected = false
     }
 
     private func dashboardButtonClicked() {
@@ -321,10 +321,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         onSchedulesClicked?()
     }
 
-    private func skillsButtonClicked() {
+    private func agentConfigButtonClicked() {
         outlineView.deselectAll(nil)
-        selectTab(.skills)
-        onSkillsClicked?()
+        selectTab(.agentConfig)
+        onAgentConfigClicked?()
     }
 
     @objc private func settingsButtonClicked() {
