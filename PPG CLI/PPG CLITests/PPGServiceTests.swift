@@ -1,7 +1,7 @@
 import XCTest
 @testable import PPG_CLI
 
-final class PPGServiceTests: XCTestCase {
+final class PoguServiceTests: XCTestCase {
     var tempDir: URL!
 
     override func setUp() {
@@ -17,26 +17,26 @@ final class PPGServiceTests: XCTestCase {
     }
 
     private func writeFixture(_ json: String) -> String {
-        let pgDir = tempDir.appendingPathComponent(".pg")
-        try? FileManager.default.createDirectory(at: pgDir, withIntermediateDirectories: true)
-        let path = pgDir.appendingPathComponent("manifest.json").path
+        let poguDir = tempDir.appendingPathComponent(".pogu")
+        try? FileManager.default.createDirectory(at: poguDir, withIntermediateDirectories: true)
+        let path = poguDir.appendingPathComponent("manifest.json").path
         FileManager.default.createFile(atPath: path, contents: json.data(using: .utf8))
         return path
     }
 
     private let validJSON = """
     {
-      "version": 1, "projectRoot": "/tmp/test", "sessionName": "ppg-test",
+      "version": 1, "projectRoot": "/tmp/test", "sessionName": "pogu-test",
       "worktrees": {
         "wt-abc123": {
           "id": "wt-abc123", "name": "feature-x", "path": "/tmp/test/.worktrees/wt-abc123",
-          "branch": "ppg/feature-x", "baseBranch": "main", "status": "active",
-          "tmuxWindow": "ppg-test:1",
+          "branch": "pogu/feature-x", "baseBranch": "main", "status": "active",
+          "tmuxWindow": "pogu-test:1",
           "agents": {
             "ag-def456": {
               "id": "ag-def456", "name": "claude", "agentType": "claude",
-              "status": "running", "tmuxTarget": "ppg-test:1",
-              "prompt": "Do something", "resultFile": "/tmp/test/.pg/results/ag-def456.md",
+              "status": "running", "tmuxTarget": "pogu-test:1",
+              "prompt": "Do something", "resultFile": "/tmp/test/.pogu/results/ag-def456.md",
               "startedAt": "2026-02-23T12:00:00Z"
             }
           },
@@ -49,8 +49,8 @@ final class PPGServiceTests: XCTestCase {
 
     func testReadManifestWithValidJSON() {
         let path = writeFixture(validJSON)
-        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "ppg-test", projectName: "test", projectRoot: "")
-        let manifest = PPGService.shared.readManifest()
+        LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "pogu-test", projectName: "test", projectRoot: "")
+        let manifest = PoguService.shared.readManifest()
         XCTAssertNotNil(manifest)
         XCTAssertEqual(manifest?.version, 1)
         XCTAssertEqual(manifest?.worktrees.count, 1)
@@ -58,13 +58,13 @@ final class PPGServiceTests: XCTestCase {
 
     func testReadManifestReturnsNilForNonexistentPath() {
         LaunchConfig.shared = LaunchConfig(manifestPath: "/nonexistent/path.json", sessionName: "", projectName: "", projectRoot: "")
-        XCTAssertNil(PPGService.shared.readManifest())
+        XCTAssertNil(PoguService.shared.readManifest())
     }
 
     func testReadManifestReturnsNilForMalformedJSON() {
         let path = writeFixture("{ not valid json }")
         LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "", projectName: "", projectRoot: "")
-        XCTAssertNil(PPGService.shared.readManifest())
+        XCTAssertNil(PoguService.shared.readManifest())
     }
 
     func testRefreshStatusReturnsSortedWorktrees() {
@@ -88,7 +88,7 @@ final class PPGServiceTests: XCTestCase {
         """
         let path = writeFixture(json)
         LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "s", projectName: "test", projectRoot: "")
-        let worktrees = PPGService.shared.refreshStatus()
+        let worktrees = PoguService.shared.refreshStatus()
         XCTAssertEqual(worktrees.count, 2)
         XCTAssertEqual(worktrees[0].name, "first")
         XCTAssertEqual(worktrees[1].name, "second")
@@ -122,7 +122,7 @@ final class PPGServiceTests: XCTestCase {
         """
         let path = writeFixture(json)
         LaunchConfig.shared = LaunchConfig(manifestPath: path, sessionName: "s", projectName: "test", projectRoot: "")
-        let worktrees = PPGService.shared.refreshStatus()
+        let worktrees = PoguService.shared.refreshStatus()
         XCTAssertEqual(worktrees[0].agents.count, 2)
         XCTAssertEqual(worktrees[0].agents[0].id, "ag-a")
         XCTAssertEqual(worktrees[0].agents[1].id, "ag-b")
@@ -130,6 +130,6 @@ final class PPGServiceTests: XCTestCase {
 
     func testRefreshStatusReturnsEmptyWhenMissing() {
         LaunchConfig.shared = LaunchConfig(manifestPath: "/nonexistent", sessionName: "", projectName: "", projectRoot: "")
-        XCTAssertEqual(PPGService.shared.refreshStatus().count, 0)
+        XCTAssertEqual(PoguService.shared.refreshStatus().count, 0)
     }
 }

@@ -1,11 +1,11 @@
 import AppKit
 
-/// Onboarding screen shown when ppg CLI or tmux is not detected.
+/// Onboarding screen shown when pogu CLI or tmux is not detected.
 /// Guides the user through installing the required dependencies.
 class SetupViewController: NSViewController {
     var onReady: (() -> Void)?
 
-    private var ppgStatus: StatusRow!
+    private var poguStatus: StatusRow!
     private var tmuxStatus: StatusRow!
     private var continueButton: NSButton!
 
@@ -45,7 +45,7 @@ class SetupViewController: NSViewController {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(titleLabel)
 
-        let subtitleLabel = NSTextField(labelWithString: "The dashboard needs ppg CLI and tmux to function")
+        let subtitleLabel = NSTextField(labelWithString: "The dashboard needs pogu CLI and tmux to function")
         subtitleLabel.font = .systemFont(ofSize: 14)
         subtitleLabel.textColor = .tertiaryLabelColor
         subtitleLabel.alignment = .center
@@ -53,12 +53,12 @@ class SetupViewController: NSViewController {
         card.addSubview(subtitleLabel)
 
         // Status rows
-        ppgStatus = StatusRow(
-            title: "ppg CLI",
-            installHint: "npm install -g pure-point-guard"
+        poguStatus = StatusRow(
+            title: "pogu CLI",
+            installHint: "npm install -g pointguard"
         )
-        ppgStatus.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(ppgStatus)
+        poguStatus.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(poguStatus)
 
         tmuxStatus = StatusRow(
             title: "tmux",
@@ -105,11 +105,11 @@ class SetupViewController: NSViewController {
             subtitleLabel.centerXAnchor.constraint(equalTo: card.centerXAnchor),
             subtitleLabel.widthAnchor.constraint(equalTo: card.widthAnchor),
 
-            ppgStatus.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 32),
-            ppgStatus.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            ppgStatus.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            poguStatus.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 32),
+            poguStatus.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            poguStatus.trailingAnchor.constraint(equalTo: card.trailingAnchor),
 
-            tmuxStatus.topAnchor.constraint(equalTo: ppgStatus.bottomAnchor, constant: 12),
+            tmuxStatus.topAnchor.constraint(equalTo: poguStatus.bottomAnchor, constant: 12),
             tmuxStatus.leadingAnchor.constraint(equalTo: card.leadingAnchor),
             tmuxStatus.trailingAnchor.constraint(equalTo: card.trailingAnchor),
 
@@ -139,18 +139,18 @@ class SetupViewController: NSViewController {
 
     private func runChecks() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let cli = PPGService.shared.checkCLIAvailable()
-            let tmux = PPGService.shared.checkTmuxAvailable()
+            let cli = PoguService.shared.checkCLIAvailable()
+            let tmux = PoguService.shared.checkTmuxAvailable()
 
             DispatchQueue.main.async {
-                self?.ppgStatus.setStatus(
+                self?.poguStatus.setStatus(
                     installed: cli.available,
                     detail: cli.version
                 )
                 let tmuxInstalledAndSupported = tmux.available && tmux.supportsCodexInputTheme
                 let tmuxDetail = tmux.version.map { "tmux \($0)" }
                 let tmuxIssueHint = (tmux.available && !tmux.supportsCodexInputTheme)
-                    ? "Update to tmux \(PPGService.minimumTmuxVersionForCodexInputTheme)+ for Codex input theming."
+                    ? "Update to tmux \(PoguService.minimumTmuxVersionForCodexInputTheme)+ for Codex input theming."
                     : nil
                 self?.tmuxStatus.setStatus(
                     installed: tmuxInstalledAndSupported,
@@ -163,7 +163,7 @@ class SetupViewController: NSViewController {
     }
 
     @objc private func recheckClicked(_ sender: Any) {
-        ppgStatus.setChecking()
+        poguStatus.setChecking()
         tmuxStatus.setChecking()
         continueButton.isEnabled = false
         runChecks()
