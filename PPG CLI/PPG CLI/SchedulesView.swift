@@ -51,6 +51,14 @@ class CronFieldDelegate: NSObject, NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) { onChange() }
 }
 
+// MARK: - Repeat/Time Change Handler (for live preview + show/hide custom field)
+
+class PickerChangeHandler: NSObject {
+    private let onChange: () -> Void
+    init(onChange: @escaping () -> Void) { self.onChange = onChange; super.init() }
+    @objc func valueChanged(_ sender: Any?) { onChange() }
+}
+
 // MARK: - Project Colors
 
 struct ProjectColors {
@@ -220,14 +228,14 @@ class SchedulesView: NSView {
     private let nextButton = NSButton()
     private let dateLabel = NSTextField(labelWithString: "")
     private let newButton = NSButton()
-    private let emptyLabel = NSTextField(labelWithString: "No schedules found. Click + New Schedule to create one.")
+    private let emptyLabel = NSTextField(labelWithString: "")
 
     // State
     private var schedules: [ScheduleInfo] = []
     private var projects: [ProjectContext] = []
     private var daemonRunning = false
     private var currentDate = Date()
-    private var viewMode: CalendarViewMode = .week
+    private var viewMode: CalendarViewMode = .month
 
     // Calendar body
     private let calendarScrollView = NSScrollView()
@@ -252,7 +260,6 @@ class SchedulesView: NSView {
         self.projects = projects
         schedules = Self.scanSchedules(projects: projects)
         emptyLabel.isHidden = !schedules.isEmpty
-        calendarScrollView.isHidden = schedules.isEmpty
         checkDaemonStatus()
         refreshCalendar()
     }
@@ -425,7 +432,7 @@ class SchedulesView: NSView {
         viewSwitcher.setWidth(50, forSegment: 0)
         viewSwitcher.setWidth(50, forSegment: 1)
         viewSwitcher.setWidth(55, forSegment: 2)
-        viewSwitcher.selectedSegment = 1 // default: week
+        viewSwitcher.selectedSegment = 2 // default: month
         viewSwitcher.target = self
         viewSwitcher.action = #selector(viewModeChanged)
         viewSwitcher.translatesAutoresizingMaskIntoConstraints = false
@@ -495,13 +502,13 @@ class SchedulesView: NSView {
         calendarContainer.translatesAutoresizingMaskIntoConstraints = false
         calendarScrollView.documentView = calendarContainer
 
-        // Empty label
-        emptyLabel.font = .systemFont(ofSize: 14)
-        emptyLabel.textColor = .tertiaryLabelColor
+        // Empty hint banner (overlay inside calendar)
+        emptyLabel.font = .systemFont(ofSize: 12)
+        emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         emptyLabel.isHidden = true
-        addSubview(emptyLabel)
+        calendarContainer.addSubview(emptyLabel)
 
         NSLayoutConstraint.activate([
             headerBar.topAnchor.constraint(equalTo: topAnchor),
@@ -547,8 +554,8 @@ class SchedulesView: NSView {
             calendarScrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             calendarScrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            emptyLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            emptyLabel.centerXAnchor.constraint(equalTo: calendarContainer.centerXAnchor),
+            emptyLabel.topAnchor.constraint(equalTo: calendarContainer.topAnchor, constant: 12),
         ])
 
         updateDateLabel()
@@ -802,8 +809,8 @@ class SchedulesView: NSView {
         alert.addButton(withTitle: isEdit ? "Save" : "Create")
         alert.addButton(withTitle: "Cancel")
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
-        var y: CGFloat = 300
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 310))
+        var y: CGFloat = 310
 
         func addLabel(_ text: String) {
             y -= 18
@@ -838,17 +845,113 @@ class SchedulesView: NSView {
         addLabel("Name:")
         let nameField = addField("schedule-name", value: schedule?.name ?? "")
 
-        addLabel("Cron Expression:")
-        var cronDefault = schedule?.cronExpression ?? "0 * * * *"
-        if let date = prefillDate {
+        // --- Time picker ---
+        addLabel("Time:")
+        y -= 24
+        let timePicker = NSDatePicker(frame: NSRect(x: 0, y: y, width: 300, height: 24))
+        timePicker.datePickerStyle = .textFieldAndStepper
+        timePicker.datePickerElements = .hourMinute
+        // Set initial time
+        do {
             let cal = Calendar.current
-            let h = cal.component(.hour, from: date)
-            let m = cal.component(.minute, from: date)
-            cronDefault = "\(m) \(h) * * *"
+            var dateComponents = cal.dateComponents([.year, .month, .day], from: Date())
+            if let date = prefillDate {
+                dateComponents.hour = cal.component(.hour, from: date)
+                dateComponents.minute = cal.component(.minute, from: date)
+            } else if let existingCron = schedule?.cronExpression {
+                let parts = existingCron.split(separator: " ").map(String.init)
+                if parts.count == 5, let m = Int(parts[0]), let h = Int(parts[1]) {
+                    dateComponents.hour = h
+                    dateComponents.minute = m
+                } else {
+                    dateComponents.hour = cal.component(.hour, from: Date())
+                    dateComponents.minute = 0
+                }
+            } else {
+                dateComponents.hour = cal.component(.hour, from: Date())
+                dateComponents.minute = 0
+            }
+            timePicker.dateValue = cal.date(from: dateComponents) ?? Date()
         }
-        let cronField = addField("0 * * * *", value: cronDefault)
+        accessory.addSubview(timePicker)
+        y -= 10
 
-        // Live next-run preview
+        // --- Repeat dropdown ---
+        let repeatOptions = ["Every Day", "Every Weekday (Mon–Fri)", "Every Week", "Every Month", "Hourly", "Custom…"]
+        addLabel("Repeat:")
+        let repeatPopup = addPopup(repeatOptions)
+
+        // --- Hidden custom cron field (shown only for "Custom…") ---
+        // Positioned right below repeat dropdown; y not decremented so hidden = no gap
+        let customCronInsertY = y  // where the cron section would start
+        let customCronHeight: CGFloat = 54  // label(20) + field(34)
+
+        let cronLabelView = NSTextField(labelWithString: "Cron Expression:")
+        cronLabelView.font = .systemFont(ofSize: 11, weight: .medium)
+        cronLabelView.textColor = .secondaryLabelColor
+        cronLabelView.frame = NSRect(x: 0, y: customCronInsertY - 18, width: 300, height: 16)
+        cronLabelView.isHidden = true
+        accessory.addSubview(cronLabelView)
+
+        let customCronField = NSTextField(frame: NSRect(x: 0, y: customCronInsertY - 44, width: 300, height: 24))
+        customCronField.placeholderString = "0 * * * *"
+        customCronField.stringValue = schedule?.cronExpression ?? "0 * * * *"
+        customCronField.isHidden = true
+        accessory.addSubview(customCronField)
+
+        // Track views added after this point so we can shift them when toggling Custom
+        let viewsBelowStartIndex = accessory.subviews.count
+
+        // --- Helper: reverse-map existing cron to repeat index ---
+        func repeatIndexFromCron(_ cron: String) -> Int {
+            let parts = cron.split(separator: " ").map(String.init)
+            guard parts.count == 5 else { return 5 }
+            let (_, hour, dom, mon, dow) = (parts[0], parts[1], parts[2], parts[3], parts[4])
+            if hour != "*" && dom == "*" && mon == "*" && dow == "*" { return 0 }       // Every Day
+            if hour != "*" && dom == "*" && mon == "*" && dow == "1-5" { return 1 }     // Weekday
+            if hour != "*" && dom == "*" && mon == "*" && dow != "*" { return 2 }       // Every Week
+            if hour != "*" && dom != "*" && mon == "*" && dow == "*" { return 3 }       // Every Month
+            if hour == "*" && dom == "*" && mon == "*" && dow == "*" { return 4 }       // Hourly
+            return 5                                                                      // Custom
+        }
+
+        // Pre-select repeat option when editing
+        var customCronVisible = false
+        if let existingCron = schedule?.cronExpression {
+            let idx = repeatIndexFromCron(existingCron)
+            repeatPopup.selectItem(at: idx)
+            if idx == 5 {
+                // Custom — shift y down to make room, then show
+                y -= customCronHeight
+                cronLabelView.isHidden = false
+                customCronField.isHidden = false
+                customCronField.stringValue = existingCron
+                customCronVisible = true
+            }
+        }
+
+        // --- Helper: generate cron from picker state ---
+        func cronFromPicker() -> String {
+            let cal = Calendar.current
+            let h = cal.component(.hour, from: timePicker.dateValue)
+            let m = cal.component(.minute, from: timePicker.dateValue)
+
+            switch repeatPopup.indexOfSelectedItem {
+            case 0: return "\(m) \(h) * * *"           // Every Day
+            case 1: return "\(m) \(h) * * 1-5"         // Every Weekday
+            case 2:                                      // Every Week
+                let dow = cal.component(.weekday, from: Date()) - 1  // 0=Sun
+                return "\(m) \(h) * * \(dow)"
+            case 3:                                      // Every Month
+                let dom = cal.component(.day, from: Date())
+                return "\(m) \(h) \(dom) * *"
+            case 4: return "\(m) * * * *"               // Hourly
+            case 5: return customCronField.stringValue   // Custom
+            default: return "\(m) \(h) * * *"
+            }
+        }
+
+        // --- Live next-run preview ---
         let previewLabel = NSTextField(labelWithString: "")
         previewLabel.font = .systemFont(ofSize: 10)
         previewLabel.textColor = .tertiaryLabelColor
@@ -857,7 +960,7 @@ class SchedulesView: NSView {
         y -= 18
 
         func updateCronPreview() {
-            let cronText = cronField.stringValue.trimmingCharacters(in: .whitespaces)
+            let cronText = cronFromPicker().trimmingCharacters(in: .whitespaces)
             if let next = CronParser.nextOccurrence(of: cronText, after: Date()) {
                 let fmt = DateFormatter()
                 fmt.dateStyle = .medium
@@ -870,10 +973,46 @@ class SchedulesView: NSView {
             }
         }
 
-        // Wire up live preview via delegate (retain on cronField since delegate is weak)
+        // --- Wire up change handlers ---
+        let pickerHandler = PickerChangeHandler(onChange: {
+            let isCustom = repeatPopup.indexOfSelectedItem == 5
+            let wasVisible = !cronLabelView.isHidden
+            cronLabelView.isHidden = !isCustom
+            customCronField.isHidden = !isCustom
+
+            // Shift views below and resize accessory when toggling Custom
+            if isCustom && !wasVisible {
+                // Reveal: shift views below down
+                for i in viewsBelowStartIndex..<accessory.subviews.count {
+                    let v = accessory.subviews[i]
+                    if v !== cronLabelView && v !== customCronField {
+                        v.frame.origin.y -= customCronHeight
+                    }
+                }
+                accessory.frame.size.height += customCronHeight
+            } else if !isCustom && wasVisible {
+                // Hide: shift views below back up
+                for i in viewsBelowStartIndex..<accessory.subviews.count {
+                    let v = accessory.subviews[i]
+                    if v !== cronLabelView && v !== customCronField {
+                        v.frame.origin.y += customCronHeight
+                    }
+                }
+                accessory.frame.size.height -= customCronHeight
+            }
+            updateCronPreview()
+        })
+        repeatPopup.target = pickerHandler
+        repeatPopup.action = #selector(PickerChangeHandler.valueChanged(_:))
+        timePicker.target = pickerHandler
+        timePicker.action = #selector(PickerChangeHandler.valueChanged(_:))
+        // Retain the handler
+        objc_setAssociatedObject(accessory, "pickerHandler", pickerHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        // Wire up custom cron field for live preview when typing
         let cronDelegate = CronFieldDelegate(onChange: updateCronPreview)
-        cronField.delegate = cronDelegate
-        objc_setAssociatedObject(cronField, "cronDelegate", cronDelegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        customCronField.delegate = cronDelegate
+        objc_setAssociatedObject(customCronField, "cronDelegate", cronDelegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         // Show initial preview
         updateCronPreview()
@@ -898,7 +1037,7 @@ class SchedulesView: NSView {
 
         let name = nameField.stringValue.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        let cron = cronField.stringValue.trimmingCharacters(in: .whitespaces)
+        let cron = cronFromPicker().trimmingCharacters(in: .whitespaces)
         guard !cron.isEmpty else { return }
         let type = typePopup.titleOfSelectedItem ?? "swarm"
         let target = targetField.stringValue.trimmingCharacters(in: .whitespaces)
