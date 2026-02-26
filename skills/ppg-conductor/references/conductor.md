@@ -21,7 +21,7 @@ ppg spawn --name "<name>" --prompt "<self-contained prompt>" --json --no-open
 
 **Store a tracking table** with: worktree ID, agent IDs, name, and branch for each spawned task.
 
-**Swarm templates** — If a matching swarm template exists in `.pg/swarms/`, prefer `ppg swarm` over manual multi-spawn:
+**Swarm templates** — If a matching swarm template exists in `.ppg/swarms/`, prefer `ppg swarm` over manual multi-spawn:
 ```bash
 # Use a predefined swarm template (much simpler than manual spawning)
 ppg swarm code-review --var CONTEXT="Review the auth module" --json --no-open

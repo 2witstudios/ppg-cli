@@ -116,5 +116,5 @@ export async function buildBodyFromResults(agents: { resultFile: string }[]): Pr
 /** Truncate body to stay within GitHub's PR body size limit. */
 export function truncateBody(body: string): string {
   if (body.length <= MAX_BODY_LENGTH) return body;
-  return body.slice(0, MAX_BODY_LENGTH) + '\n\n---\n\n*[Truncated — full results available in `.pg/results/`]*';
+  return body.slice(0, MAX_BODY_LENGTH) + '\n\n---\n\n*[Truncated — full results available in `.ppg/results/`]*';
 }

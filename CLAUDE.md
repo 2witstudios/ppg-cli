@@ -63,10 +63,10 @@ src/
 |---------|-------------|
 | **Worktree** | Isolated git checkout on branch `ppg/<name>`, lives in `.worktrees/wt-{id}/` |
 | **Agent** | CLI process in a tmux pane, receives task via prompt file |
-| **Manifest** | `.pg/manifest.json` — runtime state: worktrees, agents, statuses, tmux targets |
-| **Config** | `.pg/config.yaml` — session name, agent definitions, directory paths |
-| **Template** | Markdown in `.pg/templates/` with `{{VAR}}` placeholders |
-| **Result file** | `.pg/results/{agentId}.md` — primary agent completion signal |
+| **Manifest** | `.ppg/manifest.json` — runtime state: worktrees, agents, statuses, tmux targets |
+| **Config** | `.ppg/config.yaml` — session name, agent definitions, directory paths |
+| **Template** | Markdown in `.ppg/templates/` with `{{VAR}}` placeholders |
+| **Result file** | `.ppg/results/{agentId}.md` — primary agent completion signal |
 
 ## Agent Lifecycle
 

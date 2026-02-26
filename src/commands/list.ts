@@ -27,7 +27,7 @@ async function listTemplatesCommand(options: ListOptions): Promise<void> {
   const templateNames = await listTemplates(projectRoot);
 
   if (templateNames.length === 0) {
-    console.log('No templates found in .pg/templates/');
+    console.log('No templates found in .ppg/templates/');
     return;
   }
 
@@ -74,7 +74,7 @@ async function listSwarmsCommand(options: ListOptions): Promise<void> {
     if (options.json) {
       output({ swarms: [] }, true);
     } else {
-      console.log('No swarm templates found in .pg/swarms/');
+      console.log('No swarm templates found in .ppg/swarms/');
     }
     return;
   }

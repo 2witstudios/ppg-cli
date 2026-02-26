@@ -4,7 +4,7 @@ Quick reference for all ppg commands relevant to conductor workflows. Always use
 
 ## ppg init
 
-Initialize ppg in the current git repository. Creates `.pg/` directory structure, default config, empty manifest, and sample template.
+Initialize ppg in the current git repository. Creates `.ppg/` directory structure, default config, empty manifest, and sample template.
 
 ```bash
 ppg init --json
@@ -12,7 +12,7 @@ ppg init --json
 
 **JSON output:**
 ```json
-{ "success": true, "projectRoot": "/path/to/repo", "sessionName": "ppg-repo", "pgDir": "/path/to/repo/.pg" }
+{ "success": true, "projectRoot": "/path/to/repo", "sessionName": "ppg-repo", "pgDir": "/path/to/repo/.ppg" }
 ```
 
 **Errors:** `NOT_GIT_REPO`, `TMUX_NOT_FOUND`
@@ -49,7 +49,7 @@ ppg spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
 | `-a, --agent <type>` | Agent type from config (default: `claude`) |
 | `-p, --prompt <text>` | Inline prompt text |
 | `-f, --prompt-file <path>` | Path to file containing prompt |
-| `-t, --template <name>` | Template name from `.pg/templates/` |
+| `-t, --template <name>` | Template name from `.ppg/templates/` |
 | `--var <KEY=value>` | Template variable (repeatable) |
 | `-b, --base <branch>` | Base branch (default: current branch) |
 | `-w, --worktree <id>` | Add agent to existing worktree instead of creating new one |
@@ -109,7 +109,7 @@ ppg status --watch                   # Live-refresh in terminal
           "status": "running",
           "tmuxTarget": "ppg-repo:1",
           "prompt": "...",
-          "resultFile": "/path/.pg/results/ag-xyz12345.md",
+          "resultFile": "/path/.ppg/results/ag-xyz12345.md",
           "startedAt": "2025-01-01T00:00:00.000Z"
         }
       },
@@ -166,7 +166,7 @@ ppg aggregate <worktree-id> --json      # Specific worktree
 }
 ```
 
-Results come from `.pg/results/<agentId>.md`. If no result file exists, falls back to tmux pane capture.
+Results come from `.ppg/results/<agentId>.md`. If no result file exists, falls back to tmux pane capture.
 
 ## ppg pr
 
@@ -269,7 +269,7 @@ Cleanup sequence: kill tmux window, teardown env, `git worktree remove --force`,
 
 ## ppg swarm
 
-Run a predefined swarm template — spawns multiple agents from `.pg/swarms/` with prompts from `.pg/prompts/`.
+Run a predefined swarm template — spawns multiple agents from `.ppg/swarms/` with prompts from `.ppg/prompts/`.
 
 ```bash
 # Run a swarm template (creates new worktree, spawns all agents)
@@ -487,7 +487,7 @@ ppg attach <agent-id>                   # Attach to agent's tmux pane
 |------|---------|----------|
 | `TMUX_NOT_FOUND` | tmux not installed | Fatal — user must install tmux |
 | `NOT_GIT_REPO` | Not inside a git repository | Fatal — user must cd to a repo |
-| `NOT_INITIALIZED` | `.pg/` directory missing | Auto-fix: run `ppg init --json` |
+| `NOT_INITIALIZED` | `.ppg/` directory missing | Auto-fix: run `ppg init --json` |
 | `MANIFEST_LOCK` | Could not acquire manifest lock | Retry after brief delay (rare) |
 | `WORKTREE_NOT_FOUND` | Worktree ID/name not in manifest | Check `ppg status --json` for valid IDs |
 | `AGENT_NOT_FOUND` | Agent ID not in manifest | Check `ppg status --json` for valid IDs |

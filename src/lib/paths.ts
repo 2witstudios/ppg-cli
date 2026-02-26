@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-const PG_DIR = '.pg';
+const PG_DIR = '.ppg';
 
 export function pgDir(projectRoot: string): string {
   return path.join(projectRoot, PG_DIR);

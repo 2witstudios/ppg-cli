@@ -85,7 +85,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
   }
 
-  info('Created .pg/ directory structure');
+  info('Created .ppg/ directory structure');
 
   // 4. Write default config (skip if exists)
   const cfgPath = configPath(projectRoot);
@@ -215,13 +215,13 @@ async function registerClaudePlugin(): Promise<boolean> {
 async function updateGitignore(projectRoot: string): Promise<void> {
   const gitignorePath = path.join(projectRoot, '.gitignore');
   const entriesToAdd = [
-    '.pg/results/',
-    '.pg/logs/',
-    '.pg/manifest.json',
-    '.pg/prompts/',
-    '.pg/agent-prompts/',
-    '.pg/swarms/',
-    '.pg/conductor-context.md',
+    '.ppg/results/',
+    '.ppg/logs/',
+    '.ppg/manifest.json',
+    '.ppg/prompts/',
+    '.ppg/agent-prompts/',
+    '.ppg/swarms/',
+    '.ppg/conductor-context.md',
   ];
 
   let content = '';

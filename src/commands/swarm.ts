@@ -58,7 +58,7 @@ async function loadPromptFile(projectRoot: string, promptName: string): Promise<
   try {
     return await fs.readFile(filePath, 'utf-8');
   } catch {
-    throw new PgError(`Prompt file not found: ${promptName}.md in .pg/prompts/`, 'INVALID_ARGS');
+    throw new PgError(`Prompt file not found: ${promptName}.md in .ppg/prompts/`, 'INVALID_ARGS');
   }
 }
 
