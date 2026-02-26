@@ -1093,6 +1093,11 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         let itemIdx = itemPopup.indexOfSelectedItem
         guard itemIdx >= 0 else {
             importTypePopup = nil; importItemPopup = nil; importNameInput = nil
+            let noItemsAlert = NSAlert()
+            noItemsAlert.messageText = "No Items Available"
+            noItemsAlert.informativeText = "No \(isPrompt ? "prompts" : "swarms") found for the selected type."
+            noItemsAlert.alertStyle = .informational
+            noItemsAlert.runModal()
             return
         }
 
@@ -1227,12 +1232,20 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
                 return
             }
             try "".write(toFile: refPath, atomically: true, encoding: .utf8)
+            // Preserve unsaved body edits across reload
+            let draftBody = (editingRefFile == nil) ? editorTextView.string : pendingBodyText
             configure()
             // Re-select the skill
             if let newIdx = skills.firstIndex(where: { $0.name == skill.name }) {
                 selectedIndex = newIdx
                 tableView.selectRowIndexes(IndexSet(integer: newIdx), byExtendingSelection: false)
                 loadSkillDetail(at: newIdx)
+                if let draft = draftBody, editingRefFile == nil {
+                    editorTextView.string = draft
+                    pendingBodyText = nil
+                } else if let draft = draftBody {
+                    pendingBodyText = draft
+                }
             }
         } catch {
             let errAlert = NSAlert()
@@ -1263,17 +1276,30 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
 
         do {
             try FileManager.default.removeItem(atPath: refPath)
-            // If we were editing this ref file, go back to SKILL.md
+            // Preserve unsaved body edits across reload
+            let draftBody: String?
             if editingRefFile == refName {
+                // We were editing the deleted ref — go back to SKILL.md with pending body
+                draftBody = pendingBodyText
                 editingRefFile = nil
                 backButton.isHidden = true
-                editorTextView.string = skill.body
+            } else if editingRefFile == nil {
+                // Currently editing SKILL.md body — preserve it
+                draftBody = editorTextView.string
+            } else {
+                draftBody = pendingBodyText
             }
             configure()
             if let newIdx = skills.firstIndex(where: { $0.name == skill.name }) {
                 selectedIndex = newIdx
                 tableView.selectRowIndexes(IndexSet(integer: newIdx), byExtendingSelection: false)
                 loadSkillDetail(at: newIdx)
+                if let draft = draftBody, editingRefFile == nil {
+                    editorTextView.string = draft
+                    pendingBodyText = nil
+                } else if let draft = draftBody {
+                    pendingBodyText = draft
+                }
             }
         } catch {
             let errAlert = NSAlert()

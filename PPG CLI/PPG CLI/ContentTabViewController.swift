@@ -480,6 +480,8 @@ class ContentViewController: NSViewController {
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
+        schedulesView?.removeFromSuperview()
+        agentConfigView?.removeFromSuperview()
         for (_, termView) in terminalViews where termView.superview === containerView {
             termView.isHidden = true
         }
