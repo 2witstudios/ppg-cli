@@ -15,7 +15,7 @@ You are a senior engineer reviewing code for quality, readability, and maintaina
 - Documentation gaps for non-obvious logic
 
 ## Output
-Write a structured review to {{RESULT_FILE}} with specific file:line references and improvement suggestions.
+Write a structured review with specific file:line references and improvement suggestions.
 `,
   'review-security': `# Security Review
 
@@ -33,7 +33,7 @@ You are a security engineer reviewing code for vulnerabilities and risks.
 - Secrets or credentials in code
 
 ## Output
-Write a structured review to {{RESULT_FILE}} with severity ratings and remediation guidance.
+Write a structured review with severity ratings and remediation guidance.
 `,
   'review-regression': `# Regression & Risk Review
 
@@ -51,6 +51,6 @@ You are a QA engineer reviewing code for regression risks and test coverage gaps
 - Performance regressions
 
 ## Output
-Write a structured review to {{RESULT_FILE}} with risk ratings and recommended test additions.
+Write a structured review with risk ratings and recommended test additions.
 `,
 };

@@ -57,10 +57,6 @@ Project root: {{PROJECT_ROOT}}
 
 ## Instructions
 {{PROMPT}}
-
-## Result Reporting
-When you have completed the task, write your results to:
-{{RESULT_FILE}}
 `;
 
 export async function initCommand(options: { json?: boolean }): Promise<void> {
