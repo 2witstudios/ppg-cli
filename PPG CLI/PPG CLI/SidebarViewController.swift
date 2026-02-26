@@ -349,8 +349,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         // Start watchers for new projects
         for root in currentRoots.subtracting(watchedRoots) {
-            let pgDir = (root as NSString).appendingPathComponent(".pg")
-            let manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
+            let ppgDir = (root as NSString).appendingPathComponent(".ppg")
+            let manifestPath = (ppgDir as NSString).appendingPathComponent("manifest.json")
             let watcher = ManifestWatcher(path: manifestPath) { [weak self] in
                 self?.scheduleDebounceRefresh()
             }

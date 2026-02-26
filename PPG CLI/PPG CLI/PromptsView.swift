@@ -66,9 +66,9 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         let varRegex = try! NSRegularExpression(pattern: "\\{\\{(\\w+)\\}\\}")
 
         for ctx in projects {
-            let pgDir = (ctx.projectRoot as NSString).appendingPathComponent(".pg")
+            let ppgDir = (ctx.projectRoot as NSString).appendingPathComponent(".ppg")
             for dir in ["prompts", "templates"] {
-                let folder = (pgDir as NSString).appendingPathComponent(dir)
+                let folder = (ppgDir as NSString).appendingPathComponent(dir)
                 guard let files = try? fm.contentsOfDirectory(atPath: folder) else { continue }
                 for file in files where file.hasSuffix(".md") {
                     let path = (folder as NSString).appendingPathComponent(file)
@@ -496,7 +496,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         let ctx = projects[projectIdx]
         let dir = dirPopup.titleOfSelectedItem ?? "prompts"
 
-        let folder = (ctx.projectRoot as NSString).appendingPathComponent(".pg/\(dir)")
+        let folder = (ctx.projectRoot as NSString).appendingPathComponent(".ppg/\(dir)")
         let fm = FileManager.default
         if !fm.fileExists(atPath: folder) {
             try? fm.createDirectory(atPath: folder, withIntermediateDirectories: true)

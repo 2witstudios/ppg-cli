@@ -112,14 +112,14 @@ final class DashboardSessionTests: XCTestCase {
 
     func testFlushWritesImmediately() {
         let dir = NSTemporaryDirectory() + "ppg-test-flush-\(UUID().uuidString)"
-        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: dir + "/.ppg", withIntermediateDirectories: true)
         let s = DashboardSession(projectRoot: dir)
         s.addTerminal(parentWorktreeId: nil, workingDir: dir)
 
         // Debounced write hasn't fired yet — file may not exist
         s.flushToDisk()
 
-        let filePath = dir + "/.pg/dashboard-sessions.json"
+        let filePath = dir + "/.ppg/dashboard-sessions.json"
         XCTAssertTrue(FileManager.default.fileExists(atPath: filePath),
                       "flushToDisk should write the file synchronously")
 
@@ -132,7 +132,7 @@ final class DashboardSessionTests: XCTestCase {
 
     func testDebouncedWriteCoalesces() {
         let dir = NSTemporaryDirectory() + "ppg-test-debounce-\(UUID().uuidString)"
-        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: dir + "/.ppg", withIntermediateDirectories: true)
         let s = DashboardSession(projectRoot: dir)
 
         // Rapid mutations — each triggers saveToDisk with 1s debounce
@@ -140,7 +140,7 @@ final class DashboardSessionTests: XCTestCase {
         s.addTerminal(parentWorktreeId: nil, workingDir: dir)
         s.addTerminal(parentWorktreeId: nil, workingDir: dir)
 
-        let filePath = dir + "/.pg/dashboard-sessions.json"
+        let filePath = dir + "/.ppg/dashboard-sessions.json"
 
         // Wait for debounce to fire (1s interval + margin)
         let expectation = expectation(description: "Debounced write completes")
@@ -162,14 +162,14 @@ final class DashboardSessionTests: XCTestCase {
 
     func testFlushCancelsPendingDebouncedWrite() {
         let dir = NSTemporaryDirectory() + "ppg-test-cancel-\(UUID().uuidString)"
-        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: dir + "/.ppg", withIntermediateDirectories: true)
         let s = DashboardSession(projectRoot: dir)
 
         s.addTerminal(parentWorktreeId: nil, workingDir: dir)
         // Flush immediately — should cancel the pending debounced write
         s.flushToDisk()
 
-        let filePath = dir + "/.pg/dashboard-sessions.json"
+        let filePath = dir + "/.ppg/dashboard-sessions.json"
         let data = FileManager.default.contents(atPath: filePath)!
         let decoded = try! JSONDecoder().decode(SessionDataWrapper.self, from: data)
         XCTAssertEqual(decoded.entries.count, 1)
@@ -179,7 +179,7 @@ final class DashboardSessionTests: XCTestCase {
 
     func testReloadFromDiskCancelsPendingWrite() {
         let dir = NSTemporaryDirectory() + "ppg-test-reload-\(UUID().uuidString)"
-        try? FileManager.default.createDirectory(atPath: dir + "/.pg", withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: dir + "/.ppg", withIntermediateDirectories: true)
         let s = DashboardSession(projectRoot: dir)
 
         s.addTerminal(parentWorktreeId: nil, workingDir: dir)
