@@ -809,8 +809,8 @@ class SchedulesView: NSView {
         alert.addButton(withTitle: isEdit ? "Save" : "Create")
         alert.addButton(withTitle: "Cancel")
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 310))
-        var y: CGFloat = 310
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 360))
+        var y: CGFloat = 360
 
         func addLabel(_ text: String) {
             y -= 18
