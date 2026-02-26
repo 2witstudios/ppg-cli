@@ -553,24 +553,24 @@ class DashboardSplitViewController: NSSplitViewController {
         let projects = OpenProjects.shared.projects
         content.showHomeDashboard(projects: projects, worktreesByProject: sidebar.projectWorktrees)
         currentSidebarItem = nil
-        view.window?.title = "pogu"
-        titleAccessory?.setTitle("pogu", editable: false)
+        view.window?.title = "ppg"
+        titleAccessory?.setTitle("ppg", editable: false)
     }
 
     func showSwarmsView() {
         let projects = OpenProjects.shared.projects
         content.showSwarmsView(projects: projects)
         currentSidebarItem = nil
-        view.window?.title = "pogu - Swarms"
-        titleAccessory?.setTitle("pogu - Swarms", editable: false)
+        view.window?.title = "ppg - Swarms"
+        titleAccessory?.setTitle("ppg - Swarms", editable: false)
     }
 
     func showPromptsView() {
         let projects = OpenProjects.shared.projects
         content.showPromptsView(projects: projects)
         currentSidebarItem = nil
-        view.window?.title = "pogu - Prompts"
-        titleAccessory?.setTitle("pogu - Prompts", editable: false)
+        view.window?.title = "ppg - Prompts"
+        titleAccessory?.setTitle("ppg - Prompts", editable: false)
     }
 
     // MARK: - Selection & Refresh
@@ -634,7 +634,7 @@ class DashboardSplitViewController: NSSplitViewController {
     }
 
     private func currentBranch(at path: String) -> String {
-        PoguService.shared.currentBranch(at: path)
+        PPGService.shared.currentBranch(at: path)
     }
 
     private func updateWindowTitle(for item: SidebarItem) {
@@ -795,7 +795,7 @@ class DashboardSplitViewController: NSSplitViewController {
         guard !projectRoot.isEmpty else { return }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = PoguService.shared.runPoguCommand("worktree create --name \(shellEscape(name)) --json", projectRoot: projectRoot)
+            let result = PPGService.shared.runPPGCommand("worktree create --name \(shellEscape(name)) --json", projectRoot: projectRoot)
 
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -862,7 +862,7 @@ class DashboardSplitViewController: NSSplitViewController {
         guard !projectRoot.isEmpty else { return }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = PoguService.shared.runPoguCommand("kill --agent \(shellEscape(agentId)) --delete --json", projectRoot: projectRoot)
+            let result = PPGService.shared.runPPGCommand("kill --agent \(shellEscape(agentId)) --delete --json", projectRoot: projectRoot)
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if result.exitCode != 0 {
@@ -890,7 +890,7 @@ class DashboardSplitViewController: NSSplitViewController {
         let sessionEntryIds = project.dashboardSession.entriesForWorktree(worktreeId).map(\.id)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = PoguService.shared.runPoguCommand("kill --worktree \(shellEscape(worktreeId)) --delete --json", projectRoot: projectRoot)
+            let result = PPGService.shared.runPPGCommand("kill --worktree \(shellEscape(worktreeId)) --delete --json", projectRoot: projectRoot)
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if result.exitCode != 0 {

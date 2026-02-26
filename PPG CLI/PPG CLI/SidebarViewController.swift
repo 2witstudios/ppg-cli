@@ -349,8 +349,8 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         // Start watchers for new projects
         for root in currentRoots.subtracting(watchedRoots) {
-            let poguDir = (root as NSString).appendingPathComponent(".pogu")
-            let manifestPath = (poguDir as NSString).appendingPathComponent("manifest.json")
+            let pgDir = (root as NSString).appendingPathComponent(".pg")
+            let manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
             let watcher = ManifestWatcher(path: manifestPath) { [weak self] in
                 self?.scheduleDebounceRefresh()
             }
@@ -384,7 +384,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             var results: [String: [WorktreeModel]] = [:]
 
             for ctx in openProjects {
-                let worktrees = PoguService.shared.refreshStatus(manifestPath: ctx.manifestPath)
+                let worktrees = PPGService.shared.refreshStatus(manifestPath: ctx.manifestPath)
                 results[ctx.projectRoot] = worktrees
             }
 

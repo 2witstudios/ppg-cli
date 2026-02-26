@@ -1,7 +1,7 @@
 import AppKit
 
 extension Notification.Name {
-    static let appSettingsDidChange = Notification.Name("PoguAppSettingsDidChange")
+    static let appSettingsDidChange = Notification.Name("PPGAppSettingsDidChange")
 }
 
 enum AppSettingsKey: String {
@@ -30,12 +30,12 @@ final class AppSettingsManager {
     // MARK: - Keys
 
     private enum Key {
-        static let refreshInterval = "PoguRefreshInterval"
-        static let terminalFont = "PoguTerminalFont"
-        static let terminalFontSize = "PoguTerminalFontSize"
-        static let shell = "PoguShell"
-        static let historyLimit = "PoguHistoryLimit"
-        static let appearanceMode = "PoguAppearanceMode"
+        static let refreshInterval = "PPGRefreshInterval"
+        static let terminalFont = "PPGTerminalFont"
+        static let terminalFontSize = "PPGTerminalFontSize"
+        static let shell = "PPGShell"
+        static let historyLimit = "PPGHistoryLimit"
+        static let appearanceMode = "PPGAppearanceMode"
     }
 
     // MARK: - Defaults
@@ -115,7 +115,7 @@ final class AppSettingsManager {
 
     // MARK: - Notification
 
-    static let changedKeyUserInfoKey = "PoguChangedSettingsKey"
+    static let changedKeyUserInfoKey = "PPGChangedSettingsKey"
 
     private func notify(_ key: AppSettingsKey) {
         NotificationCenter.default.post(

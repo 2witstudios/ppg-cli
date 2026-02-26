@@ -270,11 +270,11 @@ class HomeDashboardView: NSView {
     // MARK: - Static Git Fetch Methods
 
     static func fetchBranch(projectRoot: String) -> String {
-        PoguService.shared.currentBranch(at: projectRoot)
+        PPGService.shared.currentBranch(at: projectRoot)
     }
 
     static func fetchHeatmapData(projectRoot: String) -> CommitHeatmapView.HeatmapData {
-        let result = PoguService.shared.runGitCommand([
+        let result = PPGService.shared.runGitCommand([
             "log", "--format=%ad", "--date=format:%Y-%m-%d", "--since=91 days ago", "--all"
         ], cwd: projectRoot)
 
@@ -289,7 +289,7 @@ class HomeDashboardView: NSView {
 
     static func fetchRecentCommits(projectRoot: String) -> [CommitInfo] {
         // Use null-byte delimiter for safety
-        let result = PoguService.shared.runGitCommand([
+        let result = PPGService.shared.runGitCommand([
             "log", "-10", "--format=%h%x00%s%x00%an%x00%ar%x00%at"
         ], cwd: projectRoot)
 

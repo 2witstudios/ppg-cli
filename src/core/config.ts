@@ -4,7 +4,7 @@ import type { Config, AgentConfig } from '../types/config.js';
 import { configPath } from '../lib/paths.js';
 
 const DEFAULT_CONFIG: Config = {
-  sessionName: 'pogu',
+  sessionName: 'ppg',
   defaultAgent: 'claude',
   agents: {
     claude: {

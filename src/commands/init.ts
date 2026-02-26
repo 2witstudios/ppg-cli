@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { poguDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir, configPath } from '../lib/paths.js';
+import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir, configPath } from '../lib/paths.js';
 import { NotGitRepoError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
@@ -12,29 +12,29 @@ import { bundledSwarms } from '../bundled/swarms.js';
 import { execaEnv } from '../lib/env.js';
 import { checkTmux } from '../core/tmux.js';
 
-const CONDUCTOR_CONTEXT = `# Pogu Conductor Context
+const CONDUCTOR_CONTEXT = `# PPG Conductor Context
 
-You are operating on the master branch of a pogu-managed project.
+You are operating on the master branch of a ppg-managed project.
 
 ## Critical Rule
-**NEVER make code changes directly on the master branch.** Use \`pogu spawn\` to create worktrees.
+**NEVER make code changes directly on the master branch.** Use \`ppg spawn\` to create worktrees.
 
 ## Quick Reference
-- \`pogu spawn --name <name> --prompt "<task>" --json\` — Spawn worktree + agent
-- \`pogu status --json\` — Check statuses
-- \`pogu aggregate --all --json\` — Collect results (includes PR URLs)
-- \`pogu kill --agent <id> --json\` — Kill agent
-- \`pogu reset --json\` — Clean up all worktrees (skips worktrees with open PRs)
+- \`ppg spawn --name <name> --prompt "<task>" --json\` — Spawn worktree + agent
+- \`ppg status --json\` — Check statuses
+- \`ppg aggregate --all --json\` — Collect results (includes PR URLs)
+- \`ppg kill --agent <id> --json\` — Kill agent
+- \`ppg reset --json\` — Clean up all worktrees (skips worktrees with open PRs)
 
 ## Workflow
 1. Break request into parallelizable tasks
-2. Spawn: \`pogu spawn --name <name> --prompt "<prompt>" --json\`
-3. Poll: \`pogu status --json\` every 5s
-4. Aggregate: \`pogu aggregate --all --json\` — result files include PR URLs
+2. Spawn: \`ppg spawn --name <name> --prompt "<prompt>" --json\`
+3. Poll: \`ppg status --json\` every 5s
+4. Aggregate: \`ppg aggregate --all --json\` — result files include PR URLs
 5. Present PR links and summaries — let user decide next steps
 6. To merge remotely: \`gh pr merge <url> --squash --delete-branch\`
-7. To merge locally (power-user): \`pogu merge <wt-id> --json\`
-8. Cleanup: \`pogu reset --json\` (skips worktrees with open PRs)
+7. To merge locally (power-user): \`ppg merge <wt-id> --json\`
+8. Cleanup: \`ppg reset --json\` (skips worktrees with open PRs)
 
 Each agent prompt must be self-contained — agents have no memory of this conversation.
 Always use \`--json\`.
@@ -72,7 +72,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
 
   // 3. Create directories
   const dirs = [
-    poguDir(projectRoot),
+    pgDir(projectRoot),
     resultsDir(projectRoot),
     logsDir(projectRoot),
     templatesDir(projectRoot),
@@ -85,7 +85,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
   }
 
-  info('Created .pogu/ directory structure');
+  info('Created .pg/ directory structure');
 
   // 4. Write default config (skip if exists)
   const cfgPath = configPath(projectRoot);
@@ -99,7 +99,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
 
   // 5. Write empty manifest
   const dirName = path.basename(projectRoot);
-  const sessionName = `pogu-${dirName}`;
+  const sessionName = `ppg-${dirName}`;
   const manifest = createEmptyManifest(projectRoot, sessionName);
   await writeManifest(projectRoot, manifest);
   info('Wrote empty manifest.json');
@@ -140,14 +140,14 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   }
 
   // 10. Write conductor context
-  const conductorPath = path.join(poguDir(projectRoot), 'conductor-context.md');
+  const conductorPath = path.join(pgDir(projectRoot), 'conductor-context.md');
   await fs.writeFile(conductorPath, CONDUCTOR_CONTEXT, 'utf-8');
   info('Wrote conductor-context.md');
 
   // 11. Register Claude Code plugin
   const pluginRegistered = await registerClaudePlugin();
   if (pluginRegistered) {
-    info('Registered pogu Claude Code plugin');
+    info('Registered ppg Claude Code plugin');
   }
 
   if (options.json) {
@@ -155,11 +155,11 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
       success: true,
       projectRoot,
       sessionName,
-      poguDir: poguDir(projectRoot),
+      pgDir: pgDir(projectRoot),
       pluginRegistered,
     }));
   } else {
-    success(`pogu initialized in ${projectRoot}`);
+    success(`Point Guard initialized in ${projectRoot}`);
   }
 }
 
@@ -187,7 +187,7 @@ async function registerClaudePlugin(): Promise<boolean> {
 
     // Copy skills to ~/.claude/skills/
     await fs.mkdir(skillsDir, { recursive: true });
-    const skillFolders = ['pogu', 'pogu-conductor'];
+    const skillFolders = ['ppg', 'ppg-conductor'];
     let copied = false;
 
     for (const folder of skillFolders) {
@@ -215,13 +215,13 @@ async function registerClaudePlugin(): Promise<boolean> {
 async function updateGitignore(projectRoot: string): Promise<void> {
   const gitignorePath = path.join(projectRoot, '.gitignore');
   const entriesToAdd = [
-    '.pogu/results/',
-    '.pogu/logs/',
-    '.pogu/manifest.json',
-    '.pogu/prompts/',
-    '.pogu/agent-prompts/',
-    '.pogu/swarms/',
-    '.pogu/conductor-context.md',
+    '.pg/results/',
+    '.pg/logs/',
+    '.pg/manifest.json',
+    '.pg/prompts/',
+    '.pg/agent-prompts/',
+    '.pg/swarms/',
+    '.pg/conductor-context.md',
   ];
 
   let content = '';
@@ -236,7 +236,7 @@ async function updateGitignore(projectRoot: string): Promise<void> {
 
   if (toAdd.length > 0) {
     const addition = (content.endsWith('\n') || content === '' ? '' : '\n')
-      + '\n# pogu\n'
+      + '\n# Point Guard\n'
       + toAdd.join('\n')
       + '\n';
     await fs.appendFile(gitignorePath, addition, 'utf-8');

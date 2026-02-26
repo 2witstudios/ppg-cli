@@ -7,10 +7,10 @@ function createWorktree(overrides: Partial<WorktreeEntry> = {}): WorktreeEntry {
     id: 'wt-abc123',
     name: 'feature-auth',
     path: '/tmp/.worktrees/wt-abc123',
-    branch: 'pogu/feature-auth',
+    branch: 'ppg/feature-auth',
     baseBranch: 'main',
     status: 'active',
-    tmuxWindow: 'pogu:1',
+    tmuxWindow: 'ppg:1',
     agents: {},
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -21,7 +21,7 @@ function createManifest(worktrees: Record<string, WorktreeEntry> = {}): Manifest
   return {
     version: 1,
     projectRoot: '/tmp/project',
-    sessionName: 'pogu',
+    sessionName: 'ppg',
     worktrees,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -50,10 +50,10 @@ describe('resolveWorktree', () => {
   });
 
   test('given a branch name, should return the worktree', () => {
-    const wt = createWorktree({ id: 'wt-abc123', branch: 'pogu/feature-auth' });
+    const wt = createWorktree({ id: 'wt-abc123', branch: 'ppg/feature-auth' });
     const manifest = createManifest({ 'wt-abc123': wt });
 
-    const actual = resolveWorktree(manifest, 'pogu/feature-auth');
+    const actual = resolveWorktree(manifest, 'ppg/feature-auth');
     const expected = wt;
 
     expect(actual).toBe(expected);

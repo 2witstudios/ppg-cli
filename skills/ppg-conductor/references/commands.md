@@ -1,44 +1,44 @@
-# pogu CLI Command Reference
+# ppg CLI Command Reference
 
-Quick reference for all pogu commands relevant to conductor workflows. Always use `--json` for machine-readable output.
+Quick reference for all ppg commands relevant to conductor workflows. Always use `--json` for machine-readable output.
 
-## pogu init
+## ppg init
 
-Initialize pogu in the current git repository. Creates `.pogu/` directory structure, default config, empty manifest, and sample template.
+Initialize ppg in the current git repository. Creates `.pg/` directory structure, default config, empty manifest, and sample template.
 
 ```bash
-pogu init --json
+ppg init --json
 ```
 
 **JSON output:**
 ```json
-{ "success": true, "projectRoot": "/path/to/repo", "sessionName": "pogu-repo", "poguDir": "/path/to/repo/.pogu" }
+{ "success": true, "projectRoot": "/path/to/repo", "sessionName": "ppg-repo", "pgDir": "/path/to/repo/.pg" }
 ```
 
 **Errors:** `NOT_GIT_REPO`, `TMUX_NOT_FOUND`
 
-## pogu spawn
+## ppg spawn
 
 Spawn a new worktree with agent(s), or add agents to an existing worktree.
 
 ```bash
 # New worktree + agent
-pogu spawn --name <name> --prompt <text> --json --no-open
+ppg spawn --name <name> --prompt <text> --json --no-open
 
 # Multiple agents in new worktree (same prompt)
-pogu spawn --name <name> --prompt <text> --count <n> --json --no-open
+ppg spawn --name <name> --prompt <text> --count <n> --json --no-open
 
 # Add agent to existing worktree (different prompt)
-pogu spawn --worktree <wt-id> --prompt <text> --json --no-open
+ppg spawn --worktree <wt-id> --prompt <text> --json --no-open
 
 # Specify base branch
-pogu spawn --name <name> --prompt <text> --base <branch> --json --no-open
+ppg spawn --name <name> --prompt <text> --base <branch> --json --no-open
 
 # Use a template
-pogu spawn --name <name> --template <template-name> --var KEY=value --json --no-open
+ppg spawn --name <name> --template <template-name> --var KEY=value --json --no-open
 
 # Use a prompt file
-pogu spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
+ppg spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
 ```
 
 **Options:**
@@ -49,7 +49,7 @@ pogu spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
 | `-a, --agent <type>` | Agent type from config (default: `claude`) |
 | `-p, --prompt <text>` | Inline prompt text |
 | `-f, --prompt-file <path>` | Path to file containing prompt |
-| `-t, --template <name>` | Template name from `.pogu/templates/` |
+| `-t, --template <name>` | Template name from `.pg/templates/` |
 | `--var <KEY=value>` | Template variable (repeatable) |
 | `-b, --base <branch>` | Base branch (default: current branch) |
 | `-w, --worktree <id>` | Add agent to existing worktree instead of creating new one |
@@ -62,8 +62,8 @@ pogu spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
 ```json
 {
   "success": true,
-  "worktree": { "id": "wt-abc123", "name": "task-name", "branch": "pogu/task-name", "path": "/path/.worktrees/wt-abc123", "tmuxWindow": "pogu-repo:1" },
-  "agents": [{ "id": "ag-xyz12345", "tmuxTarget": "pogu-repo:1" }]
+  "worktree": { "id": "wt-abc123", "name": "task-name", "branch": "ppg/task-name", "path": "/path/.worktrees/wt-abc123", "tmuxWindow": "ppg-repo:1" },
+  "agents": [{ "id": "ag-xyz12345", "tmuxTarget": "ppg-repo:1" }]
 }
 ```
 
@@ -78,38 +78,38 @@ pogu spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
 
 **Errors:** `NOT_INITIALIZED`, `WORKTREE_NOT_FOUND` (when using `--worktree`)
 
-## pogu status
+## ppg status
 
 Show status of all worktrees and agents. Refreshes agent statuses from tmux before returning.
 
 ```bash
-pogu status --json                    # All worktrees
-pogu status <worktree-id> --json      # Specific worktree
-pogu status --watch                   # Live-refresh in terminal
+ppg status --json                    # All worktrees
+ppg status <worktree-id> --json      # Specific worktree
+ppg status --watch                   # Live-refresh in terminal
 ```
 
 **JSON output:**
 ```json
 {
-  "session": "pogu-repo",
+  "session": "ppg-repo",
   "worktrees": {
     "wt-abc123": {
       "id": "wt-abc123",
       "name": "task-name",
       "path": "/path/.worktrees/wt-abc123",
-      "branch": "pogu/task-name",
+      "branch": "ppg/task-name",
       "baseBranch": "main",
       "status": "active",
-      "tmuxWindow": "pogu-repo:1",
+      "tmuxWindow": "ppg-repo:1",
       "agents": {
         "ag-xyz12345": {
           "id": "ag-xyz12345",
           "name": "claude",
           "agentType": "claude",
           "status": "running",
-          "tmuxTarget": "pogu-repo:1",
+          "tmuxTarget": "ppg-repo:1",
           "prompt": "...",
-          "resultFile": "/path/.pogu/results/ag-xyz12345.md",
+          "resultFile": "/path/.pg/results/ag-xyz12345.md",
           "startedAt": "2025-01-01T00:00:00.000Z"
         }
       },
@@ -122,18 +122,18 @@ pogu status --watch                   # Live-refresh in terminal
 **Agent statuses:** `spawning` | `running` | `waiting` | `completed` | `failed` | `killed` | `lost`
 **Worktree statuses:** `active` | `merging` | `merged` | `failed` | `cleaned`
 
-## pogu kill
+## ppg kill
 
 Kill running agents. Can target a single agent, all agents in a worktree, or everything.
 
 ```bash
-pogu kill --agent <agent-id> --json               # Kill one agent
-pogu kill --worktree <wt-id> --json               # Kill all agents in worktree
-pogu kill --worktree <wt-id> --remove --json      # Kill + remove worktree
-pogu kill --all --json                            # Kill everything
-pogu kill --all --remove --json                   # Kill everything + cleanup
-pogu kill --agent <agent-id> --delete --json      # Kill + delete entry from manifest
-pogu kill --worktree <wt-id> --delete --json      # Kill all + delete worktree entry
+ppg kill --agent <agent-id> --json               # Kill one agent
+ppg kill --worktree <wt-id> --json               # Kill all agents in worktree
+ppg kill --worktree <wt-id> --remove --json      # Kill + remove worktree
+ppg kill --all --json                            # Kill everything
+ppg kill --all --remove --json                   # Kill everything + cleanup
+ppg kill --agent <agent-id> --delete --json      # Kill + delete entry from manifest
+ppg kill --worktree <wt-id> --delete --json      # Kill all + delete worktree entry
 ```
 
 **JSON output:**
@@ -141,13 +141,13 @@ pogu kill --worktree <wt-id> --delete --json      # Kill all + delete worktree e
 { "success": true, "killed": ["ag-xyz12345"], "removed": false }
 ```
 
-## pogu aggregate
+## ppg aggregate
 
 Collect result files from completed agents.
 
 ```bash
-pogu aggregate --all --json              # All worktrees
-pogu aggregate <worktree-id> --json      # Specific worktree
+ppg aggregate --all --json              # All worktrees
+ppg aggregate <worktree-id> --json      # Specific worktree
 ```
 
 **JSON output:**
@@ -158,7 +158,7 @@ pogu aggregate <worktree-id> --json      # Specific worktree
       "agentId": "ag-xyz12345",
       "worktreeId": "wt-abc123",
       "worktreeName": "task-name",
-      "branch": "pogu/task-name",
+      "branch": "ppg/task-name",
       "status": "completed",
       "content": "Full text content of the agent's result file..."
     }
@@ -166,17 +166,17 @@ pogu aggregate <worktree-id> --json      # Specific worktree
 }
 ```
 
-Results come from `.pogu/results/<agentId>.md`. If no result file exists, falls back to tmux pane capture.
+Results come from `.pg/results/<agentId>.md`. If no result file exists, falls back to tmux pane capture.
 
-## pogu pr
+## ppg pr
 
 Create a GitHub PR from a worktree's branch. Pushes the branch to origin and runs `gh pr create`.
 
 ```bash
-pogu pr <wt-id> --json                          # Create PR (title = worktree name, body = agent results)
-pogu pr <wt-id> --title "Fix auth bug" --json   # Custom title
-pogu pr <wt-id> --body "Description" --json     # Custom body
-pogu pr <wt-id> --draft --json                  # Create as draft PR
+ppg pr <wt-id> --json                          # Create PR (title = worktree name, body = agent results)
+ppg pr <wt-id> --title "Fix auth bug" --json   # Custom title
+ppg pr <wt-id> --body "Description" --json     # Custom body
+ppg pr <wt-id> --draft --json                  # Create as draft PR
 ```
 
 **Options:**
@@ -193,7 +193,7 @@ pogu pr <wt-id> --draft --json                  # Create as draft PR
 {
   "success": true,
   "worktreeId": "wt-abc123",
-  "branch": "pogu/fix-auth-bug",
+  "branch": "ppg/fix-auth-bug",
   "baseBranch": "main",
   "prUrl": "https://github.com/user/repo/pull/42"
 }
@@ -206,14 +206,14 @@ pogu pr <wt-id> --draft --json                  # Create as draft PR
 - Stores the PR URL in the manifest (`prUrl` field on the worktree entry)
 - Does NOT merge or clean up the worktree — the branch stays alive for the PR lifecycle
 
-## pogu reset
+## ppg reset
 
 Nuclear cleanup: kill all agents, remove all worktrees, wipe manifest entries. Includes safety checks.
 
 ```bash
-pogu reset --json                    # Reset (refuses if unmerged/un-PR'd work exists)
-pogu reset --force --json            # Force reset even with unmerged work
-pogu reset --force --prune --json    # Force reset + git worktree prune
+ppg reset --json                    # Reset (refuses if unmerged/un-PR'd work exists)
+ppg reset --force --json            # Force reset even with unmerged work
+ppg reset --force --prune --json    # Force reset + git worktree prune
 ```
 
 **Options:**
@@ -239,16 +239,16 @@ pogu reset --force --prune --json    # Force reset + git worktree prune
 
 **Errors:** `NOT_INITIALIZED`, `AGENTS_RUNNING` (without `--force`, when unmerged work exists)
 
-## pogu merge
+## ppg merge
 
 Merge a worktree's branch back into its base branch. Default strategy is squash.
 
 ```bash
-pogu merge <wt-id> --json                          # Squash merge + cleanup
-pogu merge <wt-id> --strategy no-ff --json          # Merge commit (preserves history)
-pogu merge <wt-id> --no-cleanup --json              # Merge but keep worktree alive
-pogu merge <wt-id> --dry-run                        # Preview without doing anything
-pogu merge <wt-id> --force --json                   # Merge even if agents aren't done
+ppg merge <wt-id> --json                          # Squash merge + cleanup
+ppg merge <wt-id> --strategy no-ff --json          # Merge commit (preserves history)
+ppg merge <wt-id> --no-cleanup --json              # Merge but keep worktree alive
+ppg merge <wt-id> --dry-run                        # Preview without doing anything
+ppg merge <wt-id> --force --json                   # Merge even if agents aren't done
 ```
 
 **JSON output:**
@@ -256,7 +256,7 @@ pogu merge <wt-id> --force --json                   # Merge even if agents aren'
 {
   "success": true,
   "worktreeId": "wt-abc123",
-  "branch": "pogu/task-name",
+  "branch": "ppg/task-name",
   "baseBranch": "main",
   "strategy": "squash",
   "cleaned": true
@@ -265,24 +265,24 @@ pogu merge <wt-id> --force --json                   # Merge even if agents aren'
 
 **Errors:** `WORKTREE_NOT_FOUND`, merge conflict (git error), agents still running (without `--force`)
 
-Cleanup sequence: kill tmux window, teardown env, `git worktree remove --force`, `git branch -D pogu/<name>`, set manifest status `cleaned`.
+Cleanup sequence: kill tmux window, teardown env, `git worktree remove --force`, `git branch -D ppg/<name>`, set manifest status `cleaned`.
 
-## pogu swarm
+## ppg swarm
 
-Run a predefined swarm template — spawns multiple agents from `.pogu/swarms/` with prompts from `.pogu/prompts/`.
+Run a predefined swarm template — spawns multiple agents from `.pg/swarms/` with prompts from `.pg/prompts/`.
 
 ```bash
 # Run a swarm template (creates new worktree, spawns all agents)
-pogu swarm code-review --var CONTEXT="Review the auth module" --json --no-open
+ppg swarm code-review --var CONTEXT="Review the auth module" --json --no-open
 
 # Run a swarm against an existing worktree (e.g., review a PR's worktree)
-pogu swarm code-review --worktree wt-abc123 --var CONTEXT="Review PR #42" --json --no-open
+ppg swarm code-review --worktree wt-abc123 --var CONTEXT="Review PR #42" --json --no-open
 
 # Override worktree name
-pogu swarm code-review --name "auth-review" --var CONTEXT="Review auth changes" --json --no-open
+ppg swarm code-review --name "auth-review" --var CONTEXT="Review auth changes" --json --no-open
 
 # Target by worktree name
-pogu swarm code-review --worktree feature-auth --var CONTEXT="Review auth feature" --json --no-open
+ppg swarm code-review --worktree feature-auth --var CONTEXT="Review auth feature" --json --no-open
 ```
 
 **Options:**
@@ -302,22 +302,22 @@ pogu swarm code-review --worktree feature-auth --var CONTEXT="Review auth featur
   "success": true,
   "swarm": "code-review",
   "strategy": "shared",
-  "worktree": { "id": "wt-abc123", "name": "code-review", "branch": "pogu/code-review", "path": "/path/.worktrees/wt-abc123", "tmuxWindow": "pogu-repo:1" },
+  "worktree": { "id": "wt-abc123", "name": "code-review", "branch": "ppg/code-review", "path": "/path/.worktrees/wt-abc123", "tmuxWindow": "ppg-repo:1" },
   "agents": [
-    { "id": "ag-xyz12345", "tmuxTarget": "pogu-repo:1" },
-    { "id": "ag-abc67890", "tmuxTarget": "pogu-repo:2" }
+    { "id": "ag-xyz12345", "tmuxTarget": "ppg-repo:1" },
+    { "id": "ag-abc67890", "tmuxTarget": "ppg-repo:2" }
   ]
 }
 ```
 
 **Errors:** `NOT_INITIALIZED`, `INVALID_ARGS` (missing template or prompt file), `WORKTREE_NOT_FOUND`
 
-## pogu list swarms
+## ppg list swarms
 
 List available swarm templates.
 
 ```bash
-pogu list swarms --json
+ppg list swarms --json
 ```
 
 **JSON output:**
@@ -325,45 +325,45 @@ pogu list swarms --json
 { "swarms": [{ "name": "code-review", "description": "Multi-perspective code review", "strategy": "shared", "agents": 3 }] }
 ```
 
-## pogu logs
+## ppg logs
 
 View an agent's tmux pane output.
 
 ```bash
-pogu logs <agent-id> --json                 # Last 100 lines
-pogu logs <agent-id> --lines 500 --json     # Last 500 lines
-pogu logs <agent-id> --full --json          # Full history
-pogu logs <agent-id> --follow --json        # Follow output (poll every 1s)
+ppg logs <agent-id> --json                 # Last 100 lines
+ppg logs <agent-id> --lines 500 --json     # Last 500 lines
+ppg logs <agent-id> --full --json          # Full history
+ppg logs <agent-id> --follow --json        # Follow output (poll every 1s)
 ```
 
 **JSON output:**
 ```json
-{ "agentId": "ag-xyz12345", "status": "running", "tmuxTarget": "pogu-repo:1", "output": "pane content..." }
+{ "agentId": "ag-xyz12345", "status": "running", "tmuxTarget": "ppg-repo:1", "output": "pane content..." }
 ```
 
-## pogu worktree create
+## ppg worktree create
 
 Create a standalone worktree without spawning any agents. Useful when you want to set up the worktree first, then add agents later.
 
 ```bash
-pogu worktree create --name <name> --json
-pogu worktree create --name <name> --base <branch> --json
+ppg worktree create --name <name> --json
+ppg worktree create --name <name> --base <branch> --json
 ```
 
 **JSON output:**
 ```json
 {
   "success": true,
-  "worktree": { "id": "wt-abc123", "name": "task-name", "branch": "pogu/task-name", "baseBranch": "main", "path": "/path/.worktrees/wt-abc123" }
+  "worktree": { "id": "wt-abc123", "name": "task-name", "branch": "ppg/task-name", "baseBranch": "main", "path": "/path/.worktrees/wt-abc123" }
 }
 ```
 
-## pogu list templates
+## ppg list templates
 
 List available prompt templates.
 
 ```bash
-pogu list templates --json
+ppg list templates --json
 ```
 
 **JSON output:**
@@ -371,15 +371,15 @@ pogu list templates --json
 { "templates": [{ "name": "default", "description": "Task template", "variables": ["TASK_NAME", "PROMPT", "WORKTREE_PATH"] }] }
 ```
 
-## pogu wait
+## ppg wait
 
 Block until agents reach a terminal state. Useful as an alternative to manual polling.
 
 ```bash
-pogu wait --all --json                    # Wait for all agents
-pogu wait <wt-id> --json                  # Wait for agents in one worktree
-pogu wait --all --timeout 300 --json      # 5-minute timeout
-pogu wait --all --interval 10 --json      # Poll every 10s (default: 5s)
+ppg wait --all --json                    # Wait for all agents
+ppg wait <wt-id> --json                  # Wait for agents in one worktree
+ppg wait --all --timeout 300 --json      # 5-minute timeout
+ppg wait --all --interval 10 --json      # Poll every 10s (default: 5s)
 ```
 
 **Options:**
@@ -393,14 +393,14 @@ pogu wait --all --interval 10 --json      # Poll every 10s (default: 5s)
 
 **Errors:** `WAIT_TIMEOUT` (timeout elapsed), `AGENTS_FAILED` (agents ended in failed/lost state)
 
-## pogu send
+## ppg send
 
 Send text or raw key sequences to an agent's tmux pane.
 
 ```bash
-pogu send <agent-id> "yes" --json         # Send text + Enter
-pogu send <agent-id> "y" --no-enter       # Text without Enter
-pogu send <agent-id> "C-c" --keys         # Send raw tmux keys (e.g., Ctrl-C)
+ppg send <agent-id> "yes" --json         # Send text + Enter
+ppg send <agent-id> "y" --no-enter       # Text without Enter
+ppg send <agent-id> "C-c" --keys         # Send raw tmux keys (e.g., Ctrl-C)
 ```
 
 **Options:**
@@ -411,14 +411,14 @@ pogu send <agent-id> "C-c" --keys         # Send raw tmux keys (e.g., Ctrl-C)
 | `--no-enter` | Do not append Enter after the text |
 | `--json` | JSON output |
 
-## pogu restart
+## ppg restart
 
 Restart a failed or killed agent in its existing worktree.
 
 ```bash
-pogu restart <agent-id> --json                        # Restart with original prompt
-pogu restart <agent-id> --prompt "Try again" --json   # Override prompt
-pogu restart <agent-id> --agent codex --json           # Override agent type
+ppg restart <agent-id> --json                        # Restart with original prompt
+ppg restart <agent-id> --prompt "Try again" --json   # Override prompt
+ppg restart <agent-id> --agent codex --json           # Override agent type
 ```
 
 **Options:**
@@ -432,14 +432,14 @@ pogu restart <agent-id> --agent codex --json           # Override agent type
 
 **Errors:** `AGENT_NOT_FOUND`
 
-## pogu diff
+## ppg diff
 
 Show changes made in a worktree branch compared to its base.
 
 ```bash
-pogu diff <wt-id> --json                  # Full diff
-pogu diff <wt-id> --stat --json           # Diffstat summary
-pogu diff <wt-id> --name-only             # Changed file names only
+ppg diff <wt-id> --json                  # Full diff
+ppg diff <wt-id> --stat --json           # Diffstat summary
+ppg diff <wt-id> --name-only             # Changed file names only
 ```
 
 **Options:**
@@ -452,15 +452,15 @@ pogu diff <wt-id> --name-only             # Changed file names only
 
 **Errors:** `WORKTREE_NOT_FOUND`
 
-## pogu clean
+## ppg clean
 
 Remove worktrees in terminal states (merged/cleaned, optionally failed).
 
 ```bash
-pogu clean --json                         # Clean merged/cleaned worktrees
-pogu clean --all --json                   # Also clean failed worktrees
-pogu clean --dry-run                      # Preview what would be removed
-pogu clean --prune                        # Also run git worktree prune
+ppg clean --json                         # Clean merged/cleaned worktrees
+ppg clean --all --json                   # Also clean failed worktrees
+ppg clean --dry-run                      # Preview what would be removed
+ppg clean --prune                        # Also run git worktree prune
 ```
 
 **Options:**
@@ -472,13 +472,13 @@ pogu clean --prune                        # Also run git worktree prune
 | `--prune` | Also run `git worktree prune` |
 | `--json` | JSON output |
 
-## pogu attach
+## ppg attach
 
 Open a terminal attached to a worktree or agent tmux pane.
 
 ```bash
-pogu attach <wt-id-or-name>              # Attach to worktree's tmux window
-pogu attach <agent-id>                   # Attach to agent's tmux pane
+ppg attach <wt-id-or-name>              # Attach to worktree's tmux window
+ppg attach <agent-id>                   # Attach to agent's tmux pane
 ```
 
 ## Error Codes
@@ -487,12 +487,12 @@ pogu attach <agent-id>                   # Attach to agent's tmux pane
 |------|---------|----------|
 | `TMUX_NOT_FOUND` | tmux not installed | Fatal — user must install tmux |
 | `NOT_GIT_REPO` | Not inside a git repository | Fatal — user must cd to a repo |
-| `NOT_INITIALIZED` | `.pogu/` directory missing | Auto-fix: run `pogu init --json` |
+| `NOT_INITIALIZED` | `.pg/` directory missing | Auto-fix: run `ppg init --json` |
 | `MANIFEST_LOCK` | Could not acquire manifest lock | Retry after brief delay (rare) |
-| `WORKTREE_NOT_FOUND` | Worktree ID/name not in manifest | Check `pogu status --json` for valid IDs |
-| `AGENT_NOT_FOUND` | Agent ID not in manifest | Check `pogu status --json` for valid IDs |
+| `WORKTREE_NOT_FOUND` | Worktree ID/name not in manifest | Check `ppg status --json` for valid IDs |
+| `AGENT_NOT_FOUND` | Agent ID not in manifest | Check `ppg status --json` for valid IDs |
 | `AGENTS_RUNNING` | Agents still running (e.g., merge without `--force`) | Wait for agents or use `--force` |
-| `WAIT_TIMEOUT` | `pogu wait` timed out before agents finished | Increase `--timeout` or kill stuck agents |
+| `WAIT_TIMEOUT` | `ppg wait` timed out before agents finished | Increase `--timeout` or kill stuck agents |
 | `AGENTS_FAILED` | One or more agents ended in failed/lost state | Check logs, restart, or skip |
 | `MERGE_FAILED` | Git merge conflict or other merge error | Resolve conflict manually or skip |
 | `INVALID_ARGS` | Invalid command arguments | Check command usage |

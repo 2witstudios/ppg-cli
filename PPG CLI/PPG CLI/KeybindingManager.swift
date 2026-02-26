@@ -101,7 +101,7 @@ struct StoredBinding: Codable {
 final class KeybindingManager {
     static let shared = KeybindingManager()
 
-    private let defaultsKey = "PoguCustomKeybindings"
+    private let defaultsKey = "PPGCustomKeybindings"
 
     private var customBindings: [String: StoredBinding] = [:]
 

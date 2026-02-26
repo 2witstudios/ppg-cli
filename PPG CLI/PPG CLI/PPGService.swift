@@ -1,7 +1,7 @@
 import Foundation
 
-nonisolated class PoguService: @unchecked Sendable {
-    static let shared = PoguService()
+nonisolated class PPGService: @unchecked Sendable {
+    static let shared = PPGService()
     static let minimumTmuxVersionForCodexInputTheme = "3.5"
 
     /// Read manifest from the given path. Thread-safe: does not access shared mutable state.
@@ -22,14 +22,14 @@ nonisolated class PoguService: @unchecked Sendable {
         let stderr: String
     }
 
-    func runPoguCommand(_ args: String, projectRoot: String) -> CommandResult {
+    func runPPGCommand(_ args: String, projectRoot: String) -> CommandResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/zsh")
         let cmd = """
         if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
         [ -f ~/.zprofile ] && source ~/.zprofile; \
         [ -f ~/.zshrc ] && source ~/.zshrc; \
-        cd \(shellEscape(projectRoot)) && pogu \(args)
+        cd \(shellEscape(projectRoot)) && ppg \(args)
         """
         task.arguments = ["-c", cmd]
 
@@ -54,7 +54,7 @@ nonisolated class PoguService: @unchecked Sendable {
         )
     }
 
-    /// Check if pogu CLI is available in the user's PATH.
+    /// Check if ppg CLI is available in the user's PATH.
     func checkCLIAvailable() -> (available: Bool, version: String?) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -62,7 +62,7 @@ nonisolated class PoguService: @unchecked Sendable {
         if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
         [ -f ~/.zprofile ] && source ~/.zprofile; \
         [ -f ~/.zshrc ] && source ~/.zshrc; \
-        pogu --version
+        ppg --version
         """
         task.arguments = ["-c", cmd]
 
@@ -165,7 +165,7 @@ nonisolated class PoguService: @unchecked Sendable {
         return ints
     }
 
-    /// Run a git command directly in a specific directory. Faster than runPoguCommand
+    /// Run a git command directly in a specific directory. Faster than runPPGCommand
     /// since git doesn't need shell profile sourcing.
     func runGitCommand(_ args: [String], cwd: String) -> CommandResult {
         let task = Process()
@@ -203,11 +203,11 @@ nonisolated class PoguService: @unchecked Sendable {
 
     /// Check if a directory is a git repository.
     func isGitRepo(_ path: String) -> Bool {
-        let gitDir = (path as NSString).appendingPathComponent(".git")
-        return FileManager.default.fileExists(atPath: gitDir)
+        let pgDir = (path as NSString).appendingPathComponent(".git")
+        return FileManager.default.fileExists(atPath: pgDir)
     }
 
-    /// Check the npm registry for the latest published version of pointguard.
+    /// Check the npm registry for the latest published version of pure-point-guard.
     func checkLatestCLIVersion() -> String? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -215,7 +215,7 @@ nonisolated class PoguService: @unchecked Sendable {
         if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
         [ -f ~/.zprofile ] && source ~/.zprofile; \
         [ -f ~/.zshrc ] && source ~/.zshrc; \
-        npm view pointguard version
+        npm view pure-point-guard version
         """
         task.arguments = ["-c", cmd]
 
@@ -236,7 +236,7 @@ nonisolated class PoguService: @unchecked Sendable {
         return (version?.isEmpty == false) ? version : nil
     }
 
-    /// Install the latest version of pointguard globally via npm.
+    /// Install the latest version of pure-point-guard globally via npm.
     func updateCLI() -> (success: Bool, output: String) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -244,7 +244,7 @@ nonisolated class PoguService: @unchecked Sendable {
         if [ -x /usr/libexec/path_helper ]; then eval $(/usr/libexec/path_helper -s); fi; \
         [ -f ~/.zprofile ] && source ~/.zprofile; \
         [ -f ~/.zshrc ] && source ~/.zshrc; \
-        npm install -g pointguard@latest 2>&1
+        npm install -g pure-point-guard@latest 2>&1
         """
         task.arguments = ["-c", cmd]
 
@@ -264,9 +264,9 @@ nonisolated class PoguService: @unchecked Sendable {
         return (task.terminationStatus == 0, output)
     }
 
-    /// Run `pogu init` in the given directory. Returns true on success.
+    /// Run `ppg init` in the given directory. Returns true on success.
     func initProject(at projectRoot: String) -> Bool {
-        let result = runPoguCommand("init --json", projectRoot: projectRoot)
+        let result = runPPGCommand("init --json", projectRoot: projectRoot)
         return result.exitCode == 0
     }
 

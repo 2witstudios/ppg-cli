@@ -55,7 +55,7 @@ class DashboardSession {
     private var agentCounter = 0
 
     /// Serial queue for all disk I/O — keeps file reads/writes off the main thread.
-    private let ioQueue = DispatchQueue(label: "pogu.dashboard-session.io", qos: .utility)
+    private let ioQueue = DispatchQueue(label: "ppg.dashboard-session.io", qos: .utility)
     /// Pending debounced write work item (cancelled + replaced on each mutation).
     private var pendingWrite: DispatchWorkItem?
     /// Debounce interval for disk writes (seconds).
@@ -73,7 +73,7 @@ class DashboardSession {
         let entryId = "da-\(generateId(6))"
         let sid = UUID().uuidString.lowercased()
 
-        let effectiveSession = sessionName.isEmpty ? "pogu" : sessionName
+        let effectiveSession = sessionName.isEmpty ? "ppg" : sessionName
         let windowName = "\(variant.id)-\(agentCounter)"
         let tmuxTarget = createTmuxWindow(sessionName: effectiveSession, windowName: windowName, cwd: workingDir)
 
@@ -95,7 +95,7 @@ class DashboardSession {
             }
             if variant.needsConductorContext, parentWorktreeId == nil {
                 let contextPath = ((projectRoot as NSString)
-                    .appendingPathComponent(".pogu") as NSString)
+                    .appendingPathComponent(".pg") as NSString)
                     .appendingPathComponent("conductor-context.md")
                 if FileManager.default.fileExists(atPath: contextPath) {
                     agentCmd += " --append-system-prompt \"$(cat \(shellEscape(contextPath)))\""
@@ -224,8 +224,8 @@ class DashboardSession {
 
     private var persistencePath: String? {
         guard !projectRoot.isEmpty, projectRoot != "/" else { return nil }
-        let poguDir = (projectRoot as NSString).appendingPathComponent(".pogu")
-        return (poguDir as NSString).appendingPathComponent("dashboard-sessions.json")
+        let pgDir = (projectRoot as NSString).appendingPathComponent(".pg")
+        return (pgDir as NSString).appendingPathComponent("dashboard-sessions.json")
     }
 
     private func saveToDisk() {
@@ -373,7 +373,7 @@ class DashboardSession {
         let envPairs = [
             ("COLORTERM", "truecolor"),
             ("COLORFGBG", colorFgBg),
-            ("TERM_PROGRAM", "pogu"),
+            ("TERM_PROGRAM", "ppg-cli"),
         ]
         return envPairs
             .map { key, value in "export \(key)=\(shellEscape(value))" }

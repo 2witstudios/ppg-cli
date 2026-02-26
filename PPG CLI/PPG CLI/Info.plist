@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
     <key>SUFeedURL</key>
-    <string>https://2witstudios.github.io/pogu/appcast.xml</string>
+    <string>https://2witstudios.github.io/ppg-cli/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>tZRNVhve85XKx6Z/e0Wh6fS5elWl1PBdnCfW+gPVwKI=</string>
     <key>SUEnableAutomaticChecks</key>

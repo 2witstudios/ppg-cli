@@ -26,7 +26,7 @@ describe('truncateBody', () => {
 
     expect(result.length).toBeLessThan(body.length);
     expect(result).toContain('[Truncated');
-    expect(result).toContain('.pogu/results/');
+    expect(result).toContain('.pg/results/');
     expect(result.startsWith('x'.repeat(60_000))).toBe(true);
   });
 

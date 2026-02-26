@@ -3,16 +3,16 @@ import { renderTemplate, type TemplateContext } from './template.js';
 
 const baseContext: TemplateContext = {
   WORKTREE_PATH: '/tmp/wt',
-  BRANCH: 'pogu/feat',
+  BRANCH: 'ppg/feat',
   AGENT_ID: 'ag-test1234',
-  RESULT_FILE: '/tmp/.pogu/results/ag-test1234.md',
+  RESULT_FILE: '/tmp/.pg/results/ag-test1234.md',
   PROJECT_ROOT: '/tmp/project',
 };
 
 describe('renderTemplate', () => {
   test('given basic placeholders, should substitute values', () => {
     const result = renderTemplate('Path: {{WORKTREE_PATH}}, Branch: {{BRANCH}}', baseContext);
-    expect(result).toBe('Path: /tmp/wt, Branch: pogu/feat');
+    expect(result).toBe('Path: /tmp/wt, Branch: ppg/feat');
   });
 
   test('given missing vars, should leave placeholder unchanged', () => {
@@ -32,7 +32,7 @@ describe('renderTemplate', () => {
 
   test('given adjacent placeholders, should substitute both', () => {
     const result = renderTemplate('{{AGENT_ID}}{{BRANCH}}', baseContext);
-    expect(result).toBe('ag-test1234pogu/feat');
+    expect(result).toBe('ag-test1234ppg/feat');
   });
 
   test('given multiple occurrences of same var, should replace all', () => {

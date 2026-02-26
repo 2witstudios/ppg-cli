@@ -3,9 +3,9 @@
      xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
      xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
-    <title>Pogu CLI Dashboard Updates</title>
-    <link>https://github.com/2witstudios/pogu-cli</link>
-    <description>Updates for Pogu CLI Dashboard</description>
+    <title>PPG CLI Dashboard Updates</title>
+    <link>https://github.com/2witstudios/ppg-cli</link>
+    <description>Updates for PPG CLI Dashboard</description>
     <language>en</language>
   </channel>
 </rss>

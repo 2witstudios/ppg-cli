@@ -27,8 +27,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window.toolbarStyle = .unified
 
         // Launch flow: check prerequisites, then restore projects or show picker
-        let cli = PoguService.shared.checkCLIAvailable()
-        let tmux = PoguService.shared.checkTmuxAvailable()
+        let cli = PPGService.shared.checkCLIAvailable()
+        let tmux = PPGService.shared.checkTmuxAvailable()
 
         if cli.available && tmux.available && tmux.supportsCodexInputTheme {
             proceedToProjects()
@@ -58,7 +58,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func showSetup() {
         let frame = window.frame
-        window.title = "pogu — Setup"
+        window.title = "ppg — Setup"
         let setup = SetupViewController()
         setup.onReady = { [weak self] in
             self?.proceedToProjects()
@@ -70,14 +70,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func showDashboard() {
         let frame = window.frame
         let activeProject = OpenProjects.shared.projects.first
-        window.title = activeProject.map { $0.projectName } ?? "pogu"
+        window.title = activeProject.map { $0.projectName } ?? "ppg"
         window.contentViewController = DashboardSplitViewController()
         window.setFrame(frame, display: true)
     }
 
     private func showProjectPicker() {
         let frame = window.frame
-        window.title = "pogu — Select Project"
+        window.title = "ppg — Select Project"
         let picker = ProjectPickerViewController()
         picker.onProjectSelected = { [weak self] root in
             OpenProjects.shared.add(root: root)
@@ -95,7 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
 
-        appMenu.addItem(withTitle: "About Pogu",
+        appMenu.addItem(withTitle: "About PPG CLI",
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: "")
 
@@ -110,7 +110,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         appMenu.addItem(.separator())
 
-        let quitItem = appMenu.addItem(withTitle: "Quit Pogu",
+        let quitItem = appMenu.addItem(withTitle: "Quit PPG CLI",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q")
         quitItem.tag = kMenuTagQuit
@@ -319,28 +319,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let path = url.path
 
         if !RecentProjects.shared.isValidProject(path) {
-            // Not initialized — offer to run pogu init
-            guard PoguService.shared.isGitRepo(path) else {
+            // Not initialized — offer to run ppg init
+            guard PPGService.shared.isGitRepo(path) else {
                 let alert = NSAlert()
                 alert.messageText = "Not a Git Repository"
-                alert.informativeText = "pogu requires a git repository. Initialize one with 'git init' first."
+                alert.informativeText = "ppg requires a git repository. Initialize one with 'git init' first."
                 alert.alertStyle = .warning
                 alert.runModal()
                 return
             }
 
             let alert = NSAlert()
-            alert.messageText = "Initialize Pogu?"
-            alert.informativeText = "This directory isn't set up for pogu yet. Initialize it now?"
+            alert.messageText = "Initialize PPG?"
+            alert.informativeText = "This directory isn't set up for ppg yet. Initialize it now?"
             alert.addButton(withTitle: "Initialize")
             alert.addButton(withTitle: "Cancel")
 
             guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-            guard PoguService.shared.initProject(at: path) else {
+            guard PPGService.shared.initProject(at: path) else {
                 let errAlert = NSAlert()
                 errAlert.messageText = "Initialization Failed"
-                errAlert.informativeText = "pogu init failed. Make sure pogu CLI and tmux are installed."
+                errAlert.informativeText = "ppg init failed. Make sure ppg CLI and tmux are installed."
                 errAlert.alertStyle = .critical
                 errAlert.runModal()
                 return
@@ -378,7 +378,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func checkCLIVersion(installedVersion: String) {
         DispatchQueue.global(qos: .utility).async {
-            guard let latest = PoguService.shared.checkLatestCLIVersion() else { return }
+            guard let latest = PPGService.shared.checkLatestCLIVersion() else { return }
             guard Self.isVersion(installed: installedVersion, olderThan: latest) else { return }
 
             let dismissedValue = UserDefaults.standard.string(forKey: Self.cliUpdateDismissedKey)
@@ -408,7 +408,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func showCLIUpdateAlert(installed: String, latest: String) {
         let alert = NSAlert()
         alert.messageText = "CLI Update Available"
-        alert.informativeText = "pogu CLI \(latest) is available (you have \(installed)). Update now?"
+        alert.informativeText = "ppg CLI \(latest) is available (you have \(installed)). Update now?"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Update Now")
         alert.addButton(withTitle: "Later")
@@ -424,20 +424,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func runCLIUpdate() {
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = PoguService.shared.updateCLI()
-            let newVersion = PoguService.shared.checkCLIAvailable().version
+            let result = PPGService.shared.updateCLI()
+            let newVersion = PPGService.shared.checkCLIAvailable().version
 
             DispatchQueue.main.async {
                 let alert = NSAlert()
                 if result.success, let v = newVersion {
                     alert.messageText = "CLI Updated"
-                    alert.informativeText = "pogu CLI updated to \(v)."
+                    alert.informativeText = "ppg CLI updated to \(v)."
                     alert.alertStyle = .informational
                     // Clear any stored dismissal since versions changed
                     UserDefaults.standard.removeObject(forKey: Self.cliUpdateDismissedKey)
                 } else {
                     alert.messageText = "Update Failed"
-                    alert.informativeText = "Could not update pogu CLI.\n\n\(result.output.prefix(500))"
+                    alert.informativeText = "Could not update ppg CLI.\n\n\(result.output.prefix(500))"
                     alert.alertStyle = .warning
                 }
                 alert.runModal()

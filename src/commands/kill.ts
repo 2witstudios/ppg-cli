@@ -5,7 +5,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, excludeSelf } from '../core/self.js';
 import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { PoguError, NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PgError, NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { AgentEntry } from '../types/manifest.js';
 
@@ -23,7 +23,7 @@ export async function killCommand(options: KillOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
   if (!options.agent && !options.worktree && !options.all) {
-    throw new PoguError('One of --agent, --worktree, or --all is required', 'INVALID_ARGS');
+    throw new PgError('One of --agent, --worktree, or --all is required', 'INVALID_ARGS');
   }
 
   // Capture self-identification once at the start
@@ -61,7 +61,7 @@ async function killSingleAgent(
   if (selfPaneId && paneMap) {
     const { skipped } = excludeSelf([agent], selfPaneId, paneMap);
     if (skipped.length > 0) {
-      warn(`Cannot kill agent ${agentId} — it contains the current pogu process`);
+      warn(`Cannot kill agent ${agentId} — it contains the current ppg process`);
       if (options.json) {
         output({ success: false, skipped: [agentId], reason: 'self-protection' }, true);
       }
@@ -143,7 +143,7 @@ async function killWorktreeAgents(
     toKill = safe;
     for (const a of skipped) {
       skippedIds.push(a.id);
-      warn(`Skipping agent ${a.id} — contains current pogu process`);
+      warn(`Skipping agent ${a.id} — contains current ppg process`);
     }
   }
 
@@ -235,7 +235,7 @@ async function killAllAgents(
     toKill = safe;
     for (const a of skipped) {
       skippedIds.push(a.id);
-      warn(`Skipping agent ${a.id} — contains current pogu process`);
+      warn(`Skipping agent ${a.id} — contains current ppg process`);
     }
   }
 

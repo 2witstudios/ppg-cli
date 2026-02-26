@@ -4,65 +4,65 @@ The conductor loop has 5 phases: Spawn, Poll, Aggregate, Present, Summary.
 
 ## Phase 1: Spawn
 
-For each task, run `pogu spawn` and capture the JSON output.
+For each task, run `ppg spawn` and capture the JSON output.
 
 ```bash
-pogu spawn --name "<name>" --prompt "<self-contained prompt>" --json --no-open
+ppg spawn --name "<name>" --prompt "<self-contained prompt>" --json --no-open
 ```
 
 **Track the output.** Each spawn returns:
 ```json
 {
   "success": true,
-  "worktree": { "id": "wt-abc123", "name": "task-name", "branch": "pogu/task-name", "path": "/path/to/.worktrees/wt-abc123", "tmuxWindow": "pogu-project:1" },
-  "agents": [{ "id": "ag-xyz12345", "tmuxTarget": "pogu-project:1" }]
+  "worktree": { "id": "wt-abc123", "name": "task-name", "branch": "ppg/task-name", "path": "/path/to/.worktrees/wt-abc123", "tmuxWindow": "ppg-project:1" },
+  "agents": [{ "id": "ag-xyz12345", "tmuxTarget": "ppg-project:1" }]
 }
 ```
 
 **Store a tracking table** with: worktree ID, agent IDs, name, and branch for each spawned task.
 
-**Swarm templates** — If a matching swarm template exists in `.pogu/swarms/`, prefer `pogu swarm` over manual multi-spawn:
+**Swarm templates** — If a matching swarm template exists in `.pg/swarms/`, prefer `ppg swarm` over manual multi-spawn:
 ```bash
 # Use a predefined swarm template (much simpler than manual spawning)
-pogu swarm code-review --var CONTEXT="Review the auth module" --json --no-open
+ppg swarm code-review --var CONTEXT="Review the auth module" --json --no-open
 
 # Run a swarm against an existing worktree (e.g., review a PR's worktree)
-pogu swarm code-review --worktree wt-abc123 --var CONTEXT="Review PR #42" --json --no-open
+ppg swarm code-review --worktree wt-abc123 --var CONTEXT="Review PR #42" --json --no-open
 ```
 
-Check available swarms: `pogu list swarms --json`
+Check available swarms: `ppg list swarms --json`
 
 For **custom swarm mode** (when no template matches), spawn the first agent (creates the worktree), then use `--worktree <wt-id>` for subsequent agents:
 ```bash
 # First agent — creates the worktree
-pogu spawn --name "review" --prompt "Focus on code quality..." --json --no-open
+ppg spawn --name "review" --prompt "Focus on code quality..." --json --no-open
 # Additional agents — join existing worktree
-pogu spawn --worktree wt-abc123 --prompt "Focus on security..." --json --no-open
-pogu spawn --worktree wt-abc123 --prompt "Focus on performance..." --json --no-open
+ppg spawn --worktree wt-abc123 --prompt "Focus on security..." --json --no-open
+ppg spawn --worktree wt-abc123 --prompt "Focus on performance..." --json --no-open
 ```
 
 **Error handling during spawn:**
 - If spawn fails, report the error and continue with remaining tasks
-- Common errors: `NOT_INITIALIZED` (auto-fix with `pogu init`), `TMUX_NOT_FOUND` (fatal — tell user to install tmux)
+- Common errors: `NOT_INITIALIZED` (auto-fix with `ppg init`), `TMUX_NOT_FOUND` (fatal — tell user to install tmux)
 
 ## Phase 2: Poll
 
-Poll `pogu status --json` every 5 seconds until all agents reach a terminal state.
+Poll `ppg status --json` every 5 seconds until all agents reach a terminal state.
 
 ```bash
-pogu status --json
+ppg status --json
 ```
 
 Returns:
 ```json
 {
-  "session": "pogu-project",
+  "session": "ppg-project",
   "worktrees": {
     "wt-abc123": {
       "id": "wt-abc123",
       "name": "task-name",
       "status": "active",
-      "branch": "pogu/task-name",
+      "branch": "ppg/task-name",
       "agents": {
         "ag-xyz12345": {
           "id": "ag-xyz12345",
@@ -87,19 +87,19 @@ Returns:
 
 **Stop polling when:** all tracked agents are in terminal states.
 
-**Alternative — `pogu wait`:**
+**Alternative — `ppg wait`:**
 Instead of manual polling, you can block until all agents finish:
 ```bash
-pogu wait --all --json --timeout 600
+ppg wait --all --json --timeout 600
 ```
-This blocks until all agents reach a terminal state or the timeout is hit. Use manual polling (above) when you need progress updates; use `pogu wait` when you just need to block.
+This blocks until all agents reach a terminal state or the timeout is hit. Use manual polling (above) when you need progress updates; use `ppg wait` when you just need to block.
 
 ## Phase 3: Aggregate
 
 Collect results from completed agents.
 
 ```bash
-pogu aggregate --all --json
+ppg aggregate --all --json
 ```
 
 Returns:
@@ -110,7 +110,7 @@ Returns:
       "agentId": "ag-xyz12345",
       "worktreeId": "wt-abc123",
       "worktreeName": "task-name",
-      "branch": "pogu/task-name",
+      "branch": "ppg/task-name",
       "status": "completed",
       "content": "## Results\n\nThe agent's output from its result file..."
     }
@@ -152,7 +152,7 @@ Failed:
 What would you like to do?
   - Review PRs on GitHub
   - Merge remotely: "gh pr merge <url> --squash --delete-branch"
-  - Merge locally (power-user): "pogu merge <wt-id>"
+  - Merge locally (power-user): "ppg merge <wt-id>"
   - Iterate: send more prompts to agents
   - Do nothing for now
 ```
@@ -164,20 +164,20 @@ gh pr merge <url> --squash --delete-branch
 
 **When the user chooses local merge (power-user):**
 ```bash
-pogu merge <wt-id> --json
+ppg merge <wt-id> --json
 ```
 
 **Merge conflict handling:**
-- If `pogu merge` fails, capture the error
+- If `ppg merge` fails, capture the error
 - Report the conflict to the user with: branch name, conflicting files if available
 - Offer options: "resolve manually", "skip this merge", "force merge"
 - **Never auto-resolve conflicts** — the user must decide
 
 **Cleanup:**
 ```bash
-pogu reset --json        # Skips worktrees with open PRs
-pogu reset --force --json  # Force cleanup including open PRs
-pogu clean --json        # Clean only terminal-state worktrees
+ppg reset --json        # Skips worktrees with open PRs
+ppg reset --force --json  # Force cleanup including open PRs
+ppg clean --json        # Clean only terminal-state worktrees
 ```
 
 ## Phase 5: Summary

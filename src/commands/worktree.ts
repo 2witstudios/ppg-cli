@@ -23,7 +23,7 @@ export async function worktreeCreateCommand(options: WorktreeCreateOptions): Pro
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
   const name = options.name ? normalizeName(options.name, wtId) : wtId;
-  const branchName = `pogu/${name}`;
+  const branchName = `ppg/${name}`;
 
   // Create git worktree
   info(`Creating worktree ${wtId} on branch ${branchName}`);
@@ -67,6 +67,6 @@ export async function worktreeCreateCommand(options: WorktreeCreateOptions): Pro
   } else {
     success(`Created worktree ${wtId} (${name}) on branch ${branchName}`);
     info(`Path: ${wtPath}`);
-    info(`Spawn agents: pogu spawn --worktree ${wtId} --prompt "your task"`);
+    info(`Spawn agents: ppg spawn --worktree ${wtId} --prompt "your task"`);
   }
 }

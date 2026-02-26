@@ -1,14 +1,14 @@
-# pogu — pointguard
+# ppg — Pure Point Guard
 
-[![CI](https://github.com/2witstudios/pogu-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/2witstudios/pogu-cli/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/pointguard.svg)](https://www.npmjs.com/package/pointguard)
-[![license](https://img.shields.io/npm/l/pointguard.svg)](https://github.com/2witstudios/pogu-cli/blob/main/LICENSE)
+[![CI](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/2witstudios/ppg-cli/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/pure-point-guard.svg)](https://www.npmjs.com/package/pure-point-guard)
+[![license](https://img.shields.io/npm/l/pure-point-guard.svg)](https://github.com/2witstudios/ppg-cli/blob/main/LICENSE)
 
 A native macOS dashboard for orchestrating parallel AI coding agents.
 
 Spawn, monitor, and merge multiple AI agents working in parallel — each isolated in its own git worktree. Watch them all from a single window.
 
-![pogu dashboard](screenshot.png)
+![ppg dashboard](screenshot.png)
 
 ## Features
 
@@ -36,12 +36,12 @@ Spawn, monitor, and merge multiple AI agents working in parallel — each isolat
 
 ### Dashboard (macOS app)
 
-The dashboard is the primary interface. Download from [GitHub Releases](https://github.com/2witstudios/pogu-cli/releases/latest) — grab the `.dmg` file.
+The dashboard is the primary interface. Download from [GitHub Releases](https://github.com/2witstudios/ppg-cli/releases/latest) — grab the `.dmg` file.
 
 Or install via CLI:
 
 ```bash
-pogu install-dashboard
+ppg install-dashboard
 ```
 
 ### CLI (runtime engine)
@@ -49,24 +49,24 @@ pogu install-dashboard
 The CLI is the engine that powers the dashboard. Install it globally:
 
 ```bash
-npm install -g pointguard
+npm install -g pure-point-guard
 ```
 
 **Requirements:** Node.js >= 20, git, tmux (`brew install tmux`), macOS
 
 ### Claude Code integration
 
-Running `pogu init` in any project automatically installs the `/pogu` skill for Claude Code. This gives Claude the ability to orchestrate parallel agents — just type `/pogu` in any Claude Code session.
+Running `ppg init` in any project automatically installs the `/ppg` skill for Claude Code. This gives Claude the ability to orchestrate parallel agents — just type `/ppg` in any Claude Code session.
 
 ## Quick Start
 
 ```bash
-# 1. Initialize pogu in your project
+# 1. Initialize ppg in your project
 cd your-project
-pogu init
+ppg init
 
 # 2. Open the dashboard
-pogu ui
+ppg ui
 ```
 
 From the dashboard, use the command palette to spawn agents, watch their progress in real time, and merge completed work.
@@ -75,27 +75,27 @@ From the dashboard, use the command palette to spawn agents, watch their progres
 
 ```bash
 # Spawn agents
-pogu spawn --name fix-auth --prompt "Fix the authentication bug in src/auth.ts"
-pogu spawn --name add-tests --prompt "Add unit tests for src/utils/"
-pogu spawn --name update-docs --prompt "Update the API documentation"
+ppg spawn --name fix-auth --prompt "Fix the authentication bug in src/auth.ts"
+ppg spawn --name add-tests --prompt "Add unit tests for src/utils/"
+ppg spawn --name update-docs --prompt "Update the API documentation"
 
 # Check status
-pogu status
+ppg status
 
 # Collect results
-pogu aggregate --all
+ppg aggregate --all
 
 # Merge completed work
-pogu merge wt-xxxxxx
+ppg merge wt-xxxxxx
 ```
 
 ## How It Works
 
-Each `pogu spawn` creates a git worktree on a `pogu/<name>` branch, opens a tmux pane, and launches the agent. The dashboard watches the manifest file in real time — no IPC, no server.
+Each `ppg spawn` creates a git worktree on a `ppg/<name>` branch, opens a tmux pane, and launches the agent. The dashboard watches the manifest file in real time — no IPC, no server.
 
 ```
 your-project/
-├── .pogu/
+├── .pg/
 │   ├── config.yaml      # Agent and project config
 │   ├── manifest.json     # Runtime state (worktrees, agents, status)
 │   ├── templates/        # Reusable prompt templates
@@ -112,16 +112,16 @@ your-project/
 ```
 spawning → running → completed   (result file written)
                    → failed      (non-zero exit or shell prompt visible)
-                   → killed      (via pogu kill)
+                   → killed      (via ppg kill)
                    → lost        (tmux pane died unexpectedly)
 ```
 
 ## Configuration
 
-`.pogu/config.yaml`:
+`.pg/config.yaml`:
 
 ```yaml
-sessionName: pogu
+sessionName: ppg
 defaultAgent: claude
 
 agents:
@@ -146,9 +146,9 @@ agents:
     interactive: false
 
 worktreeBase: .worktrees
-templateDir: .pogu/templates
-resultDir: .pogu/results
-logDir: .pogu/logs
+templateDir: .pg/templates
+resultDir: .pg/results
+logDir: .pg/logs
 envFiles:
   - .env
   - .env.local
@@ -157,7 +157,7 @@ symlinkNodeModules: true
 
 ## Templates
 
-Templates live in `.pogu/templates/` as Markdown files with `{{VAR}}` placeholders. The prompts editor in the dashboard lets you create and edit these visually.
+Templates live in `.pg/templates/` as Markdown files with `{{VAR}}` placeholders. The prompts editor in the dashboard lets you create and edit these visually.
 
 **Built-in variables:** `{{WORKTREE_PATH}}`, `{{BRANCH}}`, `{{AGENT_ID}}`, `{{RESULT_FILE}}`, `{{PROJECT_ROOT}}`, `{{TASK_NAME}}`, `{{PROMPT}}`
 
@@ -169,43 +169,43 @@ All commands support `--json` for machine-readable output.
 
 | Command | Description |
 |---|---|
-| `pogu init` | Initialize pogu in the current git repo |
-| `pogu spawn` | Spawn a worktree with agent(s) |
-| `pogu status` | Show status of all worktrees and agents |
-| `pogu attach` | Open a terminal attached to a worktree or agent |
-| `pogu logs` | View agent output from tmux pane |
-| `pogu kill` | Kill agents and optionally remove worktrees |
-| `pogu aggregate` | Collect result files from completed agents |
-| `pogu merge` | Merge a worktree branch back into base |
-| `pogu diff` | Show changes in a worktree branch |
-| `pogu restart` | Restart a failed or killed agent |
-| `pogu send` | Send text or keystrokes to an agent pane |
-| `pogu wait` | Wait for agents to complete |
-| `pogu clean` | Remove worktrees in terminal states |
-| `pogu worktree create` | Create a standalone worktree |
-| `pogu list templates` | List available prompt templates |
-| `pogu install-dashboard` | Download and install the macOS dashboard |
-| `pogu ui` | Open the dashboard |
+| `ppg init` | Initialize ppg in the current git repo |
+| `ppg spawn` | Spawn a worktree with agent(s) |
+| `ppg status` | Show status of all worktrees and agents |
+| `ppg attach` | Open a terminal attached to a worktree or agent |
+| `ppg logs` | View agent output from tmux pane |
+| `ppg kill` | Kill agents and optionally remove worktrees |
+| `ppg aggregate` | Collect result files from completed agents |
+| `ppg merge` | Merge a worktree branch back into base |
+| `ppg diff` | Show changes in a worktree branch |
+| `ppg restart` | Restart a failed or killed agent |
+| `ppg send` | Send text or keystrokes to an agent pane |
+| `ppg wait` | Wait for agents to complete |
+| `ppg clean` | Remove worktrees in terminal states |
+| `ppg worktree create` | Create a standalone worktree |
+| `ppg list templates` | List available prompt templates |
+| `ppg install-dashboard` | Download and install the macOS dashboard |
+| `ppg ui` | Open the dashboard |
 
-Run `pogu <command> --help` for detailed options.
+Run `ppg <command> --help` for detailed options.
 
 ## Conductor Mode
 
-pogu is designed to be driven programmatically by a meta-agent (a "conductor"). All commands support `--json` for machine consumption.
+ppg is designed to be driven programmatically by a meta-agent (a "conductor"). All commands support `--json` for machine consumption.
 
 ```bash
 # 1. Spawn agents
-pogu spawn --name task-1 --prompt "Do X" --json
-pogu spawn --name task-2 --prompt "Do Y" --json
+ppg spawn --name task-1 --prompt "Do X" --json
+ppg spawn --name task-2 --prompt "Do Y" --json
 
 # 2. Wait for completion
-pogu wait --all --json
+ppg wait --all --json
 
 # 3. Aggregate results
-pogu aggregate --all --json
+ppg aggregate --all --json
 
 # 4. Merge completed work
-pogu merge wt-xxxxxx --json
+ppg merge wt-xxxxxx --json
 ```
 
 ## Contributing

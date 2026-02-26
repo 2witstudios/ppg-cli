@@ -997,7 +997,7 @@ class WorktreeDetailView: NSView {
     // MARK: - Static Helpers
 
     static func fetchDiffData(worktreePath: String) -> DiffData {
-        let service = PoguService.shared
+        let service = PPGService.shared
 
         // git status --porcelain
         let statusResult = service.runGitCommand(["status", "--porcelain"], cwd: worktreePath)

@@ -86,7 +86,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         var results: [SwarmFileInfo] = []
 
         for ctx in projects {
-            let folder = (ctx.projectRoot as NSString).appendingPathComponent(".pogu/swarms")
+            let folder = (ctx.projectRoot as NSString).appendingPathComponent(".pg/swarms")
             guard let files = try? fm.contentsOfDirectory(atPath: folder) else { continue }
             for file in files where file.hasSuffix(".yaml") || file.hasSuffix(".yml") {
                 let path = (folder as NSString).appendingPathComponent(file)
@@ -730,7 +730,7 @@ class SwarmsView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         guard projectIdx >= 0, projectIdx < projects.count else { return }
         let ctx = projects[projectIdx]
 
-        let folder = (ctx.projectRoot as NSString).appendingPathComponent(".pogu/swarms")
+        let folder = (ctx.projectRoot as NSString).appendingPathComponent(".pg/swarms")
         let fm = FileManager.default
         if !fm.fileExists(atPath: folder) {
             try? fm.createDirectory(atPath: folder, withIntermediateDirectories: true)

@@ -51,7 +51,7 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
         card.addSubview(titleLabel)
 
         // Subtitle
-        let subtitleLabel = NSTextField(labelWithString: "Select a Pogu-initialized project to get started")
+        let subtitleLabel = NSTextField(labelWithString: "Select a PPG-initialized project to get started")
         subtitleLabel.font = .systemFont(ofSize: 14)
         subtitleLabel.textColor = .tertiaryLabelColor
         subtitleLabel.alignment = .center
@@ -202,27 +202,27 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
         let path = url.path
 
         if !RecentProjects.shared.isValidProject(path) {
-            guard PoguService.shared.isGitRepo(path) else {
+            guard PPGService.shared.isGitRepo(path) else {
                 let alert = NSAlert()
                 alert.messageText = "Not a Git Repository"
-                alert.informativeText = "pogu requires a git repository. Initialize one with 'git init' first."
+                alert.informativeText = "ppg requires a git repository. Initialize one with 'git init' first."
                 alert.alertStyle = .warning
                 alert.runModal()
                 return
             }
 
             let alert = NSAlert()
-            alert.messageText = "Initialize Pogu?"
-            alert.informativeText = "This directory isn't set up for pogu yet. Initialize it now?"
+            alert.messageText = "Initialize PPG?"
+            alert.informativeText = "This directory isn't set up for ppg yet. Initialize it now?"
             alert.addButton(withTitle: "Initialize")
             alert.addButton(withTitle: "Cancel")
 
             guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-            guard PoguService.shared.initProject(at: path) else {
+            guard PPGService.shared.initProject(at: path) else {
                 let errAlert = NSAlert()
                 errAlert.messageText = "Initialization Failed"
-                errAlert.informativeText = "pogu init failed. Make sure pogu CLI and tmux are installed."
+                errAlert.informativeText = "ppg init failed. Make sure ppg CLI and tmux are installed."
                 errAlert.alertStyle = .critical
                 errAlert.runModal()
                 return

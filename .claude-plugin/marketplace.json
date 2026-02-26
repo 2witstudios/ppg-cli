@@ -1,11 +1,11 @@
 {
-  "name": "pointguard",
+  "name": "pure-point-guard",
   "owner": {
     "name": "2witstudios"
   },
   "plugins": [
     {
-      "name": "pogu",
+      "name": "ppg",
       "source": "./",
       "description": "Orchestrate parallel AI coding agents — spawn, monitor, aggregate, and merge work across isolated git worktrees",
       "version": "1.0.0",

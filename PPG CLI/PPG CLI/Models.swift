@@ -162,7 +162,7 @@ nonisolated struct LaunchConfig: Sendable {
 // MARK: - ProjectState
 
 extension Notification.Name {
-    static let projectDidChange = Notification.Name("PoguProjectDidChange")
+    static let projectDidChange = Notification.Name("PPGProjectDidChange")
 }
 
 nonisolated class ProjectState: @unchecked Sendable {
@@ -188,15 +188,15 @@ nonisolated class ProjectState: @unchecked Sendable {
         projectRoot = root
         projectName = URL(fileURLWithPath: root).lastPathComponent
 
-        let poguDir = (root as NSString).appendingPathComponent(".pogu")
-        manifestPath = (poguDir as NSString).appendingPathComponent("manifest.json")
+        let pgDir = (root as NSString).appendingPathComponent(".pg")
+        manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
 
         // Try to read sessionName from manifest
         if let data = FileManager.default.contents(atPath: manifestPath),
            let manifest = try? JSONDecoder().decode(ManifestModel.self, from: data) {
             sessionName = manifest.sessionName
         } else {
-            sessionName = "pogu"
+            sessionName = "ppg"
         }
 
         RecentProjects.shared.add(root)
@@ -212,8 +212,8 @@ nonisolated class ProjectState: @unchecked Sendable {
 nonisolated class RecentProjects: @unchecked Sendable {
     static let shared = RecentProjects()
 
-    private let key = "PoguRecentProjects"
-    private let lastOpenedKey = "PoguLastOpenedProject"
+    private let key = "PPGRecentProjects"
+    private let lastOpenedKey = "PPGLastOpenedProject"
     private let maxCount = 10
 
     var projects: [String] {
@@ -237,7 +237,7 @@ nonisolated class RecentProjects: @unchecked Sendable {
 
     func isValidProject(_ path: String) -> Bool {
         let manifestPath = (path as NSString)
-            .appendingPathComponent(".pogu")
+            .appendingPathComponent(".pg")
             .appending("/manifest.json")
         return FileManager.default.fileExists(atPath: manifestPath)
     }
@@ -261,15 +261,15 @@ class ProjectContext {
         self.projectRoot = projectRoot
         self.projectName = URL(fileURLWithPath: projectRoot).lastPathComponent
 
-        let poguDir = (projectRoot as NSString).appendingPathComponent(".pogu")
-        self.manifestPath = (poguDir as NSString).appendingPathComponent("manifest.json")
+        let pgDir = (projectRoot as NSString).appendingPathComponent(".pg")
+        self.manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
 
         // Read sessionName from manifest
         if let data = FileManager.default.contents(atPath: self.manifestPath),
            let manifest = try? JSONDecoder().decode(ManifestModel.self, from: data) {
             self.sessionName = manifest.sessionName
         } else {
-            self.sessionName = "pogu"
+            self.sessionName = "ppg"
         }
 
         self.dashboardSession = DashboardSession(projectRoot: projectRoot)
@@ -281,7 +281,7 @@ class ProjectContext {
 class OpenProjects {
     static let shared = OpenProjects()
 
-    private let key = "PoguOpenProjects"
+    private let key = "PPGOpenProjects"
     private(set) var projects: [ProjectContext] = []
 
     init() {

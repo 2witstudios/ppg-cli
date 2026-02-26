@@ -16,33 +16,33 @@
 Option A — **Swarm template** (preferred when a matching template exists):
 ```
 # Check available swarm templates
-pogu list swarms --json
+ppg list swarms --json
 
 # Run a predefined swarm
-pogu swarm code-review --var CONTEXT="Review the auth module" --json --no-open
+ppg swarm code-review --var CONTEXT="Review the auth module" --json --no-open
 
 # Run against an existing worktree
-pogu swarm code-review --worktree <wt-id> --var CONTEXT="Review PR #42" --json --no-open
+ppg swarm code-review --worktree <wt-id> --var CONTEXT="Review PR #42" --json --no-open
 ```
 
 Option B — Single spawn with `--count` (same prompt, N agents):
 ```
-pogu spawn --name "security-review" --prompt "Review for security vulnerabilities..." --count 3 --json --no-open
+ppg spawn --name "security-review" --prompt "Review for security vulnerabilities..." --count 3 --json --no-open
 ```
 
 Option C — Sequential spawns into same worktree (different prompts per agent):
 ```
 # First spawn creates the worktree
-pogu spawn --name "pr-review" --prompt "Review code quality and readability..." --json --no-open
+ppg spawn --name "pr-review" --prompt "Review code quality and readability..." --json --no-open
 # Capture worktree ID from JSON output, then:
-pogu spawn --worktree <wt-id> --prompt "Review for performance issues..." --json --no-open
-pogu spawn --worktree <wt-id> --prompt "Review test coverage gaps..." --json --no-open
+ppg spawn --worktree <wt-id> --prompt "Review for performance issues..." --json --no-open
+ppg spawn --worktree <wt-id> --prompt "Review test coverage gaps..." --json --no-open
 ```
 
 **Option A is preferred** when a matching swarm template exists. **Option C is preferred** for custom swarm workflows where each agent needs a distinct prompt.
 
 **Post-completion:**
-1. Aggregate all results: `pogu aggregate --all --json`
+1. Aggregate all results: `ppg aggregate --all --json`
 2. Synthesize findings — identify common themes, conflicts, and unique insights
 3. Present a unified summary to the user
 4. Typically NO merge — swarm output is advisory. If agents did make code changes, ask the user before merging.
@@ -71,23 +71,23 @@ pogu spawn --worktree <wt-id> --prompt "Review test coverage gaps..." --json --n
 
 **Spawn pattern:**
 ```
-pogu spawn --name "fix-auth-bug" --prompt "Fix the authentication bug where..." --json --no-open
-pogu spawn --name "add-dark-mode" --prompt "Implement dark mode toggle..." --json --no-open
-pogu spawn --name "issue-15" --prompt "Resolve issue #15: ..." --json --no-open
+ppg spawn --name "fix-auth-bug" --prompt "Fix the authentication bug where..." --json --no-open
+ppg spawn --name "add-dark-mode" --prompt "Implement dark mode toggle..." --json --no-open
+ppg spawn --name "issue-15" --prompt "Resolve issue #15: ..." --json --no-open
 ```
 
-Each command creates a separate worktree on its own `pogu/<name>` branch.
+Each command creates a separate worktree on its own `ppg/<name>` branch.
 
 **Post-completion:**
-1. Aggregate results: `pogu aggregate --all --json`
+1. Aggregate results: `ppg aggregate --all --json`
 2. Present a summary table: task name, status, branch, key findings
 3. **Stop and ask the user what to do next.** Agents already created PRs. Options:
    - Review PRs on GitHub (present the PR URLs from result files)
    - Merge remotely: `gh pr merge <url> --squash --delete-branch`
-   - Merge locally (power-user): `pogu merge <wt-id> --json`
+   - Merge locally (power-user): `ppg merge <wt-id> --json`
    - Iterate: send more prompts to agents
    - Do nothing — leave worktrees for manual review
-4. After PRs are merged: `pogu reset --json` to clean up (skips worktrees with open PRs)
+4. After PRs are merged: `ppg reset --json` to clean up (skips worktrees with open PRs)
 
 **Important:** Never auto-merge or auto-PR. Always present results and let the user choose the next step.
 

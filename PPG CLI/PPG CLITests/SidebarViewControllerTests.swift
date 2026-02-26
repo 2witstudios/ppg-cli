@@ -8,7 +8,7 @@ final class SidebarViewControllerTests: XCTestCase {
     }
 
     private func makeWorktree(id: String = "wt-1", agents: [AgentModel] = []) -> WorktreeModel {
-        WorktreeModel(id: id, name: "feature", path: "/tmp/wt", branch: "pogu/feature", status: "active", tmuxWindow: "s:1", agents: agents)
+        WorktreeModel(id: id, name: "feature", path: "/tmp/wt", branch: "ppg/feature", status: "active", tmuxWindow: "s:1", agents: agents)
     }
 
     // MARK: - Tree Structure

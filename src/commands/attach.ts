@@ -4,7 +4,7 @@ import { getPaneInfo } from '../core/tmux.js';
 import { resumeAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
-import { PoguError } from '../lib/errors.js';
+import { PgError } from '../lib/errors.js';
 import { info, success } from '../lib/output.js';
 import type { AgentEntry } from '../types/manifest.js';
 
@@ -24,7 +24,7 @@ export async function attachCommand(target: string): Promise<void> {
 
   if (wt) {
     if (!wt.tmuxWindow) {
-      throw new PoguError('Worktree has no tmux window. Spawn agents first with: pogu spawn --worktree ' + wt.id + ' --prompt "your task"', 'NO_TMUX_WINDOW');
+      throw new PgError('Worktree has no tmux window. Spawn agents first with: ppg spawn --worktree ' + wt.id + ' --prompt "your task"', 'NO_TMUX_WINDOW');
     }
     tmuxTarget = wt.tmuxWindow;
   } else {
@@ -38,7 +38,7 @@ export async function attachCommand(target: string): Promise<void> {
   }
 
   if (!tmuxTarget) {
-    throw new PoguError(`Could not resolve target: ${target}. Try a worktree ID, name, or agent ID.`, 'TARGET_NOT_FOUND');
+    throw new PgError(`Could not resolve target: ${target}. Try a worktree ID, name, or agent ID.`, 'TARGET_NOT_FOUND');
   }
 
   // Check if the pane is dead and agent has a sessionId — auto-resume
@@ -65,7 +65,7 @@ export async function attachCommand(target: string): Promise<void> {
   const insideTmux = await tmux.isInsideTmux();
 
   if (insideTmux) {
-    // Agent targets are now window targets (e.g. "pogu:3"), so use selectWindow for both
+    // Agent targets are now window targets (e.g. "ppg:3"), so use selectWindow for both
     await tmux.selectWindow(tmuxTarget);
     info(`Switched to ${tmuxTarget}`);
   } else {

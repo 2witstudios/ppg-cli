@@ -87,7 +87,7 @@ describe('uiCommand', () => {
     vi.mocked(readManifest).mockResolvedValueOnce({
       version: 1,
       projectRoot: '/tmp/test',
-      sessionName: 'pogu-test',
+      sessionName: 'ppg-test',
       worktrees: {},
       createdAt: '',
       updatedAt: '',
@@ -104,7 +104,7 @@ describe('uiCommand', () => {
     vi.mocked(readManifest).mockResolvedValueOnce({
       version: 1,
       projectRoot: '/tmp/test',
-      sessionName: 'pogu-test',
+      sessionName: 'ppg-test',
       worktrees: {},
       createdAt: '',
       updatedAt: '',

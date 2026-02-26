@@ -1,15 +1,15 @@
-export class PoguError extends Error {
+export class PgError extends Error {
   constructor(
     message: string,
     public readonly code: string,
     public readonly exitCode: number = 1,
   ) {
     super(message);
-    this.name = 'PoguError';
+    this.name = 'PgError';
   }
 }
 
-export class TmuxNotFoundError extends PoguError {
+export class TmuxNotFoundError extends PgError {
   constructor() {
     super(
       'tmux is not installed or not in PATH. Install it with: brew install tmux',
@@ -19,7 +19,7 @@ export class TmuxNotFoundError extends PoguError {
   }
 }
 
-export class NotGitRepoError extends PoguError {
+export class NotGitRepoError extends PgError {
   constructor(dir: string) {
     super(
       `Not a git repository: ${dir}`,
@@ -29,27 +29,27 @@ export class NotGitRepoError extends PoguError {
   }
 }
 
-export class NotInitializedError extends PoguError {
+export class NotInitializedError extends PgError {
   constructor(dir: string) {
     super(
-      `Point Guard not initialized in ${dir}. Run 'pogu init' first.`,
+      `Point Guard not initialized in ${dir}. Run 'ppg init' first.`,
       'NOT_INITIALIZED',
     );
     this.name = 'NotInitializedError';
   }
 }
 
-export class ManifestLockError extends PoguError {
+export class ManifestLockError extends PgError {
   constructor() {
     super(
-      'Could not acquire manifest lock. Another pogu process may be running.',
+      'Could not acquire manifest lock. Another ppg process may be running.',
       'MANIFEST_LOCK',
     );
     this.name = 'ManifestLockError';
   }
 }
 
-export class WorktreeNotFoundError extends PoguError {
+export class WorktreeNotFoundError extends PgError {
   constructor(id: string) {
     super(
       `Worktree not found: ${id}`,
@@ -59,7 +59,7 @@ export class WorktreeNotFoundError extends PoguError {
   }
 }
 
-export class AgentNotFoundError extends PoguError {
+export class AgentNotFoundError extends PgError {
   constructor(id: string) {
     super(
       `Agent not found: ${id}`,
@@ -69,14 +69,14 @@ export class AgentNotFoundError extends PoguError {
   }
 }
 
-export class MergeFailedError extends PoguError {
+export class MergeFailedError extends PgError {
   constructor(message: string) {
     super(message, 'MERGE_FAILED');
     this.name = 'MergeFailedError';
   }
 }
 
-export class GhNotFoundError extends PoguError {
+export class GhNotFoundError extends PgError {
   constructor() {
     super(
       'GitHub CLI (gh) is not installed or not in PATH. Install it with: brew install gh',
@@ -86,11 +86,11 @@ export class GhNotFoundError extends PoguError {
   }
 }
 
-export class UnmergedWorkError extends PoguError {
+export class UnmergedWorkError extends PgError {
   constructor(names: string[]) {
     const list = names.map((n) => `  ${n}`).join('\n');
     super(
-      `${names.length} worktree(s) have completed work that hasn't been merged or PR'd:\n${list}\n\nUse --force to reset anyway, or create PRs first with: pogu pr <worktree-id>`,
+      `${names.length} worktree(s) have completed work that hasn't been merged or PR'd:\n${list}\n\nUse --force to reset anyway, or create PRs first with: ppg pr <worktree-id>`,
       'UNMERGED_WORK',
     );
     this.name = 'UnmergedWorkError';

@@ -1,10 +1,10 @@
 {
-  "name": "pointguard",
+  "name": "pure-point-guard",
   "version": "0.2.2",
   "type": "module",
-  "description": "pogu — local orchestration runtime for parallel CLI coding agents",
+  "description": "Pure Point Guard — local orchestration runtime for parallel CLI coding agents",
   "bin": {
-    "pogu": "./dist/cli.js"
+    "ppg": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -22,11 +22,11 @@
   "author": "2witstudios",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/2witstudios/pogu-cli.git"
+    "url": "git+https://github.com/2witstudios/ppg-cli.git"
   },
-  "homepage": "https://github.com/2witstudios/pogu-cli#readme",
+  "homepage": "https://github.com/2witstudios/ppg-cli#readme",
   "bugs": {
-    "url": "https://github.com/2witstudios/pogu-cli/issues"
+    "url": "https://github.com/2witstudios/ppg-cli/issues"
   },
   "keywords": [
     "cli",

@@ -8,8 +8,8 @@ let TMP_ROOT: string;
 let SWARMS_DIR: string;
 
 beforeEach(async () => {
-  TMP_ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'pogu-swarm-test-'));
-  SWARMS_DIR = path.join(TMP_ROOT, '.pogu', 'swarms');
+  TMP_ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-swarm-test-'));
+  SWARMS_DIR = path.join(TMP_ROOT, '.pg', 'swarms');
   await fs.mkdir(SWARMS_DIR, { recursive: true });
 });
 

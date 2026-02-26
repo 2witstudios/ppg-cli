@@ -84,7 +84,7 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
     agentsToKill = safe;
     for (const a of skipped) {
       skippedAgentIds.push(a.id);
-      warn(`Skipping agent ${a.id} — contains current pogu process`);
+      warn(`Skipping agent ${a.id} — contains current ppg process`);
     }
   }
 
@@ -135,7 +135,7 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
 
     // Self-protection check for worktree cleanup
     if (selfPaneId && paneMap && wouldCleanupAffectSelf(wt, selfPaneId, paneMap)) {
-      warn(`Skipping cleanup of worktree ${wt.id} (${wt.name}) — contains current pogu process`);
+      warn(`Skipping cleanup of worktree ${wt.id} (${wt.name}) — contains current ppg process`);
       skippedWorktreeIds.push(wt.id);
       continue;
     }
