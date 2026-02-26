@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import os from 'node:os';
 import path from 'node:path';
 import {
   ppgDir,
@@ -15,6 +16,10 @@ import {
   agentPromptFile,
   worktreeBaseDir,
   worktreePath,
+  globalPpgDir,
+  globalPromptsDir,
+  globalTemplatesDir,
+  globalSwarmsDir,
 } from './paths.js';
 
 const ROOT = '/tmp/project';
@@ -82,5 +87,21 @@ describe('paths', () => {
     expect(worktreePath(ROOT, 'wt-abc123')).toBe(
       path.join(ROOT, '.worktrees', 'wt-abc123'),
     );
+  });
+
+  test('globalPpgDir', () => {
+    expect(globalPpgDir()).toBe(path.join(os.homedir(), '.ppg'));
+  });
+
+  test('globalPromptsDir', () => {
+    expect(globalPromptsDir()).toBe(path.join(os.homedir(), '.ppg', 'prompts'));
+  });
+
+  test('globalTemplatesDir', () => {
+    expect(globalTemplatesDir()).toBe(path.join(os.homedir(), '.ppg', 'templates'));
+  });
+
+  test('globalSwarmsDir', () => {
+    expect(globalSwarmsDir()).toBe(path.join(os.homedir(), '.ppg', 'swarms'));
   });
 });
