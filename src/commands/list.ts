@@ -114,7 +114,7 @@ async function listPromptsCommand(options: ListOptions): Promise<void> {
 
   let files: string[];
   try {
-    files = (await fs.readdir(dir)).filter((f) => f.endsWith('.md'));
+    files = (await fs.readdir(dir)).filter((f) => f.endsWith('.md')).sort();
   } catch {
     files = [];
   }

@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getRepoRoot } from '../core/worktree.js';
 import { promptsDir } from '../lib/paths.js';
@@ -18,6 +19,12 @@ export interface PromptCommandOptions {
 export async function promptCommand(promptName: string, options: PromptCommandOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
   const promptFile = path.join(promptsDir(projectRoot), `${promptName}.md`);
+
+  try {
+    await fs.access(promptFile);
+  } catch {
+    throw new PpgError(`Prompt not found: ${promptName} (expected ${promptFile})`, 'INVALID_ARGS');
+  }
 
   const spawnOpts: SpawnOptions = {
     name: options.name ?? promptName,
