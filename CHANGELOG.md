@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Dashboard CI build now uses macOS 26 runner for Liquid Glass support
-- npm package renamed to `pure-point-guard` (install: `npm i -g pure-point-guard`)
+- npm package renamed to `pointguard` (install: `npm i -g pointguard`)
 - Release workflow uses npm Trusted Publishing (OIDC provenance)
 
 ## [0.1.0] - 2026-02-23
@@ -63,8 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tmux session management: one session per project, one window per worktree, one pane per agent
 - Terminal.app auto-open on macOS via AppleScript
 - Status detection via signal-stack: result file, pane existence, pane liveness, current command
-- Native macOS dashboard app (`ppg ui`)
+- Native macOS dashboard app (`pogu ui`)
 
-[0.2.0]: https://github.com/2witstudios/ppg-cli/releases/tag/v0.2.0
-[0.1.1]: https://github.com/2witstudios/ppg-cli/releases/tag/v0.1.1
-[0.1.0]: https://github.com/2witstudios/ppg-cli/releases/tag/v0.1.0
+[0.2.0]: https://github.com/2witstudios/pogu-cli/releases/tag/v0.2.0
+[0.1.1]: https://github.com/2witstudios/pogu-cli/releases/tag/v0.1.1
+[0.1.0]: https://github.com/2witstudios/pogu-cli/releases/tag/v0.1.0

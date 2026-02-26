@@ -5,7 +5,7 @@ import { getRepoRoot, getCurrentBranch } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId } from '../core/self.js';
 import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { PgError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
+import { PoguError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import { execaEnv } from '../lib/env.js';
 
@@ -35,7 +35,7 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
   if (incomplete.length > 0 && !options.force) {
     const ids = incomplete.map((a) => a.id).join(', ');
-    throw new PgError(
+    throw new PoguError(
       `${incomplete.length} agent(s) still running: ${ids}. Use --force to merge anyway.`,
       'AGENTS_RUNNING',
     );
@@ -71,12 +71,12 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
     if (strategy === 'squash') {
       await execa('git', ['merge', '--squash', wt.branch], { ...execaEnv, cwd: projectRoot });
-      await execa('git', ['commit', '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
+      await execa('git', ['commit', '-m', `pogu: merge ${wt.name} (${wt.branch})`], {
         ...execaEnv,
         cwd: projectRoot,
       });
     } else {
-      await execa('git', ['merge', '--no-ff', wt.branch, '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
+      await execa('git', ['merge', '--no-ff', wt.branch, '-m', `pogu: merge ${wt.name} (${wt.branch})`], {
         ...execaEnv,
         cwd: projectRoot,
       });
@@ -119,7 +119,7 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
     selfProtected = cleanupResult.selfProtected;
 
     if (selfProtected) {
-      warn(`Some tmux targets skipped during cleanup — contains current ppg process`);
+      warn(`Some tmux targets skipped during cleanup — contains current pogu process`);
     }
     success(`Cleaned up worktree ${wt.id}`);
   }

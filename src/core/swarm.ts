@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import YAML from 'yaml';
 import { swarmsDir } from '../lib/paths.js';
-import { PgError } from '../lib/errors.js';
+import { PoguError } from '../lib/errors.js';
 
 export interface SwarmAgentEntry {
   prompt: string;
@@ -34,7 +34,7 @@ export async function listSwarms(projectRoot: string): Promise<string[]> {
 
 export async function loadSwarm(projectRoot: string, name: string): Promise<SwarmTemplate> {
   if (!SAFE_NAME.test(name)) {
-    throw new PgError(
+    throw new PoguError(
       `Invalid swarm template name: "${name}" — must be alphanumeric, hyphens, or underscores`,
       'INVALID_ARGS',
     );
@@ -51,7 +51,7 @@ export async function loadSwarm(projectRoot: string, name: string): Promise<Swar
     try {
       await fs.access(filePath);
     } catch {
-      throw new PgError(`Swarm template not found: ${name}`, 'INVALID_ARGS');
+      throw new PoguError(`Swarm template not found: ${name}`, 'INVALID_ARGS');
     }
   }
 
@@ -59,22 +59,22 @@ export async function loadSwarm(projectRoot: string, name: string): Promise<Swar
   const parsed = YAML.parse(raw) as SwarmTemplate;
 
   if (!parsed || typeof parsed !== 'object') {
-    throw new PgError(`Invalid swarm template: ${name} (empty or malformed YAML)`, 'INVALID_ARGS');
+    throw new PoguError(`Invalid swarm template: ${name} (empty or malformed YAML)`, 'INVALID_ARGS');
   }
 
   if (!parsed.name || !parsed.agents || !Array.isArray(parsed.agents)) {
-    throw new PgError(`Invalid swarm template: ${name} (missing name or agents)`, 'INVALID_ARGS');
+    throw new PoguError(`Invalid swarm template: ${name} (missing name or agents)`, 'INVALID_ARGS');
   }
 
   if (!SAFE_NAME.test(parsed.name)) {
-    throw new PgError(
+    throw new PoguError(
       `Invalid swarm name: "${parsed.name}" — must be alphanumeric, hyphens, or underscores`,
       'INVALID_ARGS',
     );
   }
 
   if (parsed.strategy && parsed.strategy !== 'shared' && parsed.strategy !== 'isolated') {
-    throw new PgError(
+    throw new PoguError(
       `Invalid swarm strategy: ${parsed.strategy}. Must be 'shared' or 'isolated'`,
       'INVALID_ARGS',
     );
@@ -84,13 +84,13 @@ export async function loadSwarm(projectRoot: string, name: string): Promise<Swar
   for (let i = 0; i < parsed.agents.length; i++) {
     const agent = parsed.agents[i];
     if (!agent.prompt || typeof agent.prompt !== 'string') {
-      throw new PgError(
+      throw new PoguError(
         `Invalid swarm template: ${name} — agent[${i}] missing prompt field`,
         'INVALID_ARGS',
       );
     }
     if (!SAFE_NAME.test(agent.prompt)) {
-      throw new PgError(
+      throw new PoguError(
         `Invalid prompt name: "${agent.prompt}" — must be alphanumeric, hyphens, or underscores`,
         'INVALID_ARGS',
       );

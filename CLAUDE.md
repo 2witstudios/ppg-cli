@@ -1,4 +1,4 @@
-# ppg-cli — Claude Code Instructions
+# pogu-cli — Claude Code Instructions
 
 **Read `vision.md` first** — it's the source of truth for project goals, non-goals, constraints, and architecture decisions.
 
@@ -40,11 +40,11 @@ src/
 - **Lazy command imports** — `cli.ts` uses dynamic `import()` for each command to keep startup fast
 - **Manifest locking** — Always use `updateManifest(projectRoot, updater)` for read-modify-write. Never read + write separately. Lock: 10s stale timeout, 5 retries
 - **Atomic writes** — All manifest writes go through `write-file-atomic`
-- **`PgError` hierarchy** — Typed errors with codes: `TMUX_NOT_FOUND`, `NOT_GIT_REPO`, `NOT_INITIALIZED`, `MANIFEST_LOCK`, `WORKTREE_NOT_FOUND`, `AGENT_NOT_FOUND`, `MERGE_FAILED`, `INVALID_ARGS`, `AGENTS_RUNNING`, `WAIT_TIMEOUT`, `AGENTS_FAILED`, `NO_SESSION_ID`
+- **`PoguError` hierarchy** — Typed errors with codes: `TMUX_NOT_FOUND`, `NOT_GIT_REPO`, `NOT_INITIALIZED`, `MANIFEST_LOCK`, `WORKTREE_NOT_FOUND`, `AGENT_NOT_FOUND`, `MERGE_FAILED`, `INVALID_ARGS`, `AGENTS_RUNNING`, `WAIT_TIMEOUT`, `AGENTS_FAILED`, `NO_SESSION_ID`
 - **Worktree resolution** — Use `resolveWorktree(manifest, ref)` from `core/manifest.ts` to look up worktrees by ID, name, or branch. Never duplicate the lookup pattern.
 - **Dual output** — Every command supports `--json` flag. Use `output(data, json)` and `outputError(error, json)` from `lib/output.ts`
-- **Functional style** — Pure functions, composition, `const`, destructuring, no classes except `PgError`
-- **Path helpers** — All path computation in `lib/paths.ts`: `pgDir()`, `manifestPath()`, `resultFile()`, `worktreePath()`, etc.
+- **Functional style** — Pure functions, composition, `const`, destructuring, no classes except `PoguError`
+- **Path helpers** — All path computation in `lib/paths.ts`: `poguDir()`, `manifestPath()`, `resultFile()`, `worktreePath()`, etc.
 - **Signal-stack status** — Agent status detection in `core/agent.ts:checkAgentStatus()`: result file → pane exists → pane dead → current command → running
 - **ID generation** — `worktreeId()` → `wt-{6chars}`, `agentId()` → `ag-{8chars}` (lowercase alphanumeric via nanoid)
 - **`.js` extensions in imports** — Required by NodeNext module resolution. All relative imports must include `.js` extension
@@ -61,19 +61,19 @@ src/
 
 | Concept | Description |
 |---------|-------------|
-| **Worktree** | Isolated git checkout on branch `ppg/<name>`, lives in `.worktrees/wt-{id}/` |
+| **Worktree** | Isolated git checkout on branch `pogu/<name>`, lives in `.worktrees/wt-{id}/` |
 | **Agent** | CLI process in a tmux pane, receives task via prompt file |
-| **Manifest** | `.pg/manifest.json` — runtime state: worktrees, agents, statuses, tmux targets |
-| **Config** | `.pg/config.yaml` — session name, agent definitions, directory paths |
-| **Template** | Markdown in `.pg/templates/` with `{{VAR}}` placeholders |
-| **Result file** | `.pg/results/{agentId}.md` — primary agent completion signal |
+| **Manifest** | `.pogu/manifest.json` — runtime state: worktrees, agents, statuses, tmux targets |
+| **Config** | `.pogu/config.yaml` — session name, agent definitions, directory paths |
+| **Template** | Markdown in `.pogu/templates/` with `{{VAR}}` placeholders |
+| **Result file** | `.pogu/results/{agentId}.md` — primary agent completion signal |
 
 ## Agent Lifecycle
 
 ```
 spawning → running → completed  (result file written)
                    → failed     (non-zero exit or shell prompt visible)
-                   → killed     (via ppg kill)
+                   → killed     (via pogu kill)
                    → lost       (tmux pane died unexpectedly)
 ```
 
@@ -83,12 +83,12 @@ spawning → running → completed  (result file written)
 
 ## Conductor Mode
 
-A "conductor" is a meta-agent that drives ppg programmatically:
+A "conductor" is a meta-agent that drives pogu programmatically:
 
 1. **Plan** — Break task into independent, parallelizable units
-2. **Spawn** — `ppg spawn --name <name> --prompt <task> --json`
-3. **Poll** — `ppg status --json` → check for `status: "completed"` or `status: "failed"`
-4. **Aggregate** — `ppg aggregate --all --json` → collect result files
-5. **Merge** — `ppg merge <worktree-id>` → squash merge back to base
+2. **Spawn** — `pogu spawn --name <name> --prompt <task> --json`
+3. **Poll** — `pogu status --json` → check for `status: "completed"` or `status: "failed"`
+4. **Aggregate** — `pogu aggregate --all --json` → collect result files
+5. **Merge** — `pogu merge <worktree-id>` → squash merge back to base
 
 Always use `--json` for machine-readable output. Poll status every 5s. One concern per worktree for clean merges.

@@ -6,7 +6,7 @@ nonisolated func shellEscape(_ s: String) -> String {
 }
 
 /// Returns a shell init script that sources the appropriate profile files for the given shell.
-/// Used for interactive terminals — not for internal ppg/tmux commands (those always use /bin/zsh).
+/// Used for interactive terminals — not for internal pogu/tmux commands (those always use /bin/zsh).
 nonisolated func shellProfileScript(for shellPath: String) -> String {
     let name = (shellPath as NSString).lastPathComponent
     switch name {

@@ -25,10 +25,10 @@ function makeWorktree(overrides: Partial<WorktreeEntry> = {}): WorktreeEntry {
     id: 'wt-abc123',
     name: 'test-wt',
     path: '/tmp/wt',
-    branch: 'ppg/test-wt',
+    branch: 'pogu/test-wt',
     baseBranch: 'main',
     status: 'active',
-    tmuxWindow: 'ppg:1',
+    tmuxWindow: 'pogu:1',
     agents: {},
     createdAt: new Date().toISOString(),
     ...overrides,
@@ -67,9 +67,9 @@ describe('wouldAffectSelf', () => {
   const paneMap = new Map<string, PaneInfo>();
 
   // session:window.pane entries
-  paneMap.set('ppg:1.0', makePaneInfo('%5'));
-  paneMap.set('ppg:1.1', makePaneInfo('%6'));
-  paneMap.set('ppg:2.0', makePaneInfo('%7'));
+  paneMap.set('pogu:1.0', makePaneInfo('%5'));
+  paneMap.set('pogu:1.1', makePaneInfo('%6'));
+  paneMap.set('pogu:2.0', makePaneInfo('%7'));
 
   // pane ID entries
   paneMap.set('%5', makePaneInfo('%5'));
@@ -77,19 +77,19 @@ describe('wouldAffectSelf', () => {
   paneMap.set('%7', makePaneInfo('%7'));
 
   // window entries (first pane in window)
-  paneMap.set('ppg:1', makePaneInfo('%5'));
-  paneMap.set('ppg:2', makePaneInfo('%7'));
+  paneMap.set('pogu:1', makePaneInfo('%5'));
+  paneMap.set('pogu:2', makePaneInfo('%7'));
 
   test('direct pane ID match', () => {
     expect(wouldAffectSelf('%5', selfPaneId, paneMap)).toBe(true);
   });
 
   test('pane target resolves to self', () => {
-    expect(wouldAffectSelf('ppg:1.0', selfPaneId, paneMap)).toBe(true);
+    expect(wouldAffectSelf('pogu:1.0', selfPaneId, paneMap)).toBe(true);
   });
 
   test('window-level target containing self pane', () => {
-    expect(wouldAffectSelf('ppg:1', selfPaneId, paneMap)).toBe(true);
+    expect(wouldAffectSelf('pogu:1', selfPaneId, paneMap)).toBe(true);
   });
 
   test('different pane is safe', () => {
@@ -97,15 +97,15 @@ describe('wouldAffectSelf', () => {
   });
 
   test('different window is safe', () => {
-    expect(wouldAffectSelf('ppg:2', selfPaneId, paneMap)).toBe(false);
+    expect(wouldAffectSelf('pogu:2', selfPaneId, paneMap)).toBe(false);
   });
 
   test('pane in same window but different pane is safe', () => {
-    expect(wouldAffectSelf('ppg:1.1', selfPaneId, paneMap)).toBe(false);
+    expect(wouldAffectSelf('pogu:1.1', selfPaneId, paneMap)).toBe(false);
   });
 
   test('unknown target is safe', () => {
-    expect(wouldAffectSelf('ppg:99', selfPaneId, paneMap)).toBe(false);
+    expect(wouldAffectSelf('pogu:99', selfPaneId, paneMap)).toBe(false);
   });
 });
 
@@ -114,8 +114,8 @@ describe('excludeSelf', () => {
   const paneMap = new Map<string, PaneInfo>();
   paneMap.set('%5', makePaneInfo('%5'));
   paneMap.set('%7', makePaneInfo('%7'));
-  paneMap.set('ppg:1.0', makePaneInfo('%5'));
-  paneMap.set('ppg:2.0', makePaneInfo('%7'));
+  paneMap.set('pogu:1.0', makePaneInfo('%5'));
+  paneMap.set('pogu:2.0', makePaneInfo('%7'));
 
   test('splits agents into safe and skipped', () => {
     const agents = [
@@ -148,19 +148,19 @@ describe('wouldCleanupAffectSelf', () => {
   const paneMap = new Map<string, PaneInfo>();
   paneMap.set('%5', makePaneInfo('%5'));
   paneMap.set('%7', makePaneInfo('%7'));
-  paneMap.set('ppg:1', makePaneInfo('%5'));
-  paneMap.set('ppg:1.0', makePaneInfo('%5'));
-  paneMap.set('ppg:2', makePaneInfo('%7'));
-  paneMap.set('ppg:2.0', makePaneInfo('%7'));
+  paneMap.set('pogu:1', makePaneInfo('%5'));
+  paneMap.set('pogu:1.0', makePaneInfo('%5'));
+  paneMap.set('pogu:2', makePaneInfo('%7'));
+  paneMap.set('pogu:2.0', makePaneInfo('%7'));
 
   test('returns true if worktree tmuxWindow contains self', () => {
-    const wt = makeWorktree({ tmuxWindow: 'ppg:1' });
+    const wt = makeWorktree({ tmuxWindow: 'pogu:1' });
     expect(wouldCleanupAffectSelf(wt, selfPaneId, paneMap)).toBe(true);
   });
 
   test('returns true if any agent target matches self', () => {
     const wt = makeWorktree({
-      tmuxWindow: 'ppg:2',
+      tmuxWindow: 'pogu:2',
       agents: { 'ag-1': makeAgent('ag-1', '%5') },
     });
     expect(wouldCleanupAffectSelf(wt, selfPaneId, paneMap)).toBe(true);
@@ -168,7 +168,7 @@ describe('wouldCleanupAffectSelf', () => {
 
   test('returns false when no overlap with self', () => {
     const wt = makeWorktree({
-      tmuxWindow: 'ppg:2',
+      tmuxWindow: 'pogu:2',
       agents: { 'ag-1': makeAgent('ag-1', '%7') },
     });
     expect(wouldCleanupAffectSelf(wt, selfPaneId, paneMap)).toBe(false);
