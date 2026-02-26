@@ -30,6 +30,10 @@ Spawn, monitor, and merge multiple AI agents working in parallel — each isolat
 
 **Split panes** — Run multiple agents in the same worktree with split terminal views.
 
+**Cron scheduling** — Define recurring agent tasks in `.ppg/schedules.yaml`. The daemon triggers swarms or prompts on cron expressions. Manage from the Schedules dashboard tab or `ppg cron` CLI.
+
+**Global prompts & templates** — Put prompts, templates, and swarms in `~/.ppg/` to share them across all projects. Project-local always takes precedence.
+
 **Customizable** — Appearance modes (light/dark/system), terminal font and size, keybinding customization, configurable shell.
 
 ## Install
@@ -163,6 +167,44 @@ Templates live in `.ppg/templates/` as Markdown files with `{{VAR}}` placeholder
 
 Custom variables are passed with `--var KEY=VALUE` or defined in swarm YAML.
 
+## Global Prompts & Templates
+
+Put prompts, templates, and swarms in `~/.ppg/` to make them available across all projects:
+
+```
+~/.ppg/
+├── prompts/       # Global prompt files
+├── templates/     # Global templates
+└── swarms/        # Global swarm definitions
+```
+
+Project-local files always take precedence when names conflict. Use `ppg list prompts` or `ppg list templates` to see both local and global entries.
+
+## Cron Scheduling
+
+Define recurring agent tasks in `.ppg/schedules.yaml`:
+
+```yaml
+schedules:
+  - name: nightly-review
+    swarm: code-review
+    cron: '0 2 * * *'
+    vars:
+      CONTEXT: 'Review all changes from the last 24 hours'
+  - name: hourly-lint
+    prompt: lint-check
+    cron: '0 * * * *'
+```
+
+```bash
+ppg cron start    # Start the scheduler daemon
+ppg cron list     # Show schedules with next run times
+ppg cron status   # Check daemon status
+ppg cron stop     # Stop the daemon
+```
+
+Manage schedules visually from the Schedules tab in the dashboard.
+
 ## CLI Reference
 
 All commands support `--json` for machine-readable output.
@@ -184,6 +226,12 @@ All commands support `--json` for machine-readable output.
 | `ppg clean` | Remove worktrees in terminal states |
 | `ppg worktree create` | Create a standalone worktree |
 | `ppg list templates` | List available prompt templates |
+| `ppg list prompts` | List available prompt files |
+| `ppg prompt` | Spawn an agent from a prompt file |
+| `ppg cron start` | Start the cron scheduler daemon |
+| `ppg cron stop` | Stop the cron scheduler daemon |
+| `ppg cron list` | Show configured schedules with next run times |
+| `ppg cron status` | Show daemon status and recent log entries |
 | `ppg install-dashboard` | Download and install the macOS dashboard |
 | `ppg ui` | Open the dashboard |
 
