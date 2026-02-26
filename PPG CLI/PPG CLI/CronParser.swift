@@ -89,7 +89,8 @@ struct CronParser {
             // Smart advancement: skip non-matching months
             if !cron.months.contains(month) {
                 // Advance to start of next month
-                if let nextMonth = cal.date(byAdding: .month, value: 1, to: cal.date(from: DateComponents(year: comps.year, month: month, day: 1))!) {
+                if let monthStart = cal.date(from: DateComponents(year: comps.year, month: month, day: 1)),
+                   let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart) {
                     current = nextMonth
                     continue
                 }
@@ -120,7 +121,8 @@ struct CronParser {
 
             // Smart advancement: skip non-matching hours
             if !cron.hours.contains(hour) {
-                if let nextHour = cal.date(byAdding: .hour, value: 1, to: cal.date(from: DateComponents(year: comps.year, month: month, day: day, hour: hour))!) {
+                if let hourStart = cal.date(from: DateComponents(year: comps.year, month: month, day: day, hour: hour)),
+                   let nextHour = cal.date(byAdding: .hour, value: 1, to: hourStart) {
                     current = nextHour
                     continue
                 }

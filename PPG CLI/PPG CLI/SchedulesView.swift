@@ -354,6 +354,15 @@ class SchedulesView: NSView {
         return v
     }
 
+    /// Extract the `name` value from an inline YAML flow mapping like `- { name: foo, cron: ... }`.
+    private static func extractInlineName(_ line: String) -> String? {
+        // Find "name:" and extract the value up to the next comma or closing brace
+        guard let nameRange = line.range(of: "name:") else { return nil }
+        let afterName = line[nameRange.upperBound...].trimmingCharacters(in: .whitespaces)
+        let endIdx = afterName.firstIndex(where: { $0 == "," || $0 == "}" }) ?? afterName.endIndex
+        return stripQuotes(String(afterName[afterName.startIndex..<endIdx]).trimmingCharacters(in: .whitespaces))
+    }
+
     // MARK: - Daemon Status
 
     private func checkDaemonStatus() {
@@ -656,7 +665,8 @@ class SchedulesView: NSView {
                             frequencyLabel: freqLabel
                         ))
                     }
-                    dayStart = cal.date(byAdding: .day, value: 1, to: dayStart) ?? end
+                    guard let nextDay = cal.date(byAdding: .day, value: 1, to: dayStart) else { break }
+                    dayStart = nextDay
                 }
             } else {
                 let occurrences = CronParser.occurrences(of: schedule.cronExpression, from: start, to: end)
@@ -902,11 +912,11 @@ class SchedulesView: NSView {
         let vars: [(String, String)] = isEdit ? (schedule?.vars ?? []) : []
 
         if isEdit, let oldSchedule = schedule {
-            // Remove old entry, then add new one
-            deleteScheduleEntry(oldSchedule)
+            // Atomic edit: remove old + add new in a single file write to prevent data loss
+            replaceScheduleEntry(old: oldSchedule, name: name, cron: cron, type: type, target: target, vars: vars, context: ctx)
+        } else {
+            addScheduleEntry(name: name, cron: cron, type: type, target: target, vars: vars, context: ctx)
         }
-
-        addScheduleEntry(name: name, cron: cron, type: type, target: target, vars: vars, context: ctx)
     }
 
     /// Escape a YAML scalar value — quote it if it contains special characters.
@@ -976,6 +986,44 @@ class SchedulesView: NSView {
         }
     }
 
+    /// Atomic replace: removes old entry and appends new entry in a single file write.
+    private func replaceScheduleEntry(old: ScheduleInfo, name: String, cron: String, type: String, target: String, vars: [(String, String)], context: ProjectContext) {
+        guard let content = try? String(contentsOfFile: old.filePath, encoding: .utf8) else {
+            // Fallback: just add the new entry
+            addScheduleEntry(name: name, cron: cron, type: type, target: target, vars: vars, context: context)
+            return
+        }
+
+        // Remove old entry in memory
+        let filtered = removeScheduleEntry(named: old.name, from: content)
+
+        // Build new entry
+        var entry = "  - name: \(Self.yamlEscape(name))\n"
+        entry += "    \(type): \(Self.yamlEscape(target))\n"
+        entry += "    cron: '\(cron)'\n"
+        if !vars.isEmpty {
+            entry += "    vars:\n"
+            for (k, v) in vars {
+                entry += "      \(Self.yamlEscape(k)): \(Self.yamlEscape(v))\n"
+            }
+        }
+
+        // Append new entry to filtered content
+        let base = filtered.hasSuffix("\n") ? filtered : filtered + "\n"
+        let updated = base + entry
+
+        do {
+            try updated.write(toFile: old.filePath, atomically: true, encoding: .utf8)
+            configure(projects: projects)
+        } catch {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Failed to Update"
+            errAlert.informativeText = error.localizedDescription
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+        }
+    }
+
     // MARK: - Delete Schedule
 
     func deleteSchedule(_ schedule: ScheduleInfo) {
@@ -1018,14 +1066,17 @@ class SchedulesView: NSView {
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("- ") && trimmed.contains("name:") && trimmed.contains(name) {
-                skipping = true; continue
-            }
+            // Exact name matching: use yamlValue extraction or literal comparison
             if trimmed.hasPrefix("- name:") && Self.yamlValue(trimmed.replacingOccurrences(of: "- ", with: "")) == name {
                 skipping = true; continue
             }
             if trimmed == "- name: \(name)" || trimmed == "- name: '\(name)'" || trimmed == "- name: \"\(name)\"" {
                 skipping = true; continue
+            }
+            // Inline flow style: { name: X, ... }
+            if trimmed.hasPrefix("- {") && trimmed.contains("name:") {
+                let extracted = Self.extractInlineName(trimmed)
+                if extracted == name { skipping = true; continue }
             }
             if skipping {
                 if trimmed.hasPrefix("- ") || (!line.hasPrefix(" ") && !line.hasPrefix("\t") && !trimmed.isEmpty && !trimmed.hasPrefix("#")) {

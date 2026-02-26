@@ -7,6 +7,7 @@ import { loadSchedules, getNextRun, formatCronHuman, validateCronExpression } fr
 import { runCronDaemon, isCronRunning, getCronPid, readCronLog } from '../core/cron.js';
 import * as tmux from '../core/tmux.js';
 import { cronPidPath, manifestPath, schedulesPath } from '../lib/paths.js';
+import { getLockfile, getWriteFileAtomic } from '../lib/cjs-compat.js';
 import { PpgError, NotInitializedError } from '../lib/errors.js';
 import { output, formatTable, info, success, warn } from '../lib/output.js';
 import type { Column } from '../lib/output.js';
@@ -227,29 +228,7 @@ export async function cronAddCommand(options: CronAddOptions): Promise<void> {
   // Validate cron expression
   validateCronExpression(options.cron);
 
-  // Load existing schedules (or start fresh)
-  const filePath = schedulesPath(projectRoot);
-  let config: SchedulesConfig;
-  try {
-    const raw = await fs.readFile(filePath, 'utf-8');
-    config = YAML.parse(raw) as SchedulesConfig;
-    if (!config || !Array.isArray(config.schedules)) {
-      config = { schedules: [] };
-    }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      config = { schedules: [] };
-    } else {
-      throw err;
-    }
-  }
-
-  // Check name uniqueness
-  if (config.schedules.some((s) => s.name === options.name)) {
-    throw new PpgError(`Schedule "${options.name}" already exists`, 'INVALID_ARGS');
-  }
-
-  // Build entry
+  // Build entry before acquiring lock
   const entry: ScheduleEntry = {
     name: options.name,
     cron: options.cron,
@@ -265,18 +244,29 @@ export async function cronAddCommand(options: CronAddOptions): Promise<void> {
       if (eqIdx === -1) {
         throw new PpgError(`Invalid --var format: "${v}" (expected KEY=VALUE)`, 'INVALID_ARGS');
       }
-      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
+      const key = v.slice(0, eqIdx);
+      if (key.length === 0) {
+        throw new PpgError(`Invalid --var format: "${v}" (key must not be empty)`, 'INVALID_ARGS');
+      }
+      vars[key] = v.slice(eqIdx + 1);
     }
     entry.vars = vars;
   }
 
-  config.schedules.push(entry);
-
   // Ensure .ppg directory exists
+  const filePath = schedulesPath(projectRoot);
   const ppgDirPath = path.dirname(filePath);
   await fs.mkdir(ppgDirPath, { recursive: true });
 
-  await fs.writeFile(filePath, YAML.stringify(config), 'utf-8');
+  // Locked read-modify-write
+  await updateSchedulesFile(filePath, (config) => {
+    // Check name uniqueness
+    if (config.schedules.some((s) => s.name === options.name)) {
+      throw new PpgError(`Schedule "${options.name}" already exists`, 'INVALID_ARGS');
+    }
+    config.schedules.push(entry);
+    return config;
+  });
 
   if (options.json) {
     output({ success: true, name: options.name, schedule: entry }, true);
@@ -290,33 +280,71 @@ export async function cronRemoveCommand(options: CronRemoveOptions): Promise<voi
   await requireInit(projectRoot);
 
   const filePath = schedulesPath(projectRoot);
-  let raw: string;
-  try {
-    raw = await fs.readFile(filePath, 'utf-8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new PpgError('No schedules file found', 'INVALID_ARGS');
+
+  // Locked read-modify-write
+  await updateSchedulesFile(filePath, (config) => {
+    const idx = config.schedules.findIndex((s) => s.name === options.name);
+    if (idx === -1) {
+      throw new PpgError(`Schedule "${options.name}" not found`, 'INVALID_ARGS');
     }
-    throw err;
-  }
-
-  const config = YAML.parse(raw) as SchedulesConfig;
-  if (!config || !Array.isArray(config.schedules)) {
-    throw new PpgError('Invalid schedules.yaml', 'INVALID_ARGS');
-  }
-
-  const idx = config.schedules.findIndex((s) => s.name === options.name);
-  if (idx === -1) {
-    throw new PpgError(`Schedule "${options.name}" not found`, 'INVALID_ARGS');
-  }
-
-  config.schedules.splice(idx, 1);
-  await fs.writeFile(filePath, YAML.stringify(config), 'utf-8');
+    config.schedules.splice(idx, 1);
+    return config;
+  });
 
   if (options.json) {
     output({ success: true, name: options.name }, true);
   } else {
     success(`Schedule "${options.name}" removed`);
+  }
+}
+
+/**
+ * Locked read-modify-write for schedules.yaml.
+ * Uses proper-lockfile + write-file-atomic, matching the manifest update pattern.
+ * Fails fast if the file exists but has an invalid shape (instead of silently resetting).
+ */
+async function updateSchedulesFile(
+  filePath: string,
+  updater: (config: SchedulesConfig) => SchedulesConfig,
+): Promise<void> {
+  const lockfile = await getLockfile();
+  const writeFileAtomic = await getWriteFileAtomic();
+  let release: (() => Promise<void>) | undefined;
+
+  try {
+    release = await lockfile.lock(filePath, {
+      stale: 10_000,
+      retries: { retries: 5, minTimeout: 100, maxTimeout: 1000 },
+      realpath: false,
+    });
+  } catch {
+    throw new PpgError('Could not acquire lock on schedules.yaml', 'MANIFEST_LOCK');
+  }
+
+  try {
+    let config: SchedulesConfig;
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const parsed = YAML.parse(raw) as SchedulesConfig;
+      if (!parsed || !Array.isArray(parsed.schedules)) {
+        throw new PpgError(
+          'Invalid schedules.yaml: missing or malformed "schedules" array. Fix the file manually or delete it to start fresh.',
+          'INVALID_ARGS',
+        );
+      }
+      config = parsed;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        config = { schedules: [] };
+      } else {
+        throw err;
+      }
+    }
+
+    const updated = updater(config);
+    await writeFileAtomic(filePath, YAML.stringify(updated));
+  } finally {
+    if (release) await release();
   }
 }
 
