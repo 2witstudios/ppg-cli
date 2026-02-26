@@ -5,12 +5,12 @@ dist/
 .DS_Store
 
 # Point Guard
-.pg/results/
-.pg/logs/
-.pg/manifest.json
-.pg/prompts/
-.pg/agent-prompts/
-.pg/dashboard-sessions.json
+.ppg/results/
+.ppg/logs/
+.ppg/manifest.json
+.ppg/prompts/
+.ppg/agent-prompts/
+.ppg/dashboard-sessions.json
 
 # Xcode
 PPG CLI/build/
@@ -20,7 +20,7 @@ DerivedData/
 *.profraw
 
 # Point Guard
-.pg/conductor-context.md
+.ppg/conductor-context.md
 
 # Point Guard
-.pg/swarms/
+.ppg/swarms/

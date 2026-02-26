@@ -95,7 +95,7 @@ Each `ppg spawn` creates a git worktree on a `ppg/<name>` branch, opens a tmux p
 
 ```
 your-project/
-├── .pg/
+├── .ppg/
 │   ├── config.yaml      # Agent and project config
 │   ├── manifest.json     # Runtime state (worktrees, agents, status)
 │   ├── templates/        # Reusable prompt templates
@@ -118,7 +118,7 @@ spawning → running → completed   (result file written)
 
 ## Configuration
 
-`.pg/config.yaml`:
+`.ppg/config.yaml`:
 
 ```yaml
 sessionName: ppg
@@ -146,9 +146,9 @@ agents:
     interactive: false
 
 worktreeBase: .worktrees
-templateDir: .pg/templates
-resultDir: .pg/results
-logDir: .pg/logs
+templateDir: .ppg/templates
+resultDir: .ppg/results
+logDir: .ppg/logs
 envFiles:
   - .env
   - .env.local
@@ -157,7 +157,7 @@ symlinkNodeModules: true
 
 ## Templates
 
-Templates live in `.pg/templates/` as Markdown files with `{{VAR}}` placeholders. The prompts editor in the dashboard lets you create and edit these visually.
+Templates live in `.ppg/templates/` as Markdown files with `{{VAR}}` placeholders. The prompts editor in the dashboard lets you create and edit these visually.
 
 **Built-in variables:** `{{WORKTREE_PATH}}`, `{{BRANCH}}`, `{{AGENT_ID}}`, `{{RESULT_FILE}}`, `{{PROJECT_ROOT}}`, `{{TASK_NAME}}`, `{{PROMPT}}`
 

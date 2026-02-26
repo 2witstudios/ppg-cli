@@ -40,11 +40,11 @@ src/
 - **Lazy command imports** — `cli.ts` uses dynamic `import()` for each command to keep startup fast
 - **Manifest locking** — Always use `updateManifest(projectRoot, updater)` for read-modify-write. Never read + write separately. Lock: 10s stale timeout, 5 retries
 - **Atomic writes** — All manifest writes go through `write-file-atomic`
-- **`PgError` hierarchy** — Typed errors with codes: `TMUX_NOT_FOUND`, `NOT_GIT_REPO`, `NOT_INITIALIZED`, `MANIFEST_LOCK`, `WORKTREE_NOT_FOUND`, `AGENT_NOT_FOUND`, `MERGE_FAILED`, `INVALID_ARGS`, `AGENTS_RUNNING`, `WAIT_TIMEOUT`, `AGENTS_FAILED`, `NO_SESSION_ID`
+- **`PpgError` hierarchy** — Typed errors with codes: `TMUX_NOT_FOUND`, `NOT_GIT_REPO`, `NOT_INITIALIZED`, `MANIFEST_LOCK`, `WORKTREE_NOT_FOUND`, `AGENT_NOT_FOUND`, `MERGE_FAILED`, `INVALID_ARGS`, `AGENTS_RUNNING`, `WAIT_TIMEOUT`, `AGENTS_FAILED`, `NO_SESSION_ID`
 - **Worktree resolution** — Use `resolveWorktree(manifest, ref)` from `core/manifest.ts` to look up worktrees by ID, name, or branch. Never duplicate the lookup pattern.
 - **Dual output** — Every command supports `--json` flag. Use `output(data, json)` and `outputError(error, json)` from `lib/output.ts`
-- **Functional style** — Pure functions, composition, `const`, destructuring, no classes except `PgError`
-- **Path helpers** — All path computation in `lib/paths.ts`: `pgDir()`, `manifestPath()`, `resultFile()`, `worktreePath()`, etc.
+- **Functional style** — Pure functions, composition, `const`, destructuring, no classes except `PpgError`
+- **Path helpers** — All path computation in `lib/paths.ts`: `ppgDir()`, `manifestPath()`, `resultFile()`, `worktreePath()`, etc.
 - **Signal-stack status** — Agent status detection in `core/agent.ts:checkAgentStatus()`: result file → pane exists → pane dead → current command → running
 - **ID generation** — `worktreeId()` → `wt-{6chars}`, `agentId()` → `ag-{8chars}` (lowercase alphanumeric via nanoid)
 - **`.js` extensions in imports** — Required by NodeNext module resolution. All relative imports must include `.js` extension
@@ -63,10 +63,10 @@ src/
 |---------|-------------|
 | **Worktree** | Isolated git checkout on branch `ppg/<name>`, lives in `.worktrees/wt-{id}/` |
 | **Agent** | CLI process in a tmux pane, receives task via prompt file |
-| **Manifest** | `.pg/manifest.json` — runtime state: worktrees, agents, statuses, tmux targets |
-| **Config** | `.pg/config.yaml` — session name, agent definitions, directory paths |
-| **Template** | Markdown in `.pg/templates/` with `{{VAR}}` placeholders |
-| **Result file** | `.pg/results/{agentId}.md` — primary agent completion signal |
+| **Manifest** | `.ppg/manifest.json` — runtime state: worktrees, agents, statuses, tmux targets |
+| **Config** | `.ppg/config.yaml` — session name, agent definitions, directory paths |
+| **Template** | Markdown in `.ppg/templates/` with `{{VAR}}` placeholders |
+| **Result file** | `.ppg/results/{agentId}.md` — primary agent completion signal |
 
 ## Agent Lifecycle
 
