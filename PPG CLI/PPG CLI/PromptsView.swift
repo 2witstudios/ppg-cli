@@ -105,6 +105,46 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
                 }
             }
         }
+        // Scan global ~/.ppg/ prompts and templates
+        let globalPpgDir = (NSHomeDirectory() as NSString).appendingPathComponent(".ppg")
+        for dir in ["prompts", "templates"] {
+            let folder = (globalPpgDir as NSString).appendingPathComponent(dir)
+            guard let files = try? fm.contentsOfDirectory(atPath: folder) else { continue }
+            for file in files where file.hasSuffix(".md") {
+                let path = (folder as NSString).appendingPathComponent(file)
+                guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+
+                let name = (file as NSString).deletingPathExtension
+                let firstLine = content.components(separatedBy: .newlines)
+                    .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })?
+                    .trimmingCharacters(in: .whitespaces) ?? ""
+
+                let range = NSRange(content.startIndex..., in: content)
+                let matches = varRegex.matches(in: content, range: range)
+                var vars: [String] = []
+                var seen = Set<String>()
+                for match in matches {
+                    if let r = Range(match.range(at: 1), in: content) {
+                        let v = String(content[r])
+                        if !seen.contains(v) {
+                            seen.insert(v)
+                            vars.append(v)
+                        }
+                    }
+                }
+
+                results.append(PromptFileInfo(
+                    name: name,
+                    path: path,
+                    projectRoot: NSHomeDirectory(),
+                    projectName: "Global",
+                    directory: dir,
+                    firstLine: firstLine,
+                    variables: vars
+                ))
+            }
+        }
+
         return results.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -452,7 +492,6 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
 
     @objc private func newPromptClicked() {
         let projects = OpenProjects.shared.projects
-        guard !projects.isEmpty else { return }
 
         let alert = NSAlert()
         alert.messageText = "New Prompt"
@@ -491,7 +530,9 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         y -= 12
 
         addLabel("Project:")
-        let projectPopup = addPopup(projects.map { $0.projectName.isEmpty ? $0.projectRoot : $0.projectName })
+        var projectNames = projects.map { $0.projectName.isEmpty ? $0.projectRoot : $0.projectName }
+        projectNames.append("Global")
+        let projectPopup = addPopup(projectNames)
 
         addLabel("Directory:")
         let dirPopup = addPopup(["prompts", "templates"])
@@ -504,11 +545,17 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         guard !name.isEmpty else { return }
 
         let projectIdx = projectPopup.indexOfSelectedItem
-        guard projectIdx >= 0, projectIdx < projects.count else { return }
-        let ctx = projects[projectIdx]
+        guard projectIdx >= 0 else { return }
         let dir = dirPopup.titleOfSelectedItem ?? "prompts"
 
-        let folder = (ctx.projectRoot as NSString).appendingPathComponent(".ppg/\(dir)")
+        let projectRoot: String
+        if projectIdx >= projects.count {
+            // Global selected
+            projectRoot = NSHomeDirectory()
+        } else {
+            projectRoot = projects[projectIdx].projectRoot
+        }
+        let folder = (projectRoot as NSString).appendingPathComponent(".ppg/\(dir)")
         let fm = FileManager.default
         if !fm.fileExists(atPath: folder) {
             try? fm.createDirectory(atPath: folder, withIntermediateDirectories: true)
