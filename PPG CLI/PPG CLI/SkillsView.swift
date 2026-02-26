@@ -45,9 +45,17 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
     // Back-to-SKILL button (shown when editing a reference file)
     private let backButton = NSButton()
     private var editingRefFile: String? = nil
+    private var pendingBodyText: String? = nil  // preserves unsaved editor content when switching to ref file
 
     private var skills: [SkillFileInfo] = []
     private var selectedIndex: Int? = nil
+
+    // Transient state for the import dialog
+    private var importTypePopup: NSPopUpButton?
+    private var importItemPopup: NSPopUpButton?
+    private var importNameInput: NSTextField?
+    private var importPrompts: [PromptFileInfo] = []
+    private var importSwarms: [SwarmFileInfo] = []
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -124,6 +132,18 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         let bodyLines = Array(lines.dropFirst(endIdx + 1))
         let body = bodyLines.joined(separator: "\n")
         return (name, description, userInvocable, body.drop(while: { $0.isNewline }).description)
+    }
+
+    // MARK: - Validation
+
+    /// Returns nil if the name is valid, or an error message string if not.
+    private static func validateFilename(_ name: String) -> String? {
+        if name.isEmpty { return "Name cannot be empty." }
+        if name.contains("/") || name.contains("\\") { return "Name cannot contain slashes." }
+        if name == "." || name == ".." { return "Name cannot be '.' or '..'." }
+        if name.hasPrefix(".") { return "Name cannot start with a dot." }
+        if name.contains("\0") { return "Name contains invalid characters." }
+        return nil
     }
 
     // MARK: - Serialization
@@ -575,6 +595,7 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         invocableCheckbox.state = skill.userInvocable ? .on : .off
         editorTextView.string = skill.body
         editingRefFile = nil
+        pendingBodyText = nil
         backButton.isHidden = true
         refsTableView.reloadData()
     }
@@ -585,6 +606,7 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         invocableCheckbox.state = .off
         editorTextView.string = ""
         editingRefFile = nil
+        pendingBodyText = nil
         backButton.isHidden = true
         saveButton.isEnabled = false
         deleteButton.isEnabled = false
@@ -600,6 +622,15 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
 
         let newName = nameField.stringValue.trimmingCharacters(in: .whitespaces)
         guard !newName.isEmpty else { return }
+
+        if let validationError = Self.validateFilename(newName) {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Invalid Name"
+            errAlert.informativeText = validationError
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+            return
+        }
 
         // If editing a reference file, save to the ref file instead
         if let refFile = editingRefFile {
@@ -629,6 +660,14 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         let newDir = (skillsDir as NSString).appendingPathComponent(newName)
 
         if newName != skill.name && skill.skillDir != newDir {
+            if fm.fileExists(atPath: newDir) {
+                let errAlert = NSAlert()
+                errAlert.messageText = "Skill Already Exists"
+                errAlert.informativeText = "A skill named \"\(newName)\" already exists."
+                errAlert.alertStyle = .warning
+                errAlert.runModal()
+                return
+            }
             do {
                 try fm.moveItem(atPath: skill.skillDir, toPath: newDir)
                 let newPath = (newDir as NSString).appendingPathComponent("SKILL.md")
@@ -718,9 +757,27 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         let name = nameInput.stringValue.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
 
+        if let validationError = Self.validateFilename(name) {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Invalid Name"
+            errAlert.informativeText = validationError
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+            return
+        }
+
         let skillsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/skills")
         let skillDir = (skillsDir as NSString).appendingPathComponent(name)
         let fm = FileManager.default
+
+        if fm.fileExists(atPath: skillDir) {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Skill Already Exists"
+            errAlert.informativeText = "A skill named \"\(name)\" already exists."
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+            return
+        }
 
         do {
             try fm.createDirectory(atPath: skillDir, withIntermediateDirectories: true)
@@ -751,8 +808,8 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 130))
-        var y: CGFloat = 130
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 160))
+        var y: CGFloat = 160
 
         // Type label + popup
         y -= 16
@@ -793,47 +850,57 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         accessory.addSubview(nameInput)
 
         // Populate items based on type
-        let prompts = PromptsView.scanPrompts(projects: projects)
-        let swarms = SwarmsView.scanSwarms(projects: projects)
+        importPrompts = PromptsView.scanPrompts(projects: projects)
+        importSwarms = SwarmsView.scanSwarms(projects: projects)
+        importTypePopup = typePopup
+        importItemPopup = itemPopup
+        importNameInput = nameInput
 
-        func populateItems() {
-            itemPopup.removeAllItems()
-            if typePopup.indexOfSelectedItem == 0 {
-                for p in prompts { itemPopup.addItem(withTitle: "\(p.projectName)/\(p.name)") }
-                if let first = prompts.first { nameInput.stringValue = first.name }
-            } else {
-                for s in swarms { itemPopup.addItem(withTitle: "\(s.projectName)/\(s.name)") }
-                if let first = swarms.first { nameInput.stringValue = first.name }
-            }
-        }
-        populateItems()
+        repopulateImportItems()
 
         typePopup.target = self
         typePopup.action = #selector(importTypeChanged(_:))
-        // Store closures via objc associated objects is complex, use a simpler approach:
-        // We'll just re-populate after the dialog based on final selection
 
         alert.accessoryView = accessory
         alert.window.initialFirstResponder = nameInput
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            importTypePopup = nil; importItemPopup = nil; importNameInput = nil
+            return
+        }
         let name = nameInput.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+        guard !name.isEmpty else {
+            importTypePopup = nil; importItemPopup = nil; importNameInput = nil
+            return
+        }
+
+        if let validationError = Self.validateFilename(name) {
+            importTypePopup = nil; importItemPopup = nil; importNameInput = nil
+            let errAlert = NSAlert()
+            errAlert.messageText = "Invalid Name"
+            errAlert.informativeText = validationError
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+            return
+        }
 
         let isPrompt = typePopup.indexOfSelectedItem == 0
         let itemIdx = itemPopup.indexOfSelectedItem
-        guard itemIdx >= 0 else { return }
+        guard itemIdx >= 0 else {
+            importTypePopup = nil; importItemPopup = nil; importNameInput = nil
+            return
+        }
 
         var body = ""
         var description = ""
 
-        if isPrompt && itemIdx < prompts.count {
-            let prompt = prompts[itemIdx]
+        if isPrompt && itemIdx < importPrompts.count {
+            let prompt = importPrompts[itemIdx]
             let content = (try? String(contentsOfFile: prompt.path, encoding: .utf8)) ?? ""
             body = content
             description = "Imported from prompt: \(prompt.name)"
-        } else if !isPrompt && itemIdx < swarms.count {
-            let swarm = swarms[itemIdx]
+        } else if !isPrompt && itemIdx < importSwarms.count {
+            let swarm = importSwarms[itemIdx]
             description = "Imported from swarm: \(swarm.name)"
             body = """
             Use ppg to orchestrate this task:
@@ -846,9 +913,20 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
             """
         }
 
+        importTypePopup = nil; importItemPopup = nil; importNameInput = nil
+
         let skillsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/skills")
         let skillDir = (skillsDir as NSString).appendingPathComponent(name)
         let fm = FileManager.default
+
+        if fm.fileExists(atPath: skillDir) {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Skill Already Exists"
+            errAlert.informativeText = "A skill named \"\(name)\" already exists."
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+            return
+        }
 
         do {
             try fm.createDirectory(atPath: skillDir, withIntermediateDirectories: true)
@@ -871,7 +949,19 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
     }
 
     @objc private func importTypeChanged(_ sender: NSPopUpButton) {
-        // Re-population handled inline; this is a no-op target for the popup
+        repopulateImportItems()
+    }
+
+    private func repopulateImportItems() {
+        guard let itemPopup = importItemPopup, let typePopup = importTypePopup, let nameInput = importNameInput else { return }
+        itemPopup.removeAllItems()
+        if typePopup.indexOfSelectedItem == 0 {
+            for p in importPrompts { itemPopup.addItem(withTitle: "\(p.projectName)/\(p.name)") }
+            if let first = importPrompts.first { nameInput.stringValue = first.name }
+        } else {
+            for s in importSwarms { itemPopup.addItem(withTitle: "\(s.projectName)/\(s.name)") }
+            if let first = importSwarms.first { nameInput.stringValue = first.name }
+        }
     }
 
     // MARK: - Reference File Actions
@@ -906,6 +996,15 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         guard !filename.isEmpty else { return }
         if !filename.hasSuffix(".md") { filename += ".md" }
 
+        if let validationError = Self.validateFilename(filename) {
+            let errAlert = NSAlert()
+            errAlert.messageText = "Invalid Filename"
+            errAlert.informativeText = validationError
+            errAlert.alertStyle = .warning
+            errAlert.runModal()
+            return
+        }
+
         let refsDir = (skill.skillDir as NSString).appendingPathComponent("references")
         let fm = FileManager.default
 
@@ -914,6 +1013,14 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
                 try fm.createDirectory(atPath: refsDir, withIntermediateDirectories: true)
             }
             let refPath = (refsDir as NSString).appendingPathComponent(filename)
+            if fm.fileExists(atPath: refPath) {
+                let errAlert = NSAlert()
+                errAlert.messageText = "File Already Exists"
+                errAlert.informativeText = "A reference file named \"\(filename)\" already exists."
+                errAlert.alertStyle = .warning
+                errAlert.runModal()
+                return
+            }
             try "".write(toFile: refPath, atomically: true, encoding: .utf8)
             configure()
             // Re-select the skill
@@ -982,17 +1089,20 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         let refPath = (refsDir as NSString).appendingPathComponent(refName)
 
         guard let content = try? String(contentsOfFile: refPath, encoding: .utf8) else { return }
+        // Preserve current editor content (may be unsaved body edits)
+        if editingRefFile == nil {
+            pendingBodyText = editorTextView.string
+        }
         editingRefFile = refName
         backButton.isHidden = false
-        backButton.title = "Back to SKILL.md"
         editorTextView.string = content
     }
 
     @objc private func backToSkillClicked() {
         guard let idx = selectedIndex, idx < skills.count else { return }
-        let skill = skills[idx]
         editingRefFile = nil
         backButton.isHidden = true
-        editorTextView.string = skill.body
+        editorTextView.string = pendingBodyText ?? skills[idx].body
+        pendingBodyText = nil
     }
 }
