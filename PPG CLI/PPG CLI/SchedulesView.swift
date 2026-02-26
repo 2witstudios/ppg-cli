@@ -30,147 +30,25 @@ enum CalendarViewMode: Int {
     case month = 2
 }
 
-// MARK: - Cron Parser (Swift-native)
+// MARK: - Popover Context (for button wiring)
 
-struct CronParser {
-    /// Generate all occurrences of a cron expression within a date range.
-    static func occurrences(of expr: String, from start: Date, to end: Date) -> [Date] {
-        let parts = expr.trimmingCharacters(in: .whitespaces).split(separator: " ").map(String.init)
-        guard parts.count == 5 else { return [] }
-
-        let minuteField = parseField(parts[0], range: 0...59)
-        let hourField = parseField(parts[1], range: 0...23)
-        let domField = parseField(parts[2], range: 1...31)
-        let monthField = parseField(parts[3], range: 1...12)
-        let dowField = parseField(parts[4], range: 0...6)
-
-        let cal = Calendar.current
-        var results: [Date] = []
-        var current = cal.date(bySetting: .second, value: 0, of: start) ?? start
-        // Align to start of minute
-        current = cal.dateInterval(of: .minute, for: current)?.start ?? current
-
-        // Cap iterations to avoid runaway loops
-        let maxIterations = 525960 // ~1 year of minutes
-        var iterations = 0
-
-        while current <= end && iterations < maxIterations {
-            iterations += 1
-            let comps = cal.dateComponents([.minute, .hour, .day, .month, .weekday], from: current)
-            guard let minute = comps.minute,
-                  let hour = comps.hour,
-                  let day = comps.day,
-                  let month = comps.month,
-                  let weekday = comps.weekday else {
-                current = cal.date(byAdding: .minute, value: 1, to: current) ?? end
-                continue
-            }
-
-            // Calendar weekday: 1=Sun. Cron: 0=Sun
-            let cronDow = (weekday - 1) % 7
-
-            if minuteField.contains(minute) &&
-               hourField.contains(hour) &&
-               domField.contains(day) &&
-               monthField.contains(month) &&
-               dowField.contains(cronDow) {
-                results.append(current)
-            }
-
-            current = cal.date(byAdding: .minute, value: 1, to: current) ?? end
-        }
-        return results
+class PopoverContext: NSObject {
+    let popover: NSPopover
+    let scheduleName: String
+    let filePath: String
+    init(popover: NSPopover, scheduleName: String, filePath: String) {
+        self.popover = popover
+        self.scheduleName = scheduleName
+        self.filePath = filePath
     }
+}
 
-    /// Detect if a cron expression fires more often than every 30 minutes.
-    static func isHighFrequency(_ expr: String) -> (Bool, String) {
-        let parts = expr.trimmingCharacters(in: .whitespaces).split(separator: " ").map(String.init)
-        guard parts.count == 5 else { return (false, "") }
+// MARK: - Cron Field Delegate (for live preview)
 
-        let minPart = parts[0]
-        let hourPart = parts[1]
-
-        // Check */N pattern where N < 30
-        if minPart.hasPrefix("*/"), let n = Int(minPart.dropFirst(2)), n < 30, hourPart == "*" {
-            return (true, "every \(n) min")
-        }
-        // Check comma-separated list with many values
-        if hourPart == "*" && minPart.contains(",") {
-            let vals = parseField(minPart, range: 0...59)
-            if vals.count > 2 {
-                return (true, "\(vals.count)x/hr")
-            }
-        }
-        return (false, "")
-    }
-
-    /// Parse a single cron field into a set of matching integer values.
-    static func parseField(_ field: String, range: ClosedRange<Int>) -> Set<Int> {
-        var result = Set<Int>()
-        let parts = field.split(separator: ",").map(String.init)
-        for part in parts {
-            if part == "*" {
-                result.formUnion(Set(range))
-            } else if part.contains("/") {
-                let slashParts = part.split(separator: "/").map(String.init)
-                guard slashParts.count == 2, let step = Int(slashParts[1]), step > 0 else { continue }
-                let basePart = slashParts[0]
-                let baseRange: ClosedRange<Int>
-                if basePart == "*" {
-                    baseRange = range
-                } else if basePart.contains("-") {
-                    let dashParts = basePart.split(separator: "-").map(String.init)
-                    if dashParts.count == 2, let lo = Int(dashParts[0]), let hi = Int(dashParts[1]) {
-                        baseRange = max(lo, range.lowerBound)...min(hi, range.upperBound)
-                    } else {
-                        continue
-                    }
-                } else if let val = Int(basePart) {
-                    baseRange = val...range.upperBound
-                } else {
-                    continue
-                }
-                var v = baseRange.lowerBound
-                while v <= baseRange.upperBound {
-                    result.insert(v)
-                    v += step
-                }
-            } else if part.contains("-") {
-                let dashParts = part.split(separator: "-").map(String.init)
-                if dashParts.count == 2, let lo = Int(dashParts[0]), let hi = Int(dashParts[1]) {
-                    for v in max(lo, range.lowerBound)...min(hi, range.upperBound) {
-                        result.insert(v)
-                    }
-                }
-            } else if let val = Int(part), range.contains(val) {
-                result.insert(val)
-            }
-        }
-        return result
-    }
-
-    /// Human-readable description of a cron expression.
-    static func humanReadable(_ expr: String) -> String {
-        let parts = expr.trimmingCharacters(in: .whitespaces).split(separator: " ").map(String.init)
-        guard parts.count == 5 else { return expr }
-        let (min, hour, dom, mon, dow) = (parts[0], parts[1], parts[2], parts[3], parts[4])
-
-        if min == "0" && hour != "*" && dom == "*" && mon == "*" && dow == "*" {
-            return "Daily at \(hour):00"
-        }
-        if min.hasPrefix("*/") && hour == "*" && dom == "*" && mon == "*" && dow == "*" {
-            return "Every \(min.dropFirst(2)) minutes"
-        }
-        if min != "*" && hour == "*" && dom == "*" && mon == "*" && dow == "*" {
-            return "Hourly at :\(min.count == 1 ? "0\(min)" : min)"
-        }
-        if dow != "*" && dom == "*" && mon == "*" {
-            let days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-            let dayName = Int(dow).flatMap({ $0 < days.count ? days[$0] : nil }) ?? dow
-            return "\(dayName) at \(hour):\(min.count == 1 ? "0\(min)" : min)"
-        }
-        return expr
-    }
+class CronFieldDelegate: NSObject, NSTextFieldDelegate {
+    private let onChange: () -> Void
+    init(onChange: @escaping () -> Void) { self.onChange = onChange }
+    func controlTextDidChange(_ obj: Notification) { onChange() }
 }
 
 // MARK: - Project Colors
@@ -181,9 +59,149 @@ struct ProjectColors {
         .systemOrange, .systemPink, .systemGreen, .systemYellow
     ]
 
+    /// Stable djb2 hash — deterministic across app launches (unlike Swift's randomized hashValue).
+    private static func stableHash(_ string: String) -> UInt {
+        var hash: UInt = 5381
+        for byte in string.utf8 {
+            hash = ((hash &<< 5) &+ hash) &+ UInt(byte)
+        }
+        return hash
+    }
+
     static func color(for projectName: String) -> NSColor {
-        let hash = abs(projectName.hashValue)
-        return palette[hash % palette.count]
+        let hash = stableHash(projectName)
+        return palette[Int(hash % UInt(palette.count))]
+    }
+}
+
+// MARK: - Calendar Layout Constants
+
+private enum CalendarLayout {
+    static let hourHeight: CGFloat = 60
+    static let weekHeaderHeight: CGFloat = 50
+    static let dayHeaderHeight: CGFloat = 40
+    static let timeGutterWidth: CGFloat = 56
+    /// Total height for a 24-hour time grid + header
+    static func totalHeight(headerHeight: CGFloat) -> CGFloat {
+        CGFloat(24) * hourHeight + headerHeight
+    }
+}
+
+// MARK: - Shared Calendar Drawing Helpers
+
+/// Shared drawing routines used by Week and Day calendar views.
+enum CalendarDrawing {
+    /// Draw the hour grid lines and time labels.
+    static func drawHourGrid(
+        ctx: CGContext,
+        bounds: NSRect,
+        gridTop: CGFloat,
+        hourHeight: CGFloat,
+        gutterWidth: CGFloat,
+        timeFontSize: CGFloat = 9
+    ) {
+        ctx.setLineWidth(0.5)
+        for hour in 0...24 {
+            let y = gridTop - CGFloat(hour) * hourHeight
+            ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(hour % 6 == 0 ? 0.5 : 0.2).cgColor)
+            ctx.move(to: CGPoint(x: gutterWidth, y: y))
+            ctx.addLine(to: CGPoint(x: bounds.width, y: y))
+            ctx.strokePath()
+
+            if hour < 24 {
+                let h = hour == 0 ? "12 AM" : hour < 12 ? "\(hour) AM" : hour == 12 ? "12 PM" : "\(hour - 12) PM"
+                let timeAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: timeFontSize, weight: .regular),
+                    .foregroundColor: NSColor.tertiaryLabelColor
+                ]
+                NSAttributedString(string: h, attributes: timeAttrs).draw(at: NSPoint(x: 4, y: y - timeFontSize * 0.7))
+            }
+        }
+    }
+
+    /// Draw the red current-time indicator line with a dot.
+    static func drawCurrentTimeLine(
+        ctx: CGContext,
+        gridTop: CGFloat,
+        hourHeight: CGFloat,
+        leftX: CGFloat,
+        rightX: CGFloat,
+        dotX: CGFloat,
+        lineWidth: CGFloat = 1.5,
+        dotRadius: CGFloat = 4
+    ) {
+        let now = Date()
+        let cal = Calendar.current
+        let nowHour = cal.component(.hour, from: now)
+        let nowMinute = cal.component(.minute, from: now)
+        let nowY = gridTop - (CGFloat(nowHour) + CGFloat(nowMinute) / 60.0) * hourHeight
+
+        ctx.setStrokeColor(NSColor.systemRed.cgColor)
+        ctx.setLineWidth(lineWidth)
+        ctx.move(to: CGPoint(x: leftX, y: nowY))
+        ctx.addLine(to: CGPoint(x: rightX, y: nowY))
+        ctx.strokePath()
+
+        ctx.setFillColor(NSColor.systemRed.cgColor)
+        ctx.fillEllipse(in: NSRect(x: dotX - dotRadius, y: nowY - dotRadius, width: dotRadius * 2, height: dotRadius * 2))
+    }
+
+    /// Draw a high-frequency "all-day stripe" event.
+    static func drawHighFrequencyStripe(
+        ctx: CGContext,
+        rect: NSRect,
+        color: NSColor,
+        label: String,
+        gridTop: CGFloat,
+        fontSize: CGFloat = 10
+    ) {
+        ctx.setFillColor(color.withAlphaComponent(0.06).cgColor)
+        let path = CGPath(roundedRect: rect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+        ctx.addPath(path)
+        ctx.fillPath()
+
+        ctx.setStrokeColor(color.withAlphaComponent(0.3).cgColor)
+        ctx.setLineWidth(1)
+        ctx.addPath(path)
+        ctx.strokePath()
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
+            .foregroundColor: color
+        ]
+        NSAttributedString(string: label, attributes: attrs).draw(at: NSPoint(x: rect.minX + 4, y: gridTop - fontSize - 8))
+    }
+
+    /// Draw a normal (timed) event block with left accent bar.
+    static func drawTimedEvent(
+        ctx: CGContext,
+        rect: NSRect,
+        color: NSColor,
+        label: String,
+        isHovered: Bool,
+        fontSize: CGFloat = 10
+    ) {
+        ctx.setFillColor(color.withAlphaComponent(isHovered ? 0.25 : 0.15).cgColor)
+        let path = CGPath(roundedRect: rect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+        ctx.addPath(path)
+        ctx.fillPath()
+
+        // Left accent bar
+        ctx.setFillColor(color.cgColor)
+        ctx.fill(NSRect(x: rect.minX, y: rect.minY, width: 3, height: rect.height))
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
+            .foregroundColor: color
+        ]
+        let attrStr = NSAttributedString(string: label, attributes: attrs)
+        let textY = rect.minY + max((rect.height - fontSize - 4) / 2, 2)
+        attrStr.draw(in: NSRect(x: rect.minX + 6, y: textY, width: rect.width - 10, height: fontSize + 4))
+    }
+
+    /// Compute the typeIcon prefix for a schedule.
+    static func typeIcon(for schedule: ScheduleInfo) -> String {
+        schedule.type == "swarm" ? "S" : "P"
     }
 }
 
@@ -569,7 +587,7 @@ class SchedulesView: NSView {
                 wv.leadingAnchor.constraint(equalTo: calendarContainer.leadingAnchor),
                 wv.trailingAnchor.constraint(equalTo: calendarContainer.trailingAnchor),
                 wv.widthAnchor.constraint(equalTo: calendarScrollView.widthAnchor),
-                wv.heightAnchor.constraint(equalToConstant: 1490), // 24hr * 60 + header
+                wv.heightAnchor.constraint(equalToConstant: CalendarLayout.totalHeight(headerHeight: CalendarLayout.weekHeaderHeight)),
                 wv.bottomAnchor.constraint(equalTo: calendarContainer.bottomAnchor),
             ])
             weekView = wv
@@ -583,7 +601,7 @@ class SchedulesView: NSView {
                 dv.leadingAnchor.constraint(equalTo: calendarContainer.leadingAnchor),
                 dv.trailingAnchor.constraint(equalTo: calendarContainer.trailingAnchor),
                 dv.widthAnchor.constraint(equalTo: calendarScrollView.widthAnchor),
-                dv.heightAnchor.constraint(equalToConstant: 1490),
+                dv.heightAnchor.constraint(equalToConstant: CalendarLayout.totalHeight(headerHeight: CalendarLayout.dayHeaderHeight)),
                 dv.bottomAnchor.constraint(equalTo: calendarContainer.bottomAnchor),
             ])
             dayView = dv
@@ -641,20 +659,22 @@ class SchedulesView: NSView {
 
     private func dateRangeForCurrentView() -> (Date, Date) {
         let cal = Calendar.current
+        let fallbackEnd = cal.startOfDay(for: currentDate)
         switch viewMode {
         case .day:
             let start = cal.startOfDay(for: currentDate)
-            let end = cal.date(byAdding: .day, value: 1, to: start)!
+            guard let end = cal.date(byAdding: .day, value: 1, to: start) else { return (start, start) }
             return (start, end)
         case .week:
             let weekday = cal.component(.weekday, from: currentDate)
-            let start = cal.date(byAdding: .day, value: -(weekday - 1), to: cal.startOfDay(for: currentDate))!
-            let end = cal.date(byAdding: .day, value: 7, to: start)!
+            let offset = (weekday - cal.firstWeekday + 7) % 7
+            guard let start = cal.date(byAdding: .day, value: -offset, to: cal.startOfDay(for: currentDate)),
+                  let end = cal.date(byAdding: .day, value: 7, to: start) else { return (fallbackEnd, fallbackEnd) }
             return (start, end)
         case .month:
             let comps = cal.dateComponents([.year, .month], from: currentDate)
-            let start = cal.date(from: comps)!
-            let end = cal.date(byAdding: .month, value: 1, to: start)!
+            guard let start = cal.date(from: comps),
+                  let end = cal.date(byAdding: .month, value: 1, to: start) else { return (fallbackEnd, fallbackEnd) }
             return (start, end)
         }
     }
@@ -669,8 +689,12 @@ class SchedulesView: NSView {
         case .week:
             let cal = Calendar.current
             let weekday = cal.component(.weekday, from: currentDate)
-            let weekStart = cal.date(byAdding: .day, value: -(weekday - 1), to: currentDate)!
-            let weekEnd = cal.date(byAdding: .day, value: 6, to: weekStart)!
+            let offset = (weekday - cal.firstWeekday + 7) % 7
+            guard let weekStart = cal.date(byAdding: .day, value: -offset, to: currentDate),
+                  let weekEnd = cal.date(byAdding: .day, value: 6, to: weekStart) else {
+                dateLabel.stringValue = ""
+                return
+            }
             let sf = DateFormatter()
             sf.dateFormat = "MMM d"
             let ef = DateFormatter()
@@ -751,8 +775,8 @@ class SchedulesView: NSView {
         alert.addButton(withTitle: isEdit ? "Save" : "Create")
         alert.addButton(withTitle: "Cancel")
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 280))
-        var y: CGFloat = 280
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
+        var y: CGFloat = 300
 
         func addLabel(_ text: String) {
             y -= 18
@@ -797,6 +821,36 @@ class SchedulesView: NSView {
         }
         let cronField = addField("0 * * * *", value: cronDefault)
 
+        // Live next-run preview
+        let previewLabel = NSTextField(labelWithString: "")
+        previewLabel.font = .systemFont(ofSize: 10)
+        previewLabel.textColor = .tertiaryLabelColor
+        previewLabel.frame = NSRect(x: 0, y: y - 14, width: 300, height: 14)
+        accessory.addSubview(previewLabel)
+        y -= 18
+
+        func updateCronPreview() {
+            let cronText = cronField.stringValue.trimmingCharacters(in: .whitespaces)
+            if let next = CronParser.nextOccurrence(of: cronText, after: Date()) {
+                let fmt = DateFormatter()
+                fmt.dateStyle = .medium
+                fmt.timeStyle = .short
+                previewLabel.stringValue = "Next: \(fmt.string(from: next))"
+            } else if cronText.isEmpty {
+                previewLabel.stringValue = ""
+            } else {
+                previewLabel.stringValue = "Invalid cron expression"
+            }
+        }
+
+        // Wire up live preview via delegate (retain on cronField since delegate is weak)
+        let cronDelegate = CronFieldDelegate(onChange: updateCronPreview)
+        cronField.delegate = cronDelegate
+        objc_setAssociatedObject(cronField, "cronDelegate", cronDelegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        // Show initial preview
+        updateCronPreview()
+
         addLabel("Type:")
         let typePopup = addPopup(["swarm", "prompt"], selected: schedule?.type)
 
@@ -805,8 +859,7 @@ class SchedulesView: NSView {
 
         addLabel("Project:")
         let projectNames = projects.map { $0.projectName.isEmpty ? $0.projectRoot : $0.projectName }
-        let selectedProject = schedule.flatMap { s in projectNames.first(where: { _ in true }) }
-        let projectPopup = addPopup(projectNames, selected: selectedProject)
+        let projectPopup = addPopup(projectNames, selected: nil)
         if let s = schedule, let idx = projects.firstIndex(where: { $0.projectRoot == s.projectRoot }) {
             projectPopup.selectItem(at: idx)
         }
@@ -828,15 +881,47 @@ class SchedulesView: NSView {
         guard projectIdx >= 0, projectIdx < projects.count else { return }
         let ctx = projects[projectIdx]
 
+        // Preserve existing vars when editing
+        let vars: [(String, String)] = isEdit ? (schedule?.vars ?? []) : []
+
         if isEdit, let oldSchedule = schedule {
             // Remove old entry, then add new one
             deleteScheduleEntry(oldSchedule)
         }
 
-        addScheduleEntry(name: name, cron: cron, type: type, target: target, context: ctx)
+        addScheduleEntry(name: name, cron: cron, type: type, target: target, vars: vars, context: ctx)
     }
 
-    private func addScheduleEntry(name: String, cron: String, type: String, target: String, context: ProjectContext) {
+    /// Escape a YAML scalar value — quote it if it contains special characters.
+    private static func yamlEscape(_ value: String) -> String {
+        let needsQuoting = value.isEmpty
+            || value.contains(":")
+            || value.contains("#")
+            || value.contains("{")
+            || value.contains("}")
+            || value.contains("[")
+            || value.contains("]")
+            || value.contains(",")
+            || value.contains("&")
+            || value.contains("*")
+            || value.contains("?")
+            || value.contains("|")
+            || value.contains(">")
+            || value.contains("'")
+            || value.contains("\"")
+            || value.contains("%")
+            || value.contains("@")
+            || value.contains("`")
+            || value.hasPrefix(" ")
+            || value.hasSuffix(" ")
+        if needsQuoting {
+            // Use single quotes, escaping embedded single quotes by doubling them
+            return "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        }
+        return value
+    }
+
+    private func addScheduleEntry(name: String, cron: String, type: String, target: String, vars: [(String, String)], context: ProjectContext) {
         let ppgDir = (context.projectRoot as NSString).appendingPathComponent(".ppg")
         let fm = FileManager.default
         if !fm.fileExists(atPath: ppgDir) {
@@ -844,7 +929,17 @@ class SchedulesView: NSView {
         }
 
         let filePath = (ppgDir as NSString).appendingPathComponent("schedules.yaml")
-        let entry = "  - name: \(name)\n    \(type): \(target)\n    cron: '\(cron)'\n"
+
+        // Build properly escaped YAML entry
+        var entry = "  - name: \(Self.yamlEscape(name))\n"
+        entry += "    \(type): \(Self.yamlEscape(target))\n"
+        entry += "    cron: '\(cron)'\n"
+        if !vars.isEmpty {
+            entry += "    vars:\n"
+            for (k, v) in vars {
+                entry += "      \(Self.yamlEscape(k)): \(Self.yamlEscape(v))\n"
+            }
+        }
 
         do {
             if fm.fileExists(atPath: filePath),
@@ -1001,34 +1096,31 @@ class SchedulesView: NSView {
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 280, height: 200)
 
-        // Wire up button actions via targets
+        // Wire up button actions via PopoverContext (avoids fragile tag-based index lookup)
         let schedule = event.schedule
+        let ctx = PopoverContext(popover: popover, scheduleName: schedule.name, filePath: schedule.filePath)
         editBtn.target = self
         editBtn.action = #selector(editFromPopover(_:))
-        editBtn.tag = schedules.firstIndex(where: { $0.name == schedule.name && $0.filePath == schedule.filePath }) ?? 0
+        editBtn.cell?.representedObject = ctx
 
         deleteBtn.target = self
         deleteBtn.action = #selector(deleteFromPopover(_:))
-        deleteBtn.tag = editBtn.tag
-
-        // Store popover reference for dismissal
-        editBtn.cell?.representedObject = popover
-        deleteBtn.cell?.representedObject = popover
+        deleteBtn.cell?.representedObject = ctx
 
         popover.show(relativeTo: rect, of: view, preferredEdge: .maxY)
     }
 
     @objc private func editFromPopover(_ sender: NSButton) {
-        if let popover = sender.cell?.representedObject as? NSPopover { popover.close() }
-        guard sender.tag >= 0 && sender.tag < schedules.count else { return }
-        let schedule = schedules[sender.tag]
+        guard let ctx = sender.cell?.representedObject as? PopoverContext else { return }
+        ctx.popover.close()
+        guard let schedule = schedules.first(where: { $0.name == ctx.scheduleName && $0.filePath == ctx.filePath }) else { return }
         showScheduleDialog(schedule: schedule, prefillDate: nil)
     }
 
     @objc private func deleteFromPopover(_ sender: NSButton) {
-        if let popover = sender.cell?.representedObject as? NSPopover { popover.close() }
-        guard sender.tag >= 0 && sender.tag < schedules.count else { return }
-        let schedule = schedules[sender.tag]
+        guard let ctx = sender.cell?.representedObject as? PopoverContext else { return }
+        ctx.popover.close()
+        guard let schedule = schedules.first(where: { $0.name == ctx.scheduleName && $0.filePath == ctx.filePath }) else { return }
         deleteSchedule(schedule)
     }
 
@@ -1047,6 +1139,7 @@ class MonthCalendarView: NSView {
     private weak var owner: SchedulesView?
     private let cal = Calendar.current
     private var dayRects: [(NSRect, Date)] = []
+    private var pillRects: [(NSRect, CalendarEvent)] = []
 
     init(date: Date, events: [CalendarEvent], owner: SchedulesView) {
         self.date = date
@@ -1069,10 +1162,10 @@ class MonthCalendarView: NSView {
         let headerHeight: CGFloat = 30
         let cellPadding: CGFloat = 2
 
-        // Day-of-week headers
-        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        // Day-of-week headers (locale-aware)
+        let orderedDayNames = WeekCalendarView.orderedDayNames(for: cal)
         let colWidth = bounds.width / 7
-        for (i, name) in dayNames.enumerated() {
+        for (i, name) in orderedDayNames.enumerated() {
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 10, weight: .medium),
                 .foregroundColor: NSColor.secondaryLabelColor
@@ -1089,21 +1182,38 @@ class MonthCalendarView: NSView {
         // Calculate month grid
         let comps = cal.dateComponents([.year, .month], from: date)
         guard let monthStart = cal.date(from: comps) else { return }
-        let firstWeekday = cal.component(.weekday, from: monthStart) - 1 // 0-based
+        let firstWeekdayOfMonth = cal.component(.weekday, from: monthStart)
+        let firstOffset = (firstWeekdayOfMonth - cal.firstWeekday + 7) % 7
         let daysInMonth = cal.range(of: .day, in: .month, for: monthStart)?.count ?? 30
 
         let gridTop = bounds.height - headerHeight
-        let rowCount = Int(ceil(Double(firstWeekday + daysInMonth) / 7.0))
+        let totalCells = firstOffset + daysInMonth
+        let rowCount = Int(ceil(Double(totalCells) / 7.0))
         let rowHeight = max(gridTop / CGFloat(rowCount), 80)
 
         let isToday = cal.isDateInToday
 
+        // Dimmed background color for out-of-month cells
+        let dimmedBg = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 0.08, alpha: 1)
+                : NSColor(white: 0.92, alpha: 1)
+        }
+
         dayRects.removeAll()
+        pillRects.removeAll()
+
+        // Calculate the first date in the grid (may be from previous month)
+        guard let gridStartDate = cal.date(byAdding: .day, value: -firstOffset, to: monthStart) else { return }
 
         for row in 0..<rowCount {
             for col in 0..<7 {
-                let dayIndex = row * 7 + col - firstWeekday + 1
-                guard dayIndex >= 1 && dayIndex <= daysInMonth else { continue }
+                let cellIndex = row * 7 + col
+                guard let cellDate = cal.date(byAdding: .day, value: cellIndex, to: gridStartDate) else { continue }
+
+                let cellMonth = cal.component(.month, from: cellDate)
+                let currentMonth = cal.component(.month, from: date)
+                let isCurrentMonth = cellMonth == currentMonth
 
                 let x = CGFloat(col) * colWidth + cellPadding
                 let y = gridTop - CGFloat(row + 1) * rowHeight + cellPadding
@@ -1112,9 +1222,13 @@ class MonthCalendarView: NSView {
 
                 let cellRect = NSRect(x: x, y: y, width: w, height: h)
 
-                guard let cellDate = cal.date(bySetting: .day, value: dayIndex, of: monthStart) else { continue }
-
                 dayRects.append((cellRect, cellDate))
+
+                // Out-of-month dimmed background
+                if !isCurrentMonth {
+                    ctx.setFillColor(dimmedBg.cgColor)
+                    ctx.fill(cellRect)
+                }
 
                 // Today highlight
                 if isToday(cellDate) {
@@ -1127,24 +1241,34 @@ class MonthCalendarView: NSView {
                 ctx.stroke(cellRect)
 
                 // Day number
-                let dayStr = "\(dayIndex)"
+                let dayNum = cal.component(.day, from: cellDate)
+                let dayStr = "\(dayNum)"
+                let dayColor: NSColor
+                if !isCurrentMonth {
+                    dayColor = NSColor.tertiaryLabelColor
+                } else if isToday(cellDate) {
+                    dayColor = NSColor.controlAccentColor
+                } else {
+                    dayColor = Theme.primaryText
+                }
                 let dayAttrs: [NSAttributedString.Key: Any] = [
                     .font: NSFont.systemFont(ofSize: isToday(cellDate) ? 13 : 11, weight: isToday(cellDate) ? .bold : .regular),
-                    .foregroundColor: isToday(cellDate) ? NSColor.controlAccentColor : Theme.primaryText
+                    .foregroundColor: dayColor
                 ]
                 let dayAttrStr = NSAttributedString(string: dayStr, attributes: dayAttrs)
                 dayAttrStr.draw(at: NSPoint(x: x + 4, y: y + h - 18))
 
                 // Events for this day
                 let dayEvents = events.filter { cal.isDate($0.date, inSameDayAs: cellDate) }
-                let uniqueEvents = Dictionary(grouping: dayEvents, by: { $0.schedule.name }).map { $0.value.first! }
+                let uniqueEvents = Dictionary(grouping: dayEvents, by: { "\($0.schedule.name)|\($0.schedule.filePath)" }).map { $0.value.first! }
                 let maxPills = min(uniqueEvents.count, 3)
+                let pillAlpha: CGFloat = isCurrentMonth ? 0.2 : 0.1
                 for (i, event) in uniqueEvents.prefix(maxPills).enumerated() {
                     let pillY = y + h - 36 - CGFloat(i) * 18
                     guard pillY > y + 2 else { break }
                     let pillRect = NSRect(x: x + 4, y: pillY, width: w - 8, height: 15)
                     let color = ProjectColors.color(for: event.schedule.projectName)
-                    ctx.setFillColor(color.withAlphaComponent(0.2).cgColor)
+                    ctx.setFillColor(color.withAlphaComponent(pillAlpha).cgColor)
                     let path = CGPath(roundedRect: pillRect, cornerWidth: 3, cornerHeight: 3, transform: nil)
                     ctx.addPath(path)
                     ctx.fillPath()
@@ -1153,10 +1277,13 @@ class MonthCalendarView: NSView {
                     let label = event.isHighFrequency ? "\(typeIcon) \(event.schedule.name) (\(event.frequencyLabel))" : "\(typeIcon) \(event.schedule.name)"
                     let pillAttrs: [NSAttributedString.Key: Any] = [
                         .font: NSFont.systemFont(ofSize: 9, weight: .medium),
-                        .foregroundColor: color
+                        .foregroundColor: color.withAlphaComponent(isCurrentMonth ? 1.0 : 0.5)
                     ]
                     let pillStr = NSAttributedString(string: label, attributes: pillAttrs)
                     pillStr.draw(at: NSPoint(x: x + 7, y: pillY + 1))
+
+                    // Store pill rect for click targeting
+                    pillRects.append((pillRect, event))
                 }
 
                 if uniqueEvents.count > 3 {
@@ -1172,16 +1299,19 @@ class MonthCalendarView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
+
+        // First, hit-test against pill rects for precise event targeting
+        for (rect, calEvent) in pillRects {
+            if rect.contains(loc) {
+                owner?.showEventPopover(for: calEvent, relativeTo: NSRect(x: loc.x, y: loc.y, width: 1, height: 1), of: self)
+                return
+            }
+        }
+
+        // Fall through to day cell click (empty slot)
         for (rect, date) in dayRects {
             if rect.contains(loc) {
-                // Check if click is on an event pill
-                let dayEvents = events.filter { cal.isDate($0.date, inSameDayAs: date) }
-                let uniqueEvents = Dictionary(grouping: dayEvents, by: { $0.schedule.name }).map { $0.value.first! }
-                if let clickedEvent = uniqueEvents.first {
-                    owner?.showEventPopover(for: clickedEvent, relativeTo: NSRect(x: loc.x, y: loc.y, width: 1, height: 1), of: self)
-                } else {
-                    owner?.handleTimeSlotClick(date: date)
-                }
+                owner?.handleTimeSlotClick(date: date)
                 return
             }
         }
@@ -1195,11 +1325,12 @@ class WeekCalendarView: NSView {
     private let events: [CalendarEvent]
     private weak var owner: SchedulesView?
     private let cal = Calendar.current
-    private let hourHeight: CGFloat = 60
-    private let headerHeight: CGFloat = 50
-    private let timeGutterWidth: CGFloat = 56
+    private let hourHeight = CalendarLayout.hourHeight
+    private let headerHeight = CalendarLayout.weekHeaderHeight
+    private let timeGutterWidth = CalendarLayout.timeGutterWidth
     private var eventRects: [(NSRect, CalendarEvent)] = []
     private var hoveredRect: NSRect? = nil
+    private var lastLayoutBounds: NSRect = .zero
 
     init(date: Date, events: [CalendarEvent], owner: SchedulesView) {
         self.date = date
@@ -1210,44 +1341,90 @@ class WeekCalendarView: NSView {
 
         let trackingArea = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect], owner: self, userInfo: nil)
         addTrackingArea(trackingArea)
+
+        postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(boundsDidChange), name: NSView.frameDidChangeNotification, object: self)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     private func weekStart() -> Date {
         let weekday = cal.component(.weekday, from: date)
-        return cal.date(byAdding: .day, value: -(weekday - 1), to: cal.startOfDay(for: date))!
+        let offset = (weekday - cal.firstWeekday + 7) % 7
+        return cal.date(byAdding: .day, value: -offset, to: cal.startOfDay(for: date)) ?? cal.startOfDay(for: date)
+    }
+
+    @objc private func boundsDidChange(_ notification: Notification) {
+        computeLayout()
+        needsDisplay = true
+    }
+
+    private func computeLayout() {
+        let bounds = self.bounds
+        guard bounds != lastLayoutBounds else { return }
+        lastLayoutBounds = bounds
+
+        let weekStartDate = weekStart()
+        let colWidth = (bounds.width - timeGutterWidth) / 7
+        let gridTop = bounds.height - headerHeight
+
+        eventRects.removeAll()
+
+        for i in 0..<7 {
+            guard let dayDate = cal.date(byAdding: .day, value: i, to: weekStartDate) else { continue }
+            let dayEvents = events.filter { cal.isDate($0.date, inSameDayAs: dayDate) }
+            let x = timeGutterWidth + CGFloat(i) * colWidth + 2
+
+            for event in dayEvents {
+                if event.isHighFrequency {
+                    let stripeRect = NSRect(x: x, y: 2, width: colWidth - 4, height: gridTop - 4)
+                    eventRects.append((stripeRect, event))
+                } else {
+                    let eventHour = cal.component(.hour, from: event.date)
+                    let eventMinute = cal.component(.minute, from: event.date)
+                    let eventY = gridTop - (CGFloat(eventHour) + CGFloat(eventMinute) / 60.0) * hourHeight
+                    let eventHeight: CGFloat = max(hourHeight * 0.7, 32)
+                    let eventRect = NSRect(x: x, y: eventY - eventHeight, width: colWidth - 4, height: eventHeight)
+                    eventRects.append((eventRect, event))
+                }
+            }
+        }
+
+        window?.invalidateCursorRects(for: self)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
+        // Ensure layout is computed
+        if bounds != lastLayoutBounds { computeLayout() }
+
         let bounds = self.bounds
         let weekStartDate = weekStart()
         let colWidth = (bounds.width - timeGutterWidth) / 7
 
-        eventRects.removeAll()
-
         // Day headers
-        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        let orderedDayNames = Self.orderedDayNames(for: cal)
         let dateFmt = DateFormatter()
         dateFmt.dateFormat = "d"
 
         for i in 0..<7 {
-            let dayDate = cal.date(byAdding: .day, value: i, to: weekStartDate)!
+            guard let dayDate = cal.date(byAdding: .day, value: i, to: weekStartDate) else { continue }
             let isToday = cal.isDateInToday(dayDate)
             let x = timeGutterWidth + CGFloat(i) * colWidth
 
-            // Background highlight for today column
             if isToday {
                 ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(0.04).cgColor)
                 ctx.fill(NSRect(x: x, y: 0, width: colWidth, height: bounds.height - headerHeight))
             }
 
-            // Header text
             let dayNum = dateFmt.string(from: dayDate)
-            let label = "\(dayNames[i]) \(dayNum)"
+            let label = "\(orderedDayNames[i]) \(dayNum)"
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 11, weight: isToday ? .bold : .medium),
                 .foregroundColor: isToday ? NSColor.controlAccentColor : Theme.primaryText
@@ -1266,25 +1443,8 @@ class WeekCalendarView: NSView {
 
         let gridTop = bounds.height - headerHeight
 
-        // Hour grid lines and labels
-        ctx.setLineWidth(0.5)
-        for hour in 0...24 {
-            let y = gridTop - CGFloat(hour) * hourHeight
-            ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(hour % 6 == 0 ? 0.5 : 0.2).cgColor)
-            ctx.move(to: CGPoint(x: timeGutterWidth, y: y))
-            ctx.addLine(to: CGPoint(x: bounds.width, y: y))
-            ctx.strokePath()
-
-            if hour < 24 {
-                let h = hour == 0 ? "12 AM" : hour < 12 ? "\(hour) AM" : hour == 12 ? "12 PM" : "\(hour - 12) PM"
-                let timeAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
-                    .foregroundColor: NSColor.tertiaryLabelColor
-                ]
-                let timeStr = NSAttributedString(string: h, attributes: timeAttrs)
-                timeStr.draw(at: NSPoint(x: 4, y: y - 6))
-            }
-        }
+        // Hour grid (shared)
+        CalendarDrawing.drawHourGrid(ctx: ctx, bounds: bounds, gridTop: gridTop, hourHeight: hourHeight, gutterWidth: timeGutterWidth)
 
         // Column separators
         for i in 0...7 {
@@ -1295,92 +1455,53 @@ class WeekCalendarView: NSView {
             ctx.strokePath()
         }
 
-        // Current time line
+        // Current time line (shared)
         let now = Date()
         let nowWeekday = cal.component(.weekday, from: now)
         if cal.isDate(now, equalTo: weekStartDate, toGranularity: .weekOfYear) {
-            let nowHour = cal.component(.hour, from: now)
-            let nowMinute = cal.component(.minute, from: now)
-            let nowY = gridTop - (CGFloat(nowHour) + CGFloat(nowMinute) / 60.0) * hourHeight
-            let nowX = timeGutterWidth + CGFloat(nowWeekday - 1) * colWidth
-
-            ctx.setStrokeColor(NSColor.systemRed.cgColor)
-            ctx.setLineWidth(1.5)
-            ctx.move(to: CGPoint(x: timeGutterWidth, y: nowY))
-            ctx.addLine(to: CGPoint(x: bounds.width, y: nowY))
-            ctx.strokePath()
-
-            // Red dot
-            ctx.setFillColor(NSColor.systemRed.cgColor)
-            ctx.fillEllipse(in: NSRect(x: nowX - 4, y: nowY - 4, width: 8, height: 8))
+            let nowOffset = (nowWeekday - cal.firstWeekday + 7) % 7
+            let dotX = timeGutterWidth + CGFloat(nowOffset) * colWidth
+            CalendarDrawing.drawCurrentTimeLine(ctx: ctx, gridTop: gridTop, hourHeight: hourHeight, leftX: timeGutterWidth, rightX: bounds.width, dotX: dotX)
         }
 
-        // Draw events
-        for i in 0..<7 {
-            let dayDate = cal.date(byAdding: .day, value: i, to: weekStartDate)!
-            let dayEvents = events.filter { cal.isDate($0.date, inSameDayAs: dayDate) }
+        // Draw pre-computed event rects
+        for (rect, event) in eventRects {
+            let color = ProjectColors.color(for: event.schedule.projectName)
+            let icon = CalendarDrawing.typeIcon(for: event.schedule)
 
-            let x = timeGutterWidth + CGFloat(i) * colWidth + 2
+            if event.isHighFrequency {
+                CalendarDrawing.drawHighFrequencyStripe(ctx: ctx, rect: rect, color: color, label: "\(icon) \(event.schedule.name) (\(event.frequencyLabel))", gridTop: gridTop)
+            } else {
+                let isHovered = hoveredRect.map { $0.intersects(rect) } ?? false
+                // Line 1: [S] schedule-name
+                CalendarDrawing.drawTimedEvent(ctx: ctx, rect: rect, color: color, label: "\(icon) \(event.schedule.name)", isHovered: isHovered)
 
-            for event in dayEvents {
-                let color = ProjectColors.color(for: event.schedule.projectName)
-
-                if event.isHighFrequency {
-                    // Draw as a full-day stripe
-                    let stripeRect = NSRect(x: x, y: 2, width: colWidth - 4, height: gridTop - 4)
-                    ctx.setFillColor(color.withAlphaComponent(0.06).cgColor)
-                    let path = CGPath(roundedRect: stripeRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-                    ctx.addPath(path)
-                    ctx.fillPath()
-
-                    ctx.setStrokeColor(color.withAlphaComponent(0.3).cgColor)
-                    ctx.setLineWidth(1)
-                    ctx.addPath(path)
-                    ctx.strokePath()
-
-                    let typeIcon = event.schedule.type == "swarm" ? "S" : "P"
-                    let label = "\(typeIcon) \(event.schedule.name) (\(event.frequencyLabel))"
-                    let attrs: [NSAttributedString.Key: Any] = [
-                        .font: NSFont.systemFont(ofSize: 10, weight: .medium),
-                        .foregroundColor: color
+                // Line 2: time + target (if room)
+                if rect.height >= 32 {
+                    let timeFmt = DateFormatter()
+                    timeFmt.dateFormat = "h:mm a"
+                    let secondLine = "\(timeFmt.string(from: event.date)) \u{2022} \(event.schedule.target)"
+                    let secondLineAttrs: [NSAttributedString.Key: Any] = [
+                        .font: NSFont.systemFont(ofSize: 9),
+                        .foregroundColor: color.withAlphaComponent(0.7)
                     ]
-                    NSAttributedString(string: label, attributes: attrs).draw(at: NSPoint(x: x + 4, y: gridTop - 18))
-
-                    eventRects.append((stripeRect, event))
-                } else {
-                    let eventHour = cal.component(.hour, from: event.date)
-                    let eventMinute = cal.component(.minute, from: event.date)
-                    let eventY = gridTop - (CGFloat(eventHour) + CGFloat(eventMinute) / 60.0) * hourHeight
-                    let eventHeight: CGFloat = max(hourHeight * 0.8, 24)
-                    let eventRect = NSRect(x: x, y: eventY - eventHeight, width: colWidth - 4, height: eventHeight)
-
-                    // Hover highlight
-                    if let hr = hoveredRect, hr.intersects(eventRect) {
-                        ctx.setFillColor(color.withAlphaComponent(0.25).cgColor)
-                    } else {
-                        ctx.setFillColor(color.withAlphaComponent(0.15).cgColor)
-                    }
-                    let path = CGPath(roundedRect: eventRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-                    ctx.addPath(path)
-                    ctx.fillPath()
-
-                    // Left accent bar
-                    ctx.setFillColor(color.cgColor)
-                    ctx.fill(NSRect(x: x, y: eventY - eventHeight, width: 3, height: eventHeight))
-
-                    let typeIcon = event.schedule.type == "swarm" ? "S" : "P"
-                    let label = "\(typeIcon) \(event.schedule.name)"
-                    let attrs: [NSAttributedString.Key: Any] = [
-                        .font: NSFont.systemFont(ofSize: 10, weight: .medium),
-                        .foregroundColor: color
-                    ]
-                    let attrStr = NSAttributedString(string: label, attributes: attrs)
-                    let textY = eventY - eventHeight + max((eventHeight - 14) / 2, 2)
-                    attrStr.draw(in: NSRect(x: x + 6, y: textY, width: colWidth - 14, height: 14))
-
-                    eventRects.append((eventRect, event))
+                    NSAttributedString(string: secondLine, attributes: secondLineAttrs)
+                        .draw(in: NSRect(x: rect.minX + 6, y: rect.minY + 2, width: rect.width - 10, height: 12))
                 }
             }
+        }
+    }
+
+    static func orderedDayNames(for cal: Calendar) -> [String] {
+        let allDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        let first = cal.firstWeekday // 1=Sun, 2=Mon, etc.
+        return (0..<7).map { allDays[($0 + first - 1) % 7] }
+    }
+
+    override func resetCursorRects() {
+        discardCursorRects()
+        for (rect, _) in eventRects {
+            addCursorRect(rect, cursor: .pointingHand)
         }
     }
 
@@ -1444,11 +1565,12 @@ class DayCalendarView: NSView {
     private let events: [CalendarEvent]
     private weak var owner: SchedulesView?
     private let cal = Calendar.current
-    private let hourHeight: CGFloat = 60
-    private let headerHeight: CGFloat = 40
-    private let timeGutterWidth: CGFloat = 56
+    private let hourHeight = CalendarLayout.hourHeight
+    private let headerHeight = CalendarLayout.dayHeaderHeight
+    private let timeGutterWidth = CalendarLayout.timeGutterWidth
     private var eventRects: [(NSRect, CalendarEvent)] = []
     private var hoveredRect: NSRect? = nil
+    private var lastLayoutBounds: NSRect = .zero
 
     init(date: Date, events: [CalendarEvent], owner: SchedulesView) {
         self.date = date
@@ -1459,19 +1581,63 @@ class DayCalendarView: NSView {
 
         let trackingArea = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect], owner: self, userInfo: nil)
         addTrackingArea(trackingArea)
+
+        postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(boundsDidChange), name: NSView.frameDidChangeNotification, object: self)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func boundsDidChange(_ notification: Notification) {
+        computeLayout()
+        needsDisplay = true
+    }
+
+    private func computeLayout() {
+        let bounds = self.bounds
+        guard bounds != lastLayoutBounds else { return }
+        lastLayoutBounds = bounds
+
+        let dayStart = cal.startOfDay(for: date)
+        let gridTop = bounds.height - headerHeight
+        let contentWidth = bounds.width - timeGutterWidth
+        let x = timeGutterWidth + 4
+
+        eventRects.removeAll()
+
+        let dayEvents = events.filter { cal.isDate($0.date, inSameDayAs: dayStart) }
+
+        for event in dayEvents {
+            if event.isHighFrequency {
+                let stripeRect = NSRect(x: x, y: 2, width: contentWidth - 8, height: gridTop - 4)
+                eventRects.append((stripeRect, event))
+            } else {
+                let eventHour = cal.component(.hour, from: event.date)
+                let eventMinute = cal.component(.minute, from: event.date)
+                let eventY = gridTop - (CGFloat(eventHour) + CGFloat(eventMinute) / 60.0) * hourHeight
+                let eventHeight: CGFloat = hourHeight * 0.9
+                let eventRect = NSRect(x: x, y: eventY - eventHeight, width: contentWidth - 8, height: eventHeight)
+                eventRects.append((eventRect, event))
+            }
+        }
+
+        window?.invalidateCursorRects(for: self)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
+        // Ensure layout is computed
+        if bounds != lastLayoutBounds { computeLayout() }
+
         let bounds = self.bounds
         let dayStart = cal.startOfDay(for: date)
         let isToday = cal.isDateInToday(dayStart)
-
-        eventRects.removeAll()
 
         // Header
         let fmt = DateFormatter()
@@ -1489,117 +1655,63 @@ class DayCalendarView: NSView {
         ctx.strokePath()
 
         let gridTop = bounds.height - headerHeight
-        let contentWidth = bounds.width - timeGutterWidth
 
-        // Hour grid
-        ctx.setLineWidth(0.5)
-        for hour in 0...24 {
-            let y = gridTop - CGFloat(hour) * hourHeight
-            ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(hour % 6 == 0 ? 0.5 : 0.2).cgColor)
-            ctx.move(to: CGPoint(x: timeGutterWidth, y: y))
-            ctx.addLine(to: CGPoint(x: bounds.width, y: y))
-            ctx.strokePath()
+        // Hour grid (shared)
+        CalendarDrawing.drawHourGrid(ctx: ctx, bounds: bounds, gridTop: gridTop, hourHeight: hourHeight, gutterWidth: timeGutterWidth, timeFontSize: 10)
 
-            if hour < 24 {
-                let h = hour == 0 ? "12 AM" : hour < 12 ? "\(hour) AM" : hour == 12 ? "12 PM" : "\(hour - 12) PM"
-                let timeAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular),
-                    .foregroundColor: NSColor.tertiaryLabelColor
-                ]
-                NSAttributedString(string: h, attributes: timeAttrs).draw(at: NSPoint(x: 4, y: y - 7))
-            }
-        }
-
-        // Current time line
+        // Current time line (shared)
         if isToday {
-            let now = Date()
-            let nowHour = cal.component(.hour, from: now)
-            let nowMinute = cal.component(.minute, from: now)
-            let nowY = gridTop - (CGFloat(nowHour) + CGFloat(nowMinute) / 60.0) * hourHeight
-
-            ctx.setStrokeColor(NSColor.systemRed.cgColor)
-            ctx.setLineWidth(2)
-            ctx.move(to: CGPoint(x: timeGutterWidth, y: nowY))
-            ctx.addLine(to: CGPoint(x: bounds.width, y: nowY))
-            ctx.strokePath()
-
-            ctx.setFillColor(NSColor.systemRed.cgColor)
-            ctx.fillEllipse(in: NSRect(x: timeGutterWidth - 5, y: nowY - 5, width: 10, height: 10))
+            CalendarDrawing.drawCurrentTimeLine(ctx: ctx, gridTop: gridTop, hourHeight: hourHeight, leftX: timeGutterWidth, rightX: bounds.width, dotX: timeGutterWidth, lineWidth: 2, dotRadius: 5)
         }
 
-        // Events
-        let dayEvents = events.filter { cal.isDate($0.date, inSameDayAs: dayStart) }
-
-        for event in dayEvents {
+        // Draw pre-computed event rects
+        for (rect, event) in eventRects {
             let color = ProjectColors.color(for: event.schedule.projectName)
-            let x = timeGutterWidth + 4
+            let x = rect.minX
+            let icon = CalendarDrawing.typeIcon(for: event.schedule)
 
             if event.isHighFrequency {
-                let stripeRect = NSRect(x: x, y: 2, width: contentWidth - 8, height: gridTop - 4)
-                ctx.setFillColor(color.withAlphaComponent(0.06).cgColor)
-                let path = CGPath(roundedRect: stripeRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-                ctx.addPath(path)
-                ctx.fillPath()
-                ctx.setStrokeColor(color.withAlphaComponent(0.3).cgColor)
-                ctx.setLineWidth(1)
-                ctx.addPath(path)
-                ctx.strokePath()
-
-                let typeIcon = event.schedule.type == "swarm" ? "S" : "P"
-                let label = "\(typeIcon) \(event.schedule.name) \u{2014} \(event.frequencyLabel)"
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                    .foregroundColor: color
-                ]
-                NSAttributedString(string: label, attributes: attrs).draw(at: NSPoint(x: x + 6, y: gridTop - 20))
-
-                eventRects.append((stripeRect, event))
+                CalendarDrawing.drawHighFrequencyStripe(ctx: ctx, rect: rect, color: color, label: "\(icon) \(event.schedule.name) \u{2014} \(event.frequencyLabel)", gridTop: gridTop, fontSize: 11)
             } else {
-                let eventHour = cal.component(.hour, from: event.date)
-                let eventMinute = cal.component(.minute, from: event.date)
-                let eventY = gridTop - (CGFloat(eventHour) + CGFloat(eventMinute) / 60.0) * hourHeight
-                let eventHeight: CGFloat = hourHeight * 0.9
-                let eventRect = NSRect(x: x, y: eventY - eventHeight, width: contentWidth - 8, height: eventHeight)
+                let isHovered = hoveredRect.map { $0.intersects(rect) } ?? false
 
-                if let hr = hoveredRect, hr.intersects(eventRect) {
-                    ctx.setFillColor(color.withAlphaComponent(0.25).cgColor)
-                } else {
-                    ctx.setFillColor(color.withAlphaComponent(0.15).cgColor)
-                }
-                let path = CGPath(roundedRect: eventRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
+                // Day view gets richer event rendering (more space available)
+                ctx.setFillColor(color.withAlphaComponent(isHovered ? 0.25 : 0.15).cgColor)
+                let path = CGPath(roundedRect: rect, cornerWidth: 6, cornerHeight: 6, transform: nil)
                 ctx.addPath(path)
                 ctx.fillPath()
 
                 // Left accent bar
                 ctx.setFillColor(color.cgColor)
-                ctx.fill(NSRect(x: x, y: eventY - eventHeight, width: 3, height: eventHeight))
+                ctx.fill(NSRect(x: x, y: rect.minY, width: 3, height: rect.height))
 
-                // Event text
-                let typeIcon = event.schedule.type == "swarm" ? "S" : "P"
+                // Event text — name, time, and cron
                 let timeFmt = DateFormatter()
                 timeFmt.dateFormat = "h:mm a"
                 let timeStr = timeFmt.string(from: event.date)
 
-                let nameStr = NSAttributedString(string: "[\(typeIcon)] \(event.schedule.name)", attributes: [
+                NSAttributedString(string: "[\(icon)] \(event.schedule.name)", attributes: [
                     .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
                     .foregroundColor: color
-                ])
-                nameStr.draw(at: NSPoint(x: x + 8, y: eventY - 18))
+                ]).draw(at: NSPoint(x: x + 8, y: rect.maxY - 18))
 
-                let detailStr = NSAttributedString(string: "\(timeStr) \u{2022} \(event.schedule.target) \u{2022} \(event.schedule.projectName)", attributes: [
+                NSAttributedString(string: "\(timeStr) \u{2022} \(event.schedule.target) \u{2022} \(event.schedule.projectName)", attributes: [
                     .font: NSFont.systemFont(ofSize: 10),
                     .foregroundColor: color.withAlphaComponent(0.8)
-                ])
-                detailStr.draw(at: NSPoint(x: x + 8, y: eventY - 34))
+                ]).draw(at: NSPoint(x: x + 8, y: rect.maxY - 34))
 
-                let cronStr = NSAttributedString(string: CronParser.humanReadable(event.schedule.cronExpression), attributes: [
+                NSAttributedString(string: CronParser.humanReadable(event.schedule.cronExpression), attributes: [
                     .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .regular),
                     .foregroundColor: NSColor.secondaryLabelColor
-                ])
-                cronStr.draw(at: NSPoint(x: x + 8, y: eventY - 48))
-
-                eventRects.append((eventRect, event))
+                ]).draw(at: NSPoint(x: x + 8, y: rect.maxY - 48))
             }
+        }
+    }
+
+    override func resetCursorRects() {
+        discardCursorRects()
+        for (rect, _) in eventRects {
+            addCursorRect(rect, cursor: .pointingHand)
         }
     }
 
