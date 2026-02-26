@@ -4,7 +4,7 @@ import { checkPrState } from '../core/pr.js';
 import { getRepoRoot, pruneWorktrees } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, excludeSelf, wouldCleanupAffectSelf } from '../core/self.js';
-import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
+import { listSessionPanes, killOrphanWindows, type PaneInfo } from '../core/tmux.js';
 import { NotInitializedError, UnmergedWorkError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
@@ -155,6 +155,12 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
       }
       return m;
     });
+  }
+
+  // Kill any orphaned tmux windows left in the session (e.g., from failed cleanups)
+  const orphansKilled = await killOrphanWindows(manifest.sessionName);
+  if (orphansKilled > 0) {
+    info(`Killed ${orphansKilled} orphaned tmux window(s)`);
   }
 
   // Optional git worktree prune

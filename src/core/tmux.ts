@@ -209,6 +209,54 @@ export async function listSessionPanes(session: string): Promise<Map<string, Pan
   return map;
 }
 
+export interface WindowInfo {
+  index: number;
+  name: string;
+}
+
+/**
+ * List all windows in a tmux session.
+ * Returns window index and name for each window.
+ */
+export async function listSessionWindows(session: string): Promise<WindowInfo[]> {
+  try {
+    const result = await execa('tmux', [
+      'list-windows',
+      '-t', `=${session}`,
+      '-F', '#{window_index} #{window_name}',
+    ], execaEnv);
+    return result.stdout.trim().split('\n').filter(Boolean).map((line) => {
+      const spaceIdx = line.indexOf(' ');
+      return {
+        index: parseInt(line.slice(0, spaceIdx), 10),
+        name: line.slice(spaceIdx + 1),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Kill all non-base windows in a session (orphan cleanup).
+ * Window 0 is preserved as the base shell window.
+ * Returns the number of windows killed.
+ */
+export async function killOrphanWindows(session: string): Promise<number> {
+  const windows = await listSessionWindows(session);
+  let killed = 0;
+  for (const win of windows) {
+    if (win.index === 0) continue;
+    try {
+      await killWindow(`${session}:${win.index}`);
+      killed++;
+    } catch {
+      // Already gone — fine
+    }
+  }
+  return killed;
+}
+
 export async function selectWindow(target: string): Promise<void> {
   await execa('tmux', ['select-window', '-t', target], execaEnv);
 }
