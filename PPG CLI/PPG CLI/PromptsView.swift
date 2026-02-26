@@ -463,25 +463,47 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
         let accessory = NSStackView()
         accessory.orientation = .vertical
         accessory.spacing = 8
+        accessory.alignment = .leading
 
-        let nameField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        let nameLabel = NSTextField(labelWithString: "Name:")
+        nameLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        nameLabel.textColor = .secondaryLabelColor
+        accessory.addArrangedSubview(nameLabel)
+
+        let nameField = NSTextField(string: "")
         nameField.placeholderString = "prompt-name"
+        nameField.translatesAutoresizingMaskIntoConstraints = false
         accessory.addArrangedSubview(nameField)
 
-        let projectPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 240, height: 24), pullsDown: false)
+        let projectLabel = NSTextField(labelWithString: "Project:")
+        projectLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        projectLabel.textColor = .secondaryLabelColor
+        accessory.addArrangedSubview(projectLabel)
+
+        let projectPopup = NSPopUpButton(frame: .zero, pullsDown: false)
         for ctx in projects {
             projectPopup.addItem(withTitle: ctx.projectName.isEmpty ? ctx.projectRoot : ctx.projectName)
         }
+        projectPopup.translatesAutoresizingMaskIntoConstraints = false
         accessory.addArrangedSubview(projectPopup)
 
-        let dirPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 240, height: 24), pullsDown: false)
+        let dirLabel = NSTextField(labelWithString: "Directory:")
+        dirLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        dirLabel.textColor = .secondaryLabelColor
+        accessory.addArrangedSubview(dirLabel)
+
+        let dirPopup = NSPopUpButton(frame: .zero, pullsDown: false)
         dirPopup.addItem(withTitle: "prompts")
         dirPopup.addItem(withTitle: "templates")
+        dirPopup.translatesAutoresizingMaskIntoConstraints = false
         accessory.addArrangedSubview(dirPopup)
 
         accessory.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            accessory.widthAnchor.constraint(equalToConstant: 240),
+            accessory.widthAnchor.constraint(equalToConstant: 260),
+            nameField.widthAnchor.constraint(equalTo: accessory.widthAnchor),
+            projectPopup.widthAnchor.constraint(equalTo: accessory.widthAnchor),
+            dirPopup.widthAnchor.constraint(equalTo: accessory.widthAnchor),
         ])
 
         alert.accessoryView = accessory
