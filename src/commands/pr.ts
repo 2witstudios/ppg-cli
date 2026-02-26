@@ -3,7 +3,7 @@ import { execa } from 'execa';
 import { updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { PgError, NotInitializedError, WorktreeNotFoundError, GhNotFoundError } from '../lib/errors.js';
+import { PpgError, NotInitializedError, WorktreeNotFoundError, GhNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { execaEnv } from '../lib/env.js';
 
@@ -44,7 +44,7 @@ export async function prCommand(worktreeRef: string, options: PrOptions): Promis
   try {
     await execa('git', ['push', '-u', 'origin', wt.branch], { ...execaEnv, cwd: projectRoot });
   } catch (err) {
-    throw new PgError(
+    throw new PpgError(
       `Failed to push branch ${wt.branch}: ${err instanceof Error ? err.message : err}`,
       'INVALID_ARGS',
     );
@@ -72,7 +72,7 @@ export async function prCommand(worktreeRef: string, options: PrOptions): Promis
     const result = await execa('gh', ghArgs, { ...execaEnv, cwd: projectRoot });
     prUrl = result.stdout.trim();
   } catch (err) {
-    throw new PgError(
+    throw new PpgError(
       `Failed to create PR: ${err instanceof Error ? err.message : err}`,
       'INVALID_ARGS',
     );
@@ -116,5 +116,5 @@ export async function buildBodyFromResults(agents: { resultFile: string }[]): Pr
 /** Truncate body to stay within GitHub's PR body size limit. */
 export function truncateBody(body: string): string {
   if (body.length <= MAX_BODY_LENGTH) return body;
-  return body.slice(0, MAX_BODY_LENGTH) + '\n\n---\n\n*[Truncated — full results available in `.pg/results/`]*';
+  return body.slice(0, MAX_BODY_LENGTH) + '\n\n---\n\n*[Truncated — full results available in `.ppg/results/`]*';
 }

@@ -4,7 +4,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import { listTemplates } from '../core/template.js';
 import { listSwarms, loadSwarm } from '../core/swarm.js';
 import { templatesDir } from '../lib/paths.js';
-import { PgError } from '../lib/errors.js';
+import { PpgError } from '../lib/errors.js';
 import { output, formatTable, type Column } from '../lib/output.js';
 
 export interface ListOptions {
@@ -17,7 +17,7 @@ export async function listCommand(type: string, options: ListOptions): Promise<v
   } else if (type === 'swarms') {
     await listSwarmsCommand(options);
   } else {
-    throw new PgError(`Unknown list type: ${type}. Available: templates, swarms`, 'INVALID_ARGS');
+    throw new PpgError(`Unknown list type: ${type}. Available: templates, swarms`, 'INVALID_ARGS');
   }
 }
 
@@ -27,7 +27,7 @@ async function listTemplatesCommand(options: ListOptions): Promise<void> {
   const templateNames = await listTemplates(projectRoot);
 
   if (templateNames.length === 0) {
-    console.log('No templates found in .pg/templates/');
+    console.log('No templates found in .ppg/templates/');
     return;
   }
 
@@ -74,7 +74,7 @@ async function listSwarmsCommand(options: ListOptions): Promise<void> {
     if (options.json) {
       output({ swarms: [] }, true);
     } else {
-      console.log('No swarm templates found in .pg/swarms/');
+      console.log('No swarm templates found in .ppg/swarms/');
     }
     return;
   }

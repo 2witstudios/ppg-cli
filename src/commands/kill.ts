@@ -5,7 +5,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, excludeSelf } from '../core/self.js';
 import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { PgError, NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PpgError, NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { AgentEntry } from '../types/manifest.js';
 
@@ -23,7 +23,7 @@ export async function killCommand(options: KillOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
   if (!options.agent && !options.worktree && !options.all) {
-    throw new PgError('One of --agent, --worktree, or --all is required', 'INVALID_ARGS');
+    throw new PpgError('One of --agent, --worktree, or --all is required', 'INVALID_ARGS');
   }
 
   // Capture self-identification once at the start
