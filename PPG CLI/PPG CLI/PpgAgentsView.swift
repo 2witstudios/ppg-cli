@@ -10,6 +10,7 @@ class PpgAgentsView: NSView, NSTextStorageDelegate {
     private let editorTextView = NSTextView()
     private let emptyLabel = NSTextField(labelWithString: "No .ppg/config.yaml found")
     private var isDirty = false
+    private var currentConfigIndex: Int = -1
     private var projects: [ProjectContext] = []
 
     /// Each entry: (display title, file path)
@@ -174,6 +175,7 @@ class PpgAgentsView: NSView, NSTextStorageDelegate {
         let path = configEntries[index].1
         let content = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
         editorTextView.string = content
+        currentConfigIndex = index
         isDirty = false
         saveButton.isEnabled = false
     }
@@ -186,6 +188,9 @@ class PpgAgentsView: NSView, NSTextStorageDelegate {
             alert.addButton(withTitle: "Discard")
             alert.addButton(withTitle: "Cancel")
             if alert.runModal() != .alertFirstButtonReturn {
+                if currentConfigIndex >= 0 {
+                    sender.selectItem(at: currentConfigIndex)
+                }
                 return
             }
         }
@@ -195,7 +200,7 @@ class PpgAgentsView: NSView, NSTextStorageDelegate {
     // MARK: - Save
 
     @objc private func saveClicked() {
-        let index = projectSwitcher.indexOfSelectedItem
+        let index = (currentConfigIndex >= 0) ? currentConfigIndex : projectSwitcher.indexOfSelectedItem
         guard index >= 0, index < configEntries.count else { return }
         let path = configEntries[index].1
 

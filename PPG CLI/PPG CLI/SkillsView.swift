@@ -830,8 +830,8 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         )
 
         // Handle directory rename if name changed
-        let skillsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/skills")
-        let newDir = (skillsDir as NSString).appendingPathComponent(newName)
+        let parentSkillsDir = (skill.skillDir as NSString).deletingLastPathComponent
+        let newDir = (parentSkillsDir as NSString).appendingPathComponent(newName)
 
         if newName != skill.name && skill.skillDir != newDir {
             if fm.fileExists(atPath: newDir) {

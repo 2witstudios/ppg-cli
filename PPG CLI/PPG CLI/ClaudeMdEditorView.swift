@@ -9,6 +9,7 @@ class ClaudeMdEditorView: NSView, NSTextStorageDelegate {
     private let editorScrollView = NSScrollView()
     private let editorTextView = NSTextView()
     private var isDirty = false
+    private var currentFileIndex: Int = -1
     private var projects: [ProjectContext] = []
 
     /// Each entry: (display title, file path)
@@ -29,9 +30,9 @@ class ClaudeMdEditorView: NSView, NSTextStorageDelegate {
     func configure(projects: [ProjectContext]) {
         self.projects = projects
         populateFileSwitcher()
-        if !fileEntries.isEmpty {
-            fileSwitcher.selectItem(at: 0)
-            loadFile(at: 0)
+        if let firstRealIdx = fileEntries.firstIndex(where: { $0.0 != "---" }) {
+            fileSwitcher.selectItem(at: firstRealIdx)
+            loadFile(at: firstRealIdx)
         }
     }
 
@@ -195,6 +196,7 @@ class ClaudeMdEditorView: NSView, NSTextStorageDelegate {
         guard title != "---", !path.isEmpty else { return }
         let content = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
         editorTextView.string = content
+        currentFileIndex = index
         isDirty = false
         saveButton.isEnabled = false
     }
@@ -207,8 +209,10 @@ class ClaudeMdEditorView: NSView, NSTextStorageDelegate {
             alert.addButton(withTitle: "Discard")
             alert.addButton(withTitle: "Cancel")
             if alert.runModal() != .alertFirstButtonReturn {
-                // Restore previous selection — find which index was loaded
-                // Just reload; we can't easily track previous index, so let it go
+                if currentFileIndex >= 0 {
+                    sender.selectItem(at: currentFileIndex)
+                }
+                return
             }
         }
         loadFile(at: sender.indexOfSelectedItem)
@@ -217,7 +221,7 @@ class ClaudeMdEditorView: NSView, NSTextStorageDelegate {
     // MARK: - Save
 
     @objc private func saveClicked() {
-        let index = fileSwitcher.indexOfSelectedItem
+        let index = (currentFileIndex >= 0) ? currentFileIndex : fileSwitcher.indexOfSelectedItem
         guard index >= 0, index < fileEntries.count else { return }
         let path = fileEntries[index].1
 
