@@ -47,6 +47,15 @@ ppg spawn --worktree <wt-id> --prompt "Review test coverage gaps..." --json --no
 3. Present a unified summary to the user
 4. Typically NO merge — swarm output is advisory. If agents did make code changes, ask the user before merging.
 
+**Multi-agent-type swarms:**
+Mix agent types for different perspectives on the same code:
+```bash
+# Claude for deep code quality review
+ppg spawn --name "pr-review" --prompt "Review code quality..." --json --no-open
+# Codex for automated review on the same worktree
+ppg spawn --worktree <wt-id> --agent codex --prompt "review --base main" --json --no-open
+```
+
 **Suggested swarm sizes:**
 - Code review: 3-4 agents (quality, security, performance, testing)
 - Architecture review: 3 agents (design patterns, scalability, maintainability)

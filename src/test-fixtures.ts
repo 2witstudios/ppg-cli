@@ -9,7 +9,6 @@ export function makeAgent(overrides?: Partial<AgentEntry>): AgentEntry {
     status: 'running',
     tmuxTarget: 'ppg:1.0',
     prompt: 'Do the thing',
-    resultFile: '/tmp/project/.ppg/results/ag-test1234.md',
     startedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };

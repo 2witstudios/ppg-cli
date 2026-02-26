@@ -6,7 +6,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
-import { agentPromptFile, resultFile } from '../lib/paths.js';
+import { agentPromptFile } from '../lib/paths.js';
 import { PpgError, AgentNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { renderTemplate, type TemplateContext } from '../core/template.js';
@@ -30,7 +30,7 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
   const { worktree: wt, agent: oldAgent } = found;
 
   // Kill old agent if still running
-  if (['running', 'spawning', 'waiting'].includes(oldAgent.status)) {
+  if (oldAgent.status === 'running') {
     info(`Killing existing agent ${oldAgent.id}`);
     await killAgent(oldAgent);
   }
@@ -66,7 +66,6 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
     WORKTREE_PATH: wt.path,
     BRANCH: wt.branch,
     AGENT_ID: newAgentId,
-    RESULT_FILE: resultFile(projectRoot, newAgentId),
     PROJECT_ROOT: projectRoot,
     TASK_NAME: wt.name,
     PROMPT: promptText,
@@ -83,17 +82,15 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
     projectRoot,
     branch: wt.branch,
     sessionId: newSessionId,
-    skipResultInstructions: !options.prompt,
   });
 
-  // Update manifest: mark old agent as killed, add new agent
+  // Update manifest: mark old agent as gone, add new agent
   await updateManifest(projectRoot, (m) => {
     const mWt = m.worktrees[wt.id];
     if (mWt) {
       const mOldAgent = mWt.agents[oldAgent.id];
-      if (mOldAgent && !['completed', 'failed', 'killed', 'lost'].includes(mOldAgent.status)) {
-        mOldAgent.status = 'killed';
-        mOldAgent.completedAt = new Date().toISOString();
+      if (mOldAgent && mOldAgent.status === 'running') {
+        mOldAgent.status = 'gone';
       }
       mWt.agents[newAgentId] = agentEntry;
     }

@@ -1,11 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
-import fs from 'node:fs/promises';
-
-vi.mock('node:fs/promises', () => ({
-  default: {
-    readFile: vi.fn(),
-  },
-}));
+import { describe, test, expect } from 'vitest';
 
 import { buildBodyFromResults, truncateBody } from './pr.js';
 
@@ -40,70 +33,35 @@ describe('truncateBody', () => {
 });
 
 describe('buildBodyFromResults', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   test('given no agents, should return empty string', async () => {
     const result = await buildBodyFromResults([]);
     expect(result).toBe('');
   });
 
-  test('given agents with no result files, should return empty string', async () => {
-    vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
+  test('given single agent, should return formatted section', async () => {
+    const agents = [{ id: 'ag-1', prompt: 'Fix the bug' }];
+    const result = await buildBodyFromResults(agents);
 
+    expect(result).toContain('## Agent: ag-1');
+    expect(result).toContain('Fix the bug');
+  });
+
+  test('given multiple agents, should join with separator', async () => {
     const agents = [
-      { resultFile: '/tmp/results/ag-1.md' },
-      { resultFile: '/tmp/results/ag-2.md' },
+      { id: 'ag-1', prompt: 'Task 1' },
+      { id: 'ag-2', prompt: 'Task 2' },
     ];
     const result = await buildBodyFromResults(agents);
 
-    expect(result).toBe('');
+    expect(result).toContain('## Agent: ag-1');
+    expect(result).toContain('Task 1');
+    expect(result).toContain('---');
+    expect(result).toContain('## Agent: ag-2');
+    expect(result).toContain('Task 2');
   });
 
-  test('given single agent with result, should return its content', async () => {
-    vi.mocked(fs.readFile).mockResolvedValueOnce('## Results\nTask completed.');
-
-    const agents = [{ resultFile: '/tmp/results/ag-1.md' }];
-    const result = await buildBodyFromResults(agents);
-
-    expect(result).toBe('## Results\nTask completed.');
-  });
-
-  test('given multiple agents with results, should join with separator', async () => {
-    vi.mocked(fs.readFile)
-      .mockResolvedValueOnce('Agent 1 results')
-      .mockResolvedValueOnce('Agent 2 results');
-
-    const agents = [
-      { resultFile: '/tmp/results/ag-1.md' },
-      { resultFile: '/tmp/results/ag-2.md' },
-    ];
-    const result = await buildBodyFromResults(agents);
-
-    expect(result).toBe('Agent 1 results\n\n---\n\nAgent 2 results');
-  });
-
-  test('given mixed results (some missing), should include only available', async () => {
-    vi.mocked(fs.readFile)
-      .mockResolvedValueOnce('Agent 1 results')
-      .mockRejectedValueOnce(new Error('ENOENT'))
-      .mockResolvedValueOnce('Agent 3 results');
-
-    const agents = [
-      { resultFile: '/tmp/results/ag-1.md' },
-      { resultFile: '/tmp/results/ag-2.md' },
-      { resultFile: '/tmp/results/ag-3.md' },
-    ];
-    const result = await buildBodyFromResults(agents);
-
-    expect(result).toBe('Agent 1 results\n\n---\n\nAgent 3 results');
-  });
-
-  test('given large results exceeding limit, should truncate', async () => {
-    vi.mocked(fs.readFile).mockResolvedValueOnce('x'.repeat(100_000));
-
-    const agents = [{ resultFile: '/tmp/results/ag-1.md' }];
+  test('given large prompts exceeding limit, should truncate', async () => {
+    const agents = [{ id: 'ag-1', prompt: 'x'.repeat(100_000) }];
     const result = await buildBodyFromResults(agents);
 
     expect(result.length).toBeLessThan(61_000);

@@ -4,7 +4,6 @@ export interface AgentConfig {
   promptFlag?: string;
   promptFileFlag?: string;
   interactive: boolean;
-  resultInstructions?: string;
 }
 
 export interface Config {

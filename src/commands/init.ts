@@ -16,11 +16,19 @@ const CONDUCTOR_CONTEXT = `# PPG Conductor Context
 
 You are operating on the master branch of a ppg-managed project.
 
-## Critical Rule
-**NEVER make code changes directly on the master branch.** Use \`ppg spawn\` to create worktrees.
+## When to Use ppg
+Use \`ppg spawn\` whenever you want work to appear in the **ppg dashboard** — parallel tasks, code reviews,
+batch issue work, multi-agent swarms. Agents spawned through ppg run in tmux panes the user can monitor,
+interact with, and manage. Available agent types: \`claude\` (default), \`codex\`, \`opencode\` via \`--agent\`.
+
+Direct edits, quick commands, and research are fine to do yourself — not everything needs an agent.
+Never run \`claude\`, \`codex\`, or \`opencode\` directly as bash commands — they won't appear in the dashboard.
 
 ## Quick Reference
 - \`ppg spawn --name <name> --prompt "<task>" --json\` — Spawn worktree + agent
+- \`ppg spawn --name <name> --agent codex --prompt "<task>" --json\` — Use Codex agent
+- \`ppg spawn --name <name> --agent opencode --prompt "<task>" --json\` — Use OpenCode agent
+- \`ppg spawn --worktree <id> --agent codex --prompt "review --base main" --json\` — Codex review
 - \`ppg status --json\` — Check statuses
 - \`ppg aggregate --all --json\` — Collect results (includes PR URLs)
 - \`ppg kill --agent <id> --json\` — Kill agent

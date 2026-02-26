@@ -42,6 +42,16 @@ export async function createWorktree(
   return wtPath;
 }
 
+export async function adoptWorktree(
+  repoRoot: string,
+  id: string,
+  branch: string,
+): Promise<string> {
+  const wtPath = getWorktreePath(repoRoot, id);
+  await execa('git', ['worktree', 'add', wtPath, branch], { ...execaEnv, cwd: repoRoot });
+  return wtPath;
+}
+
 export async function removeWorktree(
   repoRoot: string,
   wtPath: string,

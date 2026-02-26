@@ -42,6 +42,11 @@ After classifying the mode:
 
 ## Core Principles
 
+- **ppg spawn = dashboard visibility** — When you want work tracked in the ppg dashboard (parallel tasks, reviews, batch work, swarms), use `ppg spawn`. Agents spawned through ppg run in tmux panes the user can monitor, interact with, and manage. Direct edits and quick commands are fine to do yourself. Never run `claude`, `codex`, or `opencode` directly as bash commands — they won't appear in the dashboard.
+- **Multi-agent types** — Use `--agent claude` (default), `--agent codex`, or `--agent opencode`:
+  - `claude`: General coding, complex multi-step tasks, PR creation
+  - `codex`: Code review (`review --base main`), quick edits, research
+  - `opencode`: Alternative coding agent with different model providers
 - **Always use `--json`** for machine-readable output from every ppg command
 - **Always use `--no-open`** to suppress Terminal.app windows (you're driving programmatically, not watching panes)
 - **Poll every 5 seconds** — `ppg status --json` in a loop until all agents reach a terminal state

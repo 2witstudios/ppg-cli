@@ -29,9 +29,9 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
   if (!wt) throw new WorktreeNotFoundError(worktreeId);
 
-  // Check all agents completed
+  // Check all agents finished
   const agents = Object.values(wt.agents);
-  const incomplete = agents.filter((a) => !['completed', 'failed', 'killed'].includes(a.status));
+  const incomplete = agents.filter((a) => a.status === 'running');
 
   if (incomplete.length > 0 && !options.force) {
     const ids = incomplete.map((a) => a.id).join(', ');

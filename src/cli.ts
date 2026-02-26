@@ -33,6 +33,7 @@ program
   .option('-t, --template <name>', 'Template name from .ppg/templates/')
   .option('--var <key=value...>', 'Template variables', collectVars, [])
   .option('-b, --base <branch>', 'Base branch for the worktree')
+  .option('--branch <name>', 'Check out an existing branch into a new worktree')
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
   .option('-c, --count <n>', 'Number of agents to spawn', parsePositiveInt('count'), 1)
   .option('--split', 'Put all agents in one window as split panes')
@@ -93,7 +94,7 @@ program
 
 program
   .command('aggregate')
-  .description('Aggregate results from completed agents')
+  .description('Aggregate results from agents (captures pane output)')
   .argument('[worktree-id]', 'Worktree ID to aggregate results from')
   .option('--all', 'Aggregate from all worktrees')
   .option('-o, --output <file>', 'Write output to file')
@@ -110,7 +111,7 @@ program
   .option('-s, --strategy <strategy>', 'Merge strategy: squash or no-ff', 'squash')
   .option('--no-cleanup', 'Do not remove worktree after merge')
   .option('--dry-run', 'Show what would be done without doing it')
-  .option('--force', 'Merge even if agents are not completed')
+  .option('--force', 'Merge even if agents are still running')
   .option('--json', 'Output as JSON')
   .action(async (worktreeId, options) => {
     const { mergeCommand } = await import('./commands/merge.js');
@@ -161,7 +162,7 @@ program
 
 program
   .command('restart')
-  .description('Restart a failed/killed agent in the same worktree')
+  .description('Restart an agent in the same worktree')
   .argument('<agent-id>', 'Agent ID to restart')
   .option('-p, --prompt <text>', 'Override the original prompt')
   .option('-a, --agent <type>', 'Override the agent type')
@@ -255,6 +256,7 @@ worktreeCmd
   .description('Create a standalone worktree without spawning agents')
   .option('-n, --name <name>', 'Name for the worktree')
   .option('-b, --base <branch>', 'Base branch for the worktree')
+  .option('--branch <name>', 'Check out an existing branch into a new worktree')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { worktreeCreateCommand } = await import('./commands/worktree.js');

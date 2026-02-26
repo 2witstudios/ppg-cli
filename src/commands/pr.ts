@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import { execa } from 'execa';
 import { updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
@@ -99,18 +98,11 @@ export async function prCommand(worktreeRef: string, options: PrOptions): Promis
   }
 }
 
-/** Read agent result files and join them into a PR body, with truncation. */
-export async function buildBodyFromResults(agents: { resultFile: string }[]): Promise<string> {
-  const reads = agents.map(async (agent) => {
-    try {
-      return await fs.readFile(agent.resultFile, 'utf-8');
-    } catch {
-      return null;
-    }
-  });
-  const contents = (await Promise.all(reads)).filter((c): c is string => c !== null);
-  if (contents.length === 0) return '';
-  return truncateBody(contents.join('\n\n---\n\n'));
+/** Build PR body from agent prompts, with truncation. */
+export async function buildBodyFromResults(agents: { id: string; prompt: string }[]): Promise<string> {
+  if (agents.length === 0) return '';
+  const sections = agents.map((a) => `## Agent: ${a.id}\n\n${a.prompt}`);
+  return truncateBody(sections.join('\n\n---\n\n'));
 }
 
 /** Truncate body to stay within GitHub's PR body size limit. */

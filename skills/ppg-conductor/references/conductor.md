@@ -4,10 +4,58 @@ The conductor loop has 5 phases: Spawn, Poll, Aggregate, Present, Summary.
 
 ## Phase 1: Spawn
 
+**Before you spawn, check what exists:**
+```bash
+ppg status --json
+```
+
+Read the `lifecycle` field on each worktree to understand the current state:
+
+| Lifecycle | Meaning | Action |
+|-----------|---------|--------|
+| `busy` | Agents actively working | Don't touch. Add more agents with `--worktree` if needed. |
+| `waiting` | Agent alive, waiting for input | Use `ppg send` to continue, or add agents with `--worktree`. |
+| `done` | All agents finished, no PR yet | Results available. Don't clean up — user hasn't reviewed yet. |
+| `shipped` | PR created | Work is on GitHub. Safe to ignore. |
+| `merged` | Branch merged | Can clean up with `ppg clean`. |
+| `idle` | Worktree exists, no active agents | Could be manual work. Leave it alone unless user says otherwise. |
+
+**Deciding: new worktree vs existing worktree vs existing branch**
+- Adding a review or second opinion to in-progress work → `--worktree <id>`
+- Multiple agents looking at the same code (swarm) → `--worktree <id>`
+- Resume work on an existing branch (e.g. from a PR) → `--branch <name>`
+- Independent task that should become its own PR → `--name` (new worktree)
+- Work that would conflict with what's in the worktree → `--name` (new worktree)
+
 For each task, run `ppg spawn` and capture the JSON output.
 
 ```bash
 ppg spawn --name "<name>" --prompt "<self-contained prompt>" --json --no-open
+```
+
+**Agent type selection:**
+Use the `--agent` flag to select the right tool for the job:
+
+| Agent | Best for | Spawn example |
+|-------|----------|---------------|
+| `claude` (default) | Complex coding tasks, multi-step features, PR creation | `ppg spawn --name "fix-bug" --prompt "..." --json --no-open` |
+| `codex` | Code review, quick targeted edits, research | `ppg spawn --name "review" --agent codex --prompt "review --base main" --json --no-open` |
+| `opencode` | Alternative coding, different model providers | `ppg spawn --name "task" --agent opencode --prompt "..." --json --no-open` |
+
+**Running reviews with codex:**
+```bash
+# Add a codex review agent to an existing worktree
+ppg spawn --worktree <wt-id> --agent codex --prompt "review --base main" --json --no-open
+
+# Standalone codex review on current branch
+ppg spawn --name "codex-review" --agent codex --prompt "review --uncommitted" --json --no-open
+```
+
+**Mixing agent types in a swarm:**
+You can add different agent types to the same worktree for multi-perspective review:
+```bash
+ppg spawn --name "review" --prompt "Review code quality..." --json --no-open
+ppg spawn --worktree <wt-id> --agent codex --prompt "review --base main" --json --no-open
 ```
 
 **Track the output.** Each spawn returns:
@@ -174,11 +222,10 @@ ppg merge <wt-id> --json
 - **Never auto-resolve conflicts** — the user must decide
 
 **Cleanup:**
-```bash
-ppg reset --json        # Skips worktrees with open PRs
-ppg reset --force --json  # Force cleanup including open PRs
-ppg clean --json        # Clean only terminal-state worktrees
-```
+Only clean up when the user asks. Worktrees are cheap and a `waiting` or `idle` worktree might still be in use. When the user does want cleanup:
+- `ppg clean --json` — removes merged/cleaned worktrees only (safe)
+- `ppg kill --worktree <id> --remove --json` — discard a specific worktree and its agents
+- `ppg reset --json` — nuclear option, removes everything (skips open PRs)
 
 ## Phase 5: Summary
 

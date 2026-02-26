@@ -1,11 +1,8 @@
 export type AgentStatus =
-  | 'spawning'
   | 'running'
-  | 'waiting'
-  | 'completed'
-  | 'failed'
-  | 'killed'
-  | 'lost';
+  | 'idle'
+  | 'exited'
+  | 'gone';
 
 export type WorktreeStatus =
   | 'active'
@@ -21,11 +18,8 @@ export interface AgentEntry {
   status: AgentStatus;
   tmuxTarget: string;
   prompt: string;
-  resultFile: string;
   startedAt: string;
-  completedAt?: string;
   exitCode?: number;
-  error?: string;
   sessionId?: string;
 }
 

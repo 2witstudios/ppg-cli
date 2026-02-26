@@ -63,7 +63,6 @@ function makeWorktree(overrides: Partial<WorktreeEntry> = {}): WorktreeEntry {
         status: 'running',
         tmuxTarget: 'ppg:1.0',
         prompt: 'test',
-        resultFile: '/tmp/result.md',
         startedAt: new Date().toISOString(),
       },
     },
@@ -158,7 +157,6 @@ describe('cleanupWorktree', () => {
           status: 'running',
           tmuxTarget: 'ppg:1', // Same as tmuxWindow
           prompt: 'test',
-          resultFile: '/tmp/result.md',
           startedAt: new Date().toISOString(),
         },
       },

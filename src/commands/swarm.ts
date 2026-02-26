@@ -10,7 +10,7 @@ import { spawnAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
-import { resultFile, promptsDir, globalPromptsDir, manifestPath } from '../lib/paths.js';
+import { promptsDir, globalPromptsDir, manifestPath } from '../lib/paths.js';
 import { PpgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
@@ -93,7 +93,6 @@ async function spawnSwarmAgent(opts: SpawnSwarmAgentOptions): Promise<AgentEntry
     WORKTREE_PATH: wtPath,
     BRANCH: branchName,
     AGENT_ID: aId,
-    RESULT_FILE: resultFile(projectRoot, aId),
     PROJECT_ROOT: projectRoot,
     TASK_NAME: taskName,
     ...(swarmAgent.vars ?? {}),

@@ -15,7 +15,6 @@ function makeAgent(id: string, tmuxTarget: string): AgentEntry {
     status: 'running',
     tmuxTarget,
     prompt: 'test',
-    resultFile: '/tmp/result.md',
     startedAt: new Date().toISOString(),
   };
 }

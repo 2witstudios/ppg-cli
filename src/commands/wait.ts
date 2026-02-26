@@ -3,7 +3,7 @@ import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { PpgError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, info } from '../lib/output.js';
-import type { AgentEntry, AgentStatus, Manifest } from '../types/manifest.js';
+import type { AgentEntry, Manifest } from '../types/manifest.js';
 
 export interface WaitOptions {
   all?: boolean;
@@ -11,8 +11,6 @@ export interface WaitOptions {
   interval?: number;
   json?: boolean;
 }
-
-const TERMINAL_STATUSES: AgentStatus[] = ['completed', 'failed', 'killed', 'lost'];
 
 export async function waitCommand(worktreeRef: string | undefined, options: WaitOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
@@ -44,10 +42,11 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
 
     const manifest = await refreshAndGet(projectRoot);
     const agents = collectAgents(manifest, worktreeRef, options.all);
-    const allTerminal = agents.every((a) => TERMINAL_STATUSES.includes(a.status));
+    // Wait until all agents are not running (idle, exited, or gone)
+    const allDone = agents.every((a) => a.status !== 'running');
 
-    if (allTerminal) {
-      const anyFailed = agents.some((a) => ['failed', 'lost'].includes(a.status));
+    if (allDone) {
+      const anyFailed = agents.some((a) => a.status === 'exited' && a.exitCode !== undefined && a.exitCode !== 0);
 
       if (options.json) {
         output({
@@ -103,6 +102,5 @@ function formatAgent(a: AgentEntry) {
     agentType: a.agentType,
     exitCode: a.exitCode,
     startedAt: a.startedAt,
-    completedAt: a.completedAt,
   };
 }

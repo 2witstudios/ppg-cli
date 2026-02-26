@@ -1,11 +1,10 @@
 import fs from 'node:fs/promises';
-import { resultFile, agentPromptFile, agentPromptsDir } from '../lib/paths.js';
+import { agentPromptFile, agentPromptsDir } from '../lib/paths.js';
 import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
 import { updateManifest } from './manifest.js';
 import { PpgError } from '../lib/errors.js';
 import type { AgentEntry, AgentStatus } from '../types/manifest.js';
 import type { AgentConfig } from '../types/config.js';
-import { renderTemplate, type TemplateContext } from './template.js';
 import * as tmux from './tmux.js';
 
 const SHELL_COMMANDS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'tcsh', 'csh']);
@@ -19,7 +18,6 @@ export interface SpawnAgentOptions {
   projectRoot: string;
   branch: string;
   sessionId?: string;
-  skipResultInstructions?: boolean;
 }
 
 export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry> {
@@ -27,32 +25,14 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
     agentId,
     agentConfig,
     prompt,
-    worktreePath,
     tmuxTarget,
     projectRoot,
-    branch,
   } = options;
-
-  const resFile = resultFile(projectRoot, agentId);
-
-  // Build full prompt with result instructions
-  let fullPrompt = prompt;
-  if (agentConfig.resultInstructions && !options.skipResultInstructions) {
-    const ctx: TemplateContext = {
-      WORKTREE_PATH: worktreePath,
-      BRANCH: branch,
-      AGENT_ID: agentId,
-      RESULT_FILE: resFile,
-      PROJECT_ROOT: projectRoot,
-    };
-    const instructions = renderTemplate(agentConfig.resultInstructions, ctx);
-    fullPrompt += `\n\n---\n\n${instructions}`;
-  }
 
   // Write prompt to file
   const pFile = agentPromptFile(projectRoot, agentId);
   await fs.mkdir(agentPromptsDir(projectRoot), { recursive: true });
-  await fs.writeFile(pFile, fullPrompt, 'utf-8');
+  await fs.writeFile(pFile, prompt, 'utf-8');
 
   // Build and send command
   const command = buildAgentCommand(agentConfig, pFile, options.sessionId);
@@ -65,7 +45,6 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
     status: 'running',
     tmuxTarget,
     prompt: prompt.slice(0, 500), // Truncate for manifest storage
-    resultFile: resFile,
     startedAt: new Date().toISOString(),
     ...(options.sessionId ? { sessionId: options.sessionId } : {}),
   };
@@ -88,62 +67,40 @@ function buildAgentCommand(agentConfig: AgentConfig, promptFilePath: string, ses
 }
 
 /**
- * Check agent status using the layered signal stack.
- * Checked in order of signal strength:
- * 1. Result file exists → completed
- * 2. Tmux pane doesn't exist → lost
- * 3. Pane is dead → completed/failed based on exit code
- * 4. Current command is a shell → agent exited → completed/failed
- * 5. Otherwise → running
+ * Check agent status by reading live tmux pane state.
+ * Every call re-derives status from the pane — no cached terminal states.
+ *
+ * 1. getPaneInfo() → null → 'gone'
+ * 2. pane.isDead → 'exited' (store exitCode)
+ * 3. SHELL_COMMANDS.has(pane.currentCommand) → 'idle'
+ * 4. otherwise → 'running'
  *
  * @param paneMap Optional pre-fetched pane map from listSessionPanes() for batch queries
  */
 export async function checkAgentStatus(
   agent: AgentEntry,
-  projectRoot: string,
+  _projectRoot: string,
   paneMap?: Map<string, PaneInfo>,
 ): Promise<{ status: AgentStatus; exitCode?: number }> {
-  // If already in terminal state, don't re-check
-  if (['completed', 'failed', 'killed', 'lost'].includes(agent.status)) {
-    return { status: agent.status, exitCode: agent.exitCode };
-  }
-
-  // 1. Check result file
-  const hasResult = await fileExists(agent.resultFile);
-  if (hasResult) {
-    return { status: 'completed' };
-  }
-
-  // 2. Check if tmux pane exists (use batch map if available)
+  // 1. Check if tmux pane exists (use batch map if available)
   const paneInfo = paneMap
     ? (paneMap.get(agent.tmuxTarget) ?? null)
     : await getPaneInfo(agent.tmuxTarget);
   if (!paneInfo) {
-    return { status: 'lost' };
+    return { status: 'gone' };
   }
 
-  // 3. Check if pane is dead
+  // 2. Check if pane is dead
   if (paneInfo.isDead) {
-    const exitCode = paneInfo.deadStatus;
-    // Check result file one more time (may have been written right before exit)
-    const hasResultNow = await fileExists(agent.resultFile);
-    if (hasResultNow || exitCode === 0) {
-      return { status: 'completed', exitCode: exitCode ?? 0 };
-    }
-    return { status: 'failed', exitCode };
+    return { status: 'exited', exitCode: paneInfo.deadStatus };
   }
 
-  // 4. Check if current command is a shell (agent process exited, returned to shell)
+  // 3. Check if current command is a shell (agent process exited, returned to shell)
   if (SHELL_COMMANDS.has(paneInfo.currentCommand)) {
-    // Agent process exited, back to shell prompt
-    const hasResultNow = await fileExists(agent.resultFile);
-    if (hasResultNow) {
-      return { status: 'completed', exitCode: 0 };
-    }
-    return { status: 'failed', exitCode: undefined };
+    return { status: 'idle' };
   }
 
-  // 5. Still running
+  // 4. Still running
   return { status: 'running' };
 }
 
@@ -169,17 +126,11 @@ export async function refreshAllAgentStatuses(
   const results = await Promise.all(checks.map((c) => c.promise));
 
   // Apply results
-  const now = new Date().toISOString();
   for (let i = 0; i < checks.length; i++) {
     const { agent } = checks[i];
     const { status, exitCode } = results[i];
-    if (status !== agent.status) {
-      agent.status = status;
-      if (exitCode !== undefined) agent.exitCode = exitCode;
-      if (['completed', 'failed', 'lost'].includes(status) && !agent.completedAt) {
-        agent.completedAt = now;
-      }
-    }
+    agent.status = status;
+    if (exitCode !== undefined) agent.exitCode = exitCode;
   }
 
   // Check worktree directories in parallel
@@ -190,10 +141,7 @@ export async function refreshAllAgentStatuses(
       if (!exists) {
         wt.status = 'cleaned';
         for (const agent of Object.values(wt.agents)) {
-          if (!['completed', 'failed', 'killed'].includes(agent.status)) {
-            agent.status = 'lost';
-            if (!agent.completedAt) agent.completedAt = now;
-          }
+          agent.status = 'gone';
         }
       }
     });

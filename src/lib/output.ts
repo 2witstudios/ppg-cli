@@ -12,16 +12,14 @@ const CYAN = '\x1b[36m';
 const GRAY = '\x1b[90m';
 
 const STATUS_COLORS: Record<AgentStatus | WorktreeStatus, string> = {
-  spawning: YELLOW,
   running: GREEN,
-  waiting: CYAN,
-  completed: BLUE,
-  failed: RED,
-  killed: MAGENTA,
-  lost: RED + BOLD,
+  idle: CYAN,
+  exited: BLUE,
+  gone: GRAY,
   active: GREEN,
   merging: YELLOW,
   merged: BLUE,
+  failed: RED,
   cleaned: GRAY,
 };
 

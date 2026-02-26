@@ -55,7 +55,7 @@ async function killSingleAgent(
   if (!found) throw new AgentNotFoundError(agentId);
 
   const { agent } = found;
-  const isTerminal = ['completed', 'failed', 'killed', 'lost'].includes(agent.status);
+  const isTerminal = agent.status !== 'running';
 
   // Self-protection check
   if (selfPaneId && paneMap) {
@@ -107,8 +107,7 @@ async function killSingleAgent(
     await updateManifest(projectRoot, (m) => {
       const f = findAgent(m, agentId);
       if (f) {
-        f.agent.status = 'killed';
-        f.agent.completedAt = new Date().toISOString();
+        f.agent.status = 'gone';
       }
       return m;
     });
@@ -134,7 +133,7 @@ async function killWorktreeAgents(
   if (!wt) throw new WorktreeNotFoundError(worktreeRef);
 
   let toKill = Object.values(wt.agents)
-    .filter((a) => ['running', 'spawning', 'waiting'].includes(a.status));
+    .filter((a) => a.status === 'running');
 
   // Self-protection: filter out agents that would kill the current process
   const skippedIds: string[] = [];
@@ -157,8 +156,7 @@ async function killWorktreeAgents(
     if (mWt) {
       for (const agent of Object.values(mWt.agents)) {
         if (killedIds.includes(agent.id)) {
-          agent.status = 'killed';
-          agent.completedAt = new Date().toISOString();
+          agent.status = 'gone';
         }
       }
     }
@@ -222,7 +220,7 @@ async function killAllAgents(
 
   for (const wt of Object.values(manifest.worktrees)) {
     for (const agent of Object.values(wt.agents)) {
-      if (['running', 'spawning', 'waiting'].includes(agent.status)) {
+      if (agent.status === 'running') {
         toKill.push(agent);
       }
     }
@@ -252,8 +250,7 @@ async function killAllAgents(
     for (const wt of Object.values(m.worktrees)) {
       for (const agent of Object.values(wt.agents)) {
         if (killedIds.includes(agent.id)) {
-          agent.status = 'killed';
-          agent.completedAt = new Date().toISOString();
+          agent.status = 'gone';
         }
       }
     }

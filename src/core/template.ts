@@ -58,7 +58,6 @@ export interface TemplateContext {
   WORKTREE_PATH: string;
   BRANCH: string;
   AGENT_ID: string;
-  RESULT_FILE: string;
   PROJECT_ROOT: string;
   TASK_NAME?: string;
   PROMPT?: string;

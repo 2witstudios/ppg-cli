@@ -90,7 +90,7 @@ export class UnmergedWorkError extends PpgError {
   constructor(names: string[]) {
     const list = names.map((n) => `  ${n}`).join('\n');
     super(
-      `${names.length} worktree(s) have completed work that hasn't been merged or PR'd:\n${list}\n\nUse --force to reset anyway, or create PRs first with: ppg pr <worktree-id>`,
+      `${names.length} worktree(s) have unmerged work that hasn't been PR'd:\n${list}\n\nUse --force to reset anyway, or create PRs first with: ppg pr <worktree-id>`,
       'UNMERGED_WORK',
     );
     this.name = 'UnmergedWorkError';

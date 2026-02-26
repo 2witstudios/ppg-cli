@@ -32,7 +32,7 @@ export async function statusCommand(worktreeFilter?: string, options?: StatusOpt
   if (options?.json) {
     output({
       session: manifest.sessionName,
-      worktrees: Object.fromEntries(worktrees.map((wt) => [wt.id, wt])),
+      worktrees: Object.fromEntries(worktrees.map((wt) => [wt.id, { ...wt, lifecycle: computeLifecycle(wt) }])),
     }, true);
     return;
   }
@@ -77,12 +77,6 @@ export async function statusCommand(worktreeFilter?: string, options?: StatusOpt
 
 function printWorktreeStatus(wt: WorktreeEntry): void {
   const agents = Object.values(wt.agents);
-  const statusCounts = {
-    running: agents.filter((a) => a.status === 'running').length,
-    completed: agents.filter((a) => a.status === 'completed').length,
-    failed: agents.filter((a) => a.status === 'failed').length,
-    lost: agents.filter((a) => a.status === 'lost').length,
-  };
 
   console.log(
     `\n${wt.name} (${wt.id}) [${formatStatus(wt.status)}] branch:${wt.branch}`,
@@ -108,6 +102,20 @@ function printWorktreeStatus(wt: WorktreeEntry): void {
 
   const table = formatTable(agents as unknown as Record<string, unknown>[], columns);
   console.log(table.split('\n').map((l) => `  ${l}`).join('\n'));
+}
+
+export type WorktreeLifecycle = 'merged' | 'cleaned' | 'busy' | 'shipped' | 'idle';
+
+export function computeLifecycle(wt: WorktreeEntry): WorktreeLifecycle {
+  if (wt.status === 'merged') return 'merged';
+  if (wt.status === 'cleaned') return 'cleaned';
+
+  const agents = Object.values(wt.agents);
+
+  if (agents.some((a) => a.status === 'running')) return 'busy';
+  if (wt.prUrl) return 'shipped';
+
+  return 'idle';
 }
 
 function formatTime(iso: string): string {

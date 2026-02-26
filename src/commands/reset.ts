@@ -9,12 +9,13 @@ import { NotInitializedError, UnmergedWorkError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
 
-/** Identify worktrees with completed agents that haven't been merged or PR'd. */
+/** Identify worktrees with idle/exited agents that haven't been merged or PR'd. */
 export function findAtRiskWorktrees(worktrees: WorktreeEntry[]): WorktreeEntry[] {
   return worktrees.filter((wt) => {
     if (wt.status === 'merged' || wt.status === 'cleaned') return false;
     if (wt.prUrl) return false;
-    return Object.values(wt.agents).some((a) => a.status === 'completed');
+    // Agents that finished (idle or exited) represent potentially unmerged work
+    return Object.values(wt.agents).some((a) => a.status === 'idle' || a.status === 'exited');
   });
 }
 
@@ -70,7 +71,7 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
   const allAgents: AgentEntry[] = [];
   for (const wt of worktrees) {
     for (const agent of Object.values(wt.agents)) {
-      if (['running', 'spawning', 'waiting'].includes(agent.status)) {
+      if (agent.status === 'running') {
         allAgents.push(agent);
       }
     }
@@ -98,12 +99,10 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
   // Update agent statuses in manifest
   if (killedIds.length > 0) {
     await updateManifest(projectRoot, (m) => {
-      const now = new Date().toISOString();
       for (const wt of Object.values(m.worktrees)) {
         for (const agent of Object.values(wt.agents)) {
           if (killedIds.includes(agent.id)) {
-            agent.status = 'killed';
-            agent.completedAt = now;
+            agent.status = 'gone';
           }
         }
       }

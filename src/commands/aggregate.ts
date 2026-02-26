@@ -3,8 +3,9 @@ import { requireManifest, resolveWorktree, updateManifest } from '../core/manife
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
+import { resultFile } from '../lib/paths.js';
 import { WorktreeNotFoundError } from '../lib/errors.js';
-import { output, success, warn } from '../lib/output.js';
+import { output, success } from '../lib/output.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
 
 export interface AggregateOptions {
@@ -33,9 +34,9 @@ export async function aggregateCommand(
     if (!wt) throw new WorktreeNotFoundError(worktreeId);
     worktrees = [wt];
   } else {
-    // Default: all worktrees with completed agents
+    // Default: all worktrees with non-running agents (idle, exited, or gone)
     worktrees = Object.values(manifest.worktrees).filter((wt) =>
-      Object.values(wt.agents).some((a) => a.status === 'completed'),
+      Object.values(wt.agents).some((a) => a.status !== 'running'),
     );
   }
 
@@ -43,8 +44,6 @@ export async function aggregateCommand(
 
   for (const wt of worktrees) {
     for (const agent of Object.values(wt.agents)) {
-      if (agent.status !== 'completed' && agent.status !== 'failed') continue;
-
       const result = await collectAgentResult(agent, projectRoot);
       results.push({
         agentId: agent.id,
@@ -61,7 +60,7 @@ export async function aggregateCommand(
     if (options?.json) {
       output({ results: [] }, true);
     } else {
-      console.log('No completed agent results to aggregate.');
+      console.log('No agent results to aggregate.');
     }
     return;
   }
@@ -107,19 +106,19 @@ async function collectAgentResult(
   agent: AgentEntry,
   projectRoot: string,
 ): Promise<string> {
-  // Try reading result file first
-  try {
-    const content = await fs.readFile(agent.resultFile, 'utf-8');
-    return content;
-  } catch {
-    // No result file
-  }
-
-  // Fallback: capture pane content
+  // Primary: capture pane content
   try {
     const paneContent = await tmux.capturePane(agent.tmuxTarget, 500);
-    return `*[No result file — pane capture fallback]*\n\n\`\`\`\n${paneContent}\n\`\`\``;
+    return `\`\`\`\n${paneContent}\n\`\`\``;
   } catch {
-    return '*[No result file and pane not available]*';
+    // Pane not available
+  }
+
+  // Fallback: try legacy result file
+  try {
+    const content = await fs.readFile(resultFile(projectRoot, agent.id), 'utf-8');
+    return content;
+  } catch {
+    return '*[Pane not available and no legacy result file]*';
   }
 }

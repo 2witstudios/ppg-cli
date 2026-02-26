@@ -31,6 +31,9 @@ ppg spawn --name <name> --prompt <text> --count <n> --json --no-open
 # Add agent to existing worktree (different prompt)
 ppg spawn --worktree <wt-id> --prompt <text> --json --no-open
 
+# Resume work on an existing branch (e.g. from a PR)
+ppg spawn --branch <existing-branch> --prompt <text> --json --no-open
+
 # Specify base branch
 ppg spawn --name <name> --prompt <text> --base <branch> --json --no-open
 
@@ -52,6 +55,7 @@ ppg spawn --name <name> --prompt-file /path/to/prompt.md --json --no-open
 | `-t, --template <name>` | Template name from `.ppg/templates/` |
 | `--var <KEY=value>` | Template variable (repeatable) |
 | `-b, --base <branch>` | Base branch (default: current branch) |
+| `--branch <name>` | Check out an existing branch into a new worktree |
 | `-w, --worktree <id>` | Add agent to existing worktree instead of creating new one |
 | `-c, --count <n>` | Number of agents to spawn (default: 1) |
 | `--split` | Put all agents in one window as split panes |
@@ -95,6 +99,7 @@ ppg status --watch                   # Live-refresh in terminal
   "worktrees": {
     "wt-abc123": {
       "id": "wt-abc123",
+      "lifecycle": "busy",
       "name": "task-name",
       "path": "/path/.worktrees/wt-abc123",
       "branch": "ppg/task-name",
@@ -121,6 +126,7 @@ ppg status --watch                   # Live-refresh in terminal
 
 **Agent statuses:** `spawning` | `running` | `waiting` | `completed` | `failed` | `killed` | `lost`
 **Worktree statuses:** `active` | `merging` | `merged` | `failed` | `cleaned`
+**Lifecycle** (computed, use this for decisions): `busy` | `waiting` | `done` | `shipped` | `merged` | `cleaned` | `idle`
 
 ## ppg kill
 
@@ -348,6 +354,7 @@ Create a standalone worktree without spawning any agents. Useful when you want t
 ```bash
 ppg worktree create --name <name> --json
 ppg worktree create --name <name> --base <branch> --json
+ppg worktree create --branch <existing-branch> --json
 ```
 
 **JSON output:**
@@ -480,6 +487,31 @@ Open a terminal attached to a worktree or agent tmux pane.
 ppg attach <wt-id-or-name>              # Attach to worktree's tmux window
 ppg attach <agent-id>                   # Attach to agent's tmux pane
 ```
+
+## Built-in Agent Types
+
+| Type | Command | Prompt handling | Use case |
+|------|---------|----------------|----------|
+| `claude` | `claude --dangerously-skip-permissions` | Positional arg | General coding, complex tasks |
+| `codex` | `codex --yolo` | Positional arg | Code review, targeted edits |
+| `opencode` | `opencode --yolo` | Positional arg | Alternative coding agent |
+
+**Examples:**
+```bash
+# Default (claude)
+ppg spawn --name "fix-bug" --prompt "Fix the auth bug..." --json --no-open
+
+# Codex for review
+ppg spawn --name "review" --agent codex --prompt "review --base main" --json --no-open
+
+# Codex review on existing worktree
+ppg spawn --worktree <wt-id> --agent codex --prompt "review --base main" --json --no-open
+
+# OpenCode
+ppg spawn --name "refactor" --agent opencode --prompt "Refactor the auth module..." --json --no-open
+```
+
+Agent types are defined in `.ppg/config.yaml`. You can add custom agents by adding entries to the `agents` section.
 
 ## Error Codes
 

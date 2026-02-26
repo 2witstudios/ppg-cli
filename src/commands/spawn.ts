@@ -1,14 +1,14 @@
 import fs from 'node:fs/promises';
 import { loadConfig, resolveAgentConfig } from '../core/config.js';
 import { readManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
-import { getRepoRoot, getCurrentBranch, createWorktree } from '../core/worktree.js';
+import { getRepoRoot, getCurrentBranch, createWorktree, adoptWorktree } from '../core/worktree.js';
 import { setupWorktreeEnv } from '../core/env.js';
 import { loadTemplate, renderTemplate, type TemplateContext } from '../core/template.js';
 import { spawnAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
-import { resultFile, manifestPath } from '../lib/paths.js';
+import { manifestPath } from '../lib/paths.js';
 import { PpgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
@@ -23,6 +23,7 @@ export interface SpawnOptions {
   template?: string;
   var?: string[];
   base?: string;
+  branch?: string;
   worktree?: string;
   count?: number;
   split?: boolean;
@@ -50,6 +51,14 @@ export async function spawnCommand(options: SpawnOptions): Promise<void> {
   // Resolve prompt
   const promptText = await resolvePrompt(options, projectRoot);
 
+  // Validate conflicting flags
+  if (options.branch && options.worktree) {
+    throw new PpgError('--branch and --worktree are mutually exclusive', 'INVALID_ARGS');
+  }
+  if (options.branch && options.base) {
+    throw new PpgError('--branch and --base are mutually exclusive (--base is for new branches)', 'INVALID_ARGS');
+  }
+
   if (options.worktree) {
     // Add agent(s) to existing worktree
     await spawnIntoExistingWorktree(
@@ -57,6 +66,18 @@ export async function spawnCommand(options: SpawnOptions): Promise<void> {
       config,
       agentConfig,
       options.worktree,
+      promptText,
+      count,
+      options,
+      userVars,
+    );
+  } else if (options.branch) {
+    // Create worktree from existing branch
+    await spawnOnExistingBranch(
+      projectRoot,
+      config,
+      agentConfig,
+      options.branch,
       promptText,
       count,
       options,
@@ -165,7 +186,6 @@ async function spawnNewWorktree(
       WORKTREE_PATH: wtPath,
       BRANCH: branchName,
       AGENT_ID: aId,
-      RESULT_FILE: resultFile(projectRoot, aId),
       PROJECT_ROOT: projectRoot,
       TASK_NAME: name,
       PROMPT: promptText,
@@ -227,6 +247,135 @@ async function spawnNewWorktree(
   }
 }
 
+async function spawnOnExistingBranch(
+  projectRoot: string,
+  config: import('../types/config.js').Config,
+  agentConfig: import('../types/config.js').AgentConfig,
+  branch: string,
+  promptText: string,
+  count: number,
+  options: SpawnOptions,
+  userVars: Record<string, string>,
+): Promise<void> {
+  const baseBranch = await getCurrentBranch(projectRoot);
+  const wtId = genWorktreeId();
+
+  // Derive name from branch if --name not provided (strip ppg/ prefix if present)
+  const derivedName = branch.startsWith('ppg/') ? branch.slice(4) : branch;
+  const name = options.name ? normalizeName(options.name, wtId) : normalizeName(derivedName, wtId);
+
+  // Create git worktree from existing branch (no -b flag)
+  info(`Creating worktree ${wtId} from existing branch ${branch}`);
+  const wtPath = await adoptWorktree(projectRoot, wtId, branch);
+
+  // Setup env
+  await setupWorktreeEnv(projectRoot, wtPath, config);
+
+  // Ensure tmux session
+  const manifest = await readManifest(projectRoot);
+  const sessionName = manifest.sessionName;
+  await tmux.ensureSession(sessionName);
+
+  // Create tmux window
+  const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
+
+  // Register worktree in manifest
+  const worktreeEntry: WorktreeEntry = {
+    id: wtId,
+    name,
+    path: wtPath,
+    branch,
+    baseBranch,
+    status: 'active',
+    tmuxWindow: windowTarget,
+    agents: {},
+    createdAt: new Date().toISOString(),
+  };
+
+  await updateManifest(projectRoot, (m) => {
+    m.worktrees[wtId] = worktreeEntry;
+    return m;
+  });
+
+  // Spawn agents
+  const agents: AgentEntry[] = [];
+  for (let i = 0; i < count; i++) {
+    const aId = genAgentId();
+    let target: string;
+
+    if (i === 0) {
+      target = windowTarget;
+    } else if (options.split) {
+      const direction = i % 2 === 1 ? 'horizontal' : 'vertical';
+      const pane = await tmux.splitPane(windowTarget, direction, wtPath);
+      target = pane.target;
+    } else {
+      target = await tmux.createWindow(sessionName, `${name}-${i}`, wtPath);
+    }
+
+    const ctx: TemplateContext = {
+      WORKTREE_PATH: wtPath,
+      BRANCH: branch,
+      AGENT_ID: aId,
+      PROJECT_ROOT: projectRoot,
+      TASK_NAME: name,
+      PROMPT: promptText,
+    };
+
+    Object.assign(ctx, userVars);
+
+    const renderedPrompt = renderTemplate(promptText, ctx);
+
+    const agentEntry = await spawnAgent({
+      agentId: aId,
+      agentConfig,
+      prompt: renderedPrompt,
+      worktreePath: wtPath,
+      tmuxTarget: target,
+      projectRoot,
+      branch,
+      sessionId: genSessionId(),
+    });
+
+    agents.push(agentEntry);
+
+    await updateManifest(projectRoot, (m) => {
+      if (m.worktrees[wtId]) {
+        m.worktrees[wtId].agents[agentEntry.id] = agentEntry;
+      }
+      return m;
+    });
+  }
+
+  if (options.open === true) {
+    openTerminalWindow(sessionName, windowTarget, name).catch(() => {});
+  }
+
+  if (options.json) {
+    output({
+      success: true,
+      worktree: {
+        id: wtId,
+        name,
+        branch,
+        path: wtPath,
+        tmuxWindow: windowTarget,
+      },
+      agents: agents.map((a) => ({
+        id: a.id,
+        tmuxTarget: a.tmuxTarget,
+        sessionId: a.sessionId,
+      })),
+    }, true);
+  } else {
+    success(`Spawned worktree ${wtId} from branch ${branch} with ${agents.length} agent(s)`);
+    for (const a of agents) {
+      info(`  Agent ${a.id} → ${a.tmuxTarget}`);
+    }
+    info(`Attach: ppg attach ${wtId}`);
+  }
+}
+
 async function spawnIntoExistingWorktree(
   projectRoot: string,
   config: import('../types/config.js').Config,
@@ -271,7 +420,6 @@ async function spawnIntoExistingWorktree(
       WORKTREE_PATH: wt.path,
       BRANCH: wt.branch,
       AGENT_ID: aId,
-      RESULT_FILE: resultFile(projectRoot, aId),
       PROJECT_ROOT: projectRoot,
       TASK_NAME: wt.name,
       PROMPT: promptText,
