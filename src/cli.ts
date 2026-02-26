@@ -62,6 +62,7 @@ program
   .option('--all', 'Kill all agents in all worktrees')
   .option('-r, --remove', 'Also remove the worktree after killing')
   .option('-d, --delete', 'Delete agent/worktree entry from manifest after killing')
+  .option('--include-open-prs', 'Include worktrees with open GitHub PRs in deletion')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { killCommand } = await import('./commands/kill.js');
@@ -184,6 +185,7 @@ program
   .description('Kill all agents, remove all worktrees, and wipe manifest')
   .option('--force', 'Reset even if worktrees have unmerged/un-PR\'d work')
   .option('--prune', 'Also run git worktree prune')
+  .option('--include-open-prs', 'Include worktrees with open GitHub PRs in cleanup')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { resetCommand } = await import('./commands/reset.js');
@@ -196,6 +198,7 @@ program
   .option('--all', 'Also clean failed worktrees')
   .option('--dry-run', 'Show what would be done without doing it')
   .option('--prune', 'Also run git worktree prune')
+  .option('--include-open-prs', 'Include worktrees with open GitHub PRs in cleanup')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { cleanCommand } = await import('./commands/clean.js');

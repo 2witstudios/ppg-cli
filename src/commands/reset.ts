@@ -1,5 +1,6 @@
 import { updateManifest } from '../core/manifest.js';
 import { refreshAllAgentStatuses, killAgents } from '../core/agent.js';
+import { checkPrState } from '../core/pr.js';
 import { getRepoRoot, pruneWorktrees } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, excludeSelf, wouldCleanupAffectSelf } from '../core/self.js';
@@ -20,6 +21,7 @@ export function findAtRiskWorktrees(worktrees: WorktreeEntry[]): WorktreeEntry[]
 export interface ResetOptions {
   force?: boolean;
   prune?: boolean;
+  includeOpenPrs?: boolean;
   json?: boolean;
 }
 
@@ -109,11 +111,28 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
     });
   }
 
+  // Check for open PRs before cleanup
+  const openPrWorktreeIds: string[] = [];
+  if (!options.includeOpenPrs) {
+    for (const wt of worktrees) {
+      if (wt.status === 'cleaned') continue;
+      const prState = await checkPrState(wt.branch);
+      if (prState === 'OPEN') {
+        openPrWorktreeIds.push(wt.id);
+        warn(`Skipping worktree ${wt.id} (${wt.name}) — has open PR on branch ${wt.branch}`);
+      }
+    }
+  }
+
   // Cleanup all worktrees (skip already cleaned/merged that are already gone)
   const removedIds: string[] = [];
   const skippedWorktreeIds: string[] = [];
 
   for (const wt of worktrees) {
+    if (openPrWorktreeIds.includes(wt.id)) {
+      continue;
+    }
+
     // Self-protection check for worktree cleanup
     if (selfPaneId && paneMap && wouldCleanupAffectSelf(wt, selfPaneId, paneMap)) {
       warn(`Skipping cleanup of worktree ${wt.id} (${wt.name}) — contains current ppg process`);
@@ -153,6 +172,7 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
       removed: removedIds,
       warned: warnedNames.length > 0 ? warnedNames : undefined,
       skipped: skippedWorktreeIds.length > 0 ? skippedWorktreeIds : undefined,
+      skippedOpenPrs: openPrWorktreeIds.length > 0 ? openPrWorktreeIds : undefined,
       pruned: options.prune ?? false,
     }, true);
   } else {

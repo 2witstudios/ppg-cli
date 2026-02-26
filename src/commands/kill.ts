@@ -1,5 +1,6 @@
 import { readManifest, updateManifest, findAgent, resolveWorktree } from '../core/manifest.js';
 import { killAgent, killAgents } from '../core/agent.js';
+import { checkPrState } from '../core/pr.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, excludeSelf } from '../core/self.js';
@@ -14,6 +15,7 @@ export interface KillOptions {
   all?: boolean;
   remove?: boolean;
   delete?: boolean;
+  includeOpenPrs?: boolean;
   json?: boolean;
 }
 
@@ -163,14 +165,24 @@ async function killWorktreeAgents(
     return m;
   });
 
+  // Check for open PR before deleting worktree
+  let skippedOpenPr = false;
+  if (options.delete && !options.includeOpenPrs) {
+    const prState = await checkPrState(wt.branch);
+    if (prState === 'OPEN') {
+      skippedOpenPr = true;
+      warn(`Skipping deletion of worktree ${wt.id} (${wt.name}) — has open PR on branch ${wt.branch}. Use --include-open-prs to override.`);
+    }
+  }
+
   // --delete implies --remove (always clean up worktree)
-  const shouldRemove = options.remove || options.delete;
+  const shouldRemove = (options.remove || options.delete) && !skippedOpenPr;
   if (shouldRemove) {
     await removeWorktreeCleanup(projectRoot, wt.id, selfPaneId, paneMap);
   }
 
   // --delete also removes the worktree entry from manifest
-  if (options.delete) {
+  if (options.delete && !skippedOpenPr) {
     await updateManifest(projectRoot, (m) => {
       delete m.worktrees[wt.id];
       return m;
@@ -183,16 +195,17 @@ async function killWorktreeAgents(
       killed: killedIds,
       skipped: skippedIds.length > 0 ? skippedIds : undefined,
       removed: shouldRemove ? [wt.id] : [],
-      deleted: options.delete ? [wt.id] : [],
+      deleted: (options.delete && !skippedOpenPr) ? [wt.id] : [],
+      skippedOpenPrs: skippedOpenPr ? [wt.id] : undefined,
     }, true);
   } else {
     success(`Killed ${killedIds.length} agent(s) in worktree ${wt.id}`);
     if (skippedIds.length > 0) {
       warn(`Skipped ${skippedIds.length} agent(s) due to self-protection`);
     }
-    if (options.delete) {
+    if (options.delete && !skippedOpenPr) {
       success(`Deleted worktree ${wt.id}`);
-    } else if (options.remove) {
+    } else if (options.remove && !skippedOpenPr) {
       success(`Removed worktree ${wt.id}`);
     }
   }
@@ -247,10 +260,29 @@ async function killAllAgents(
     return m;
   });
 
+  // Filter out worktrees with open PRs
+  let worktreesToRemove = activeWorktreeIds;
+  const openPrWorktreeIds: string[] = [];
+  if (options.delete && !options.includeOpenPrs) {
+    worktreesToRemove = [];
+    for (const wtId of activeWorktreeIds) {
+      const wt = manifest.worktrees[wtId];
+      if (wt) {
+        const prState = await checkPrState(wt.branch);
+        if (prState === 'OPEN') {
+          openPrWorktreeIds.push(wtId);
+          warn(`Skipping deletion of worktree ${wtId} (${wt.name}) — has open PR`);
+        } else {
+          worktreesToRemove.push(wtId);
+        }
+      }
+    }
+  }
+
   // --delete implies --remove
   const shouldRemove = options.remove || options.delete;
   if (shouldRemove) {
-    for (const wtId of activeWorktreeIds) {
+    for (const wtId of worktreesToRemove) {
       await removeWorktreeCleanup(projectRoot, wtId, selfPaneId, paneMap);
     }
   }
@@ -258,7 +290,7 @@ async function killAllAgents(
   // --delete also removes worktree entries from manifest
   if (options.delete) {
     await updateManifest(projectRoot, (m) => {
-      for (const wtId of activeWorktreeIds) {
+      for (const wtId of worktreesToRemove) {
         delete m.worktrees[wtId];
       }
       return m;
@@ -270,18 +302,22 @@ async function killAllAgents(
       success: true,
       killed: killedIds,
       skipped: skippedIds.length > 0 ? skippedIds : undefined,
-      removed: shouldRemove ? activeWorktreeIds : [],
-      deleted: options.delete ? activeWorktreeIds : [],
+      removed: shouldRemove ? worktreesToRemove : [],
+      deleted: options.delete ? worktreesToRemove : [],
+      skippedOpenPrs: openPrWorktreeIds.length > 0 ? openPrWorktreeIds : undefined,
     }, true);
   } else {
     success(`Killed ${killedIds.length} agent(s) across ${activeWorktreeIds.length} worktree(s)`);
     if (skippedIds.length > 0) {
       warn(`Skipped ${skippedIds.length} agent(s) due to self-protection`);
     }
+    if (openPrWorktreeIds.length > 0) {
+      warn(`Skipped deletion of ${openPrWorktreeIds.length} worktree(s) with open PRs`);
+    }
     if (options.delete) {
-      success(`Deleted ${activeWorktreeIds.length} worktree(s)`);
+      success(`Deleted ${worktreesToRemove.length} worktree(s)`);
     } else if (options.remove) {
-      success(`Removed ${activeWorktreeIds.length} worktree(s)`);
+      success(`Removed ${worktreesToRemove.length} worktree(s)`);
     }
   }
 }

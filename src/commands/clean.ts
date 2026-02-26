@@ -1,4 +1,5 @@
 import { requireManifest, updateManifest } from '../core/manifest.js';
+import { checkPrState } from '../core/pr.js';
 import { getRepoRoot, pruneWorktrees } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, wouldCleanupAffectSelf } from '../core/self.js';
@@ -10,6 +11,7 @@ export interface CleanOptions {
   all?: boolean;
   dryRun?: boolean;
   prune?: boolean;
+  includeOpenPrs?: boolean;
   json?: boolean;
 }
 
@@ -70,12 +72,30 @@ export async function cleanCommand(options: CleanOptions): Promise<void> {
     return;
   }
 
+  // Check for open PRs before cleaning failed worktrees
+  const openPrWorktreeIds: string[] = [];
+  if (options.all && !options.includeOpenPrs) {
+    for (const wt of toClean) {
+      if (wt.status === 'failed') {
+        const prState = await checkPrState(wt.branch);
+        if (prState === 'OPEN') {
+          openPrWorktreeIds.push(wt.id);
+          warn(`Skipping worktree ${wt.id} (${wt.name}) — has open PR on branch ${wt.branch}`);
+        }
+      }
+    }
+  }
+
   // Clean worktrees that need cleanup (merged, failed but not yet cleaned)
   const cleaned: string[] = [];
   const skipped: string[] = [];
   const removed: string[] = [];
 
   for (const wt of toClean) {
+    if (openPrWorktreeIds.includes(wt.id)) {
+      continue;
+    }
+
     if (wt.status !== 'cleaned') {
       // Self-protection check before cleanup
       if (selfPaneId && paneMap && wouldCleanupAffectSelf(wt, selfPaneId, paneMap)) {
@@ -117,6 +137,7 @@ export async function cleanCommand(options: CleanOptions): Promise<void> {
       success: true,
       cleaned,
       skipped: skipped.length > 0 ? skipped : undefined,
+      skippedOpenPrs: openPrWorktreeIds.length > 0 ? openPrWorktreeIds : undefined,
       removedFromManifest: removed,
       pruned: options.prune ?? false,
     }, true);
