@@ -1,6 +1,23 @@
+import os from 'node:os';
 import path from 'node:path';
 
 const PPG_DIR = '.ppg';
+
+export function globalPpgDir(): string {
+  return path.join(os.homedir(), PPG_DIR);
+}
+
+export function globalPromptsDir(): string {
+  return path.join(globalPpgDir(), 'prompts');
+}
+
+export function globalTemplatesDir(): string {
+  return path.join(globalPpgDir(), 'templates');
+}
+
+export function globalSwarmsDir(): string {
+  return path.join(globalPpgDir(), 'swarms');
+}
 
 export function ppgDir(projectRoot: string): string {
   return path.join(projectRoot, PPG_DIR);

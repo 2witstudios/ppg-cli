@@ -10,7 +10,7 @@ import { spawnAgent } from '../core/agent.js';
 import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
-import { resultFile, promptsDir, manifestPath } from '../lib/paths.js';
+import { resultFile, promptsDir, globalPromptsDir, manifestPath } from '../lib/paths.js';
 import { PpgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
@@ -54,11 +54,21 @@ export async function swarmCommand(templateName: string, options: SwarmOptions):
 }
 
 async function loadPromptFile(projectRoot: string, promptName: string): Promise<string> {
-  const filePath = path.join(promptsDir(projectRoot), `${promptName}.md`);
+  // Try project-local first
+  const localPath = path.join(promptsDir(projectRoot), `${promptName}.md`);
   try {
-    return await fs.readFile(filePath, 'utf-8');
+    return await fs.readFile(localPath, 'utf-8');
   } catch {
-    throw new PpgError(`Prompt file not found: ${promptName}.md in .ppg/prompts/`, 'INVALID_ARGS');
+    // Fall back to global
+    const globalPath = path.join(globalPromptsDir(), `${promptName}.md`);
+    try {
+      return await fs.readFile(globalPath, 'utf-8');
+    } catch {
+      throw new PpgError(
+        `Prompt file not found: ${promptName}.md (checked .ppg/prompts/ and ~/.ppg/prompts/)`,
+        'INVALID_ARGS',
+      );
+    }
   }
 }
 
