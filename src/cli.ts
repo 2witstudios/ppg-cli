@@ -329,6 +329,32 @@ cronCmd
     await cronDaemonCommand();
   });
 
+cronCmd
+  .command('add')
+  .description('Add a new schedule entry')
+  .requiredOption('--name <name>', 'Schedule name')
+  .requiredOption('--cron <expression>', 'Cron expression')
+  .option('--swarm <name>', 'Swarm template name')
+  .option('--prompt <name>', 'Prompt template name')
+  .option('--var <key=value...>', 'Template variables', collectVars, [])
+  .option('--project <path>', 'Project root path')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronAddCommand } = await import('./commands/cron.js');
+    await cronAddCommand(options);
+  });
+
+cronCmd
+  .command('remove')
+  .description('Remove a schedule entry')
+  .requiredOption('--name <name>', 'Schedule name to remove')
+  .option('--project <path>', 'Project root path')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronRemoveCommand } = await import('./commands/cron.js');
+    await cronRemoveCommand(options);
+  });
+
 // Error handling
 program.exitOverride();
 

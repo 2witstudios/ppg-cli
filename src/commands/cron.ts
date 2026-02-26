@@ -1,13 +1,17 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import YAML from 'yaml';
 import { getRepoRoot } from '../core/worktree.js';
 import { readManifest } from '../core/manifest.js';
-import { loadSchedules, getNextRun, formatCronHuman } from '../core/schedule.js';
+import { loadSchedules, getNextRun, formatCronHuman, validateCronExpression } from '../core/schedule.js';
 import { runCronDaemon, isCronRunning, getCronPid, readCronLog } from '../core/cron.js';
 import * as tmux from '../core/tmux.js';
-import { cronPidPath, manifestPath } from '../lib/paths.js';
+import { cronPidPath, manifestPath, schedulesPath } from '../lib/paths.js';
+import { getLockfile, getWriteFileAtomic } from '../lib/cjs-compat.js';
 import { PpgError, NotInitializedError } from '../lib/errors.js';
 import { output, formatTable, info, success, warn } from '../lib/output.js';
 import type { Column } from '../lib/output.js';
+import type { ScheduleEntry, SchedulesConfig } from '../types/schedule.js';
 
 export interface CronOptions {
   json?: boolean;
@@ -182,6 +186,166 @@ export async function cronDaemonCommand(): Promise<void> {
   const projectRoot = await getRepoRoot();
   await requireInit(projectRoot);
   await runCronDaemon(projectRoot);
+}
+
+export interface CronAddOptions {
+  name: string;
+  cron: string;
+  swarm?: string;
+  prompt?: string;
+  var?: string[];
+  project?: string;
+  json?: boolean;
+}
+
+export interface CronRemoveOptions {
+  name: string;
+  project?: string;
+  json?: boolean;
+}
+
+export async function cronAddCommand(options: CronAddOptions): Promise<void> {
+  const projectRoot = options.project ?? await getRepoRoot();
+  await requireInit(projectRoot);
+
+  // Validate name
+  const SAFE_NAME = /^[\w-]+$/;
+  if (!options.name || !SAFE_NAME.test(options.name)) {
+    throw new PpgError(
+      `Invalid schedule name "${options.name}" — must be alphanumeric, hyphens, or underscores`,
+      'INVALID_ARGS',
+    );
+  }
+
+  // Must specify exactly one of --swarm or --prompt
+  if (!options.swarm && !options.prompt) {
+    throw new PpgError('Must specify either --swarm or --prompt', 'INVALID_ARGS');
+  }
+  if (options.swarm && options.prompt) {
+    throw new PpgError('Specify either --swarm or --prompt, not both', 'INVALID_ARGS');
+  }
+
+  // Validate cron expression
+  validateCronExpression(options.cron);
+
+  // Build entry before acquiring lock
+  const entry: ScheduleEntry = {
+    name: options.name,
+    cron: options.cron,
+  };
+  if (options.swarm) entry.swarm = options.swarm;
+  if (options.prompt) entry.prompt = options.prompt;
+
+  // Parse vars
+  if (options.var && options.var.length > 0) {
+    const vars: Record<string, string> = {};
+    for (const v of options.var) {
+      const eqIdx = v.indexOf('=');
+      if (eqIdx === -1) {
+        throw new PpgError(`Invalid --var format: "${v}" (expected KEY=VALUE)`, 'INVALID_ARGS');
+      }
+      const key = v.slice(0, eqIdx);
+      if (key.length === 0) {
+        throw new PpgError(`Invalid --var format: "${v}" (key must not be empty)`, 'INVALID_ARGS');
+      }
+      vars[key] = v.slice(eqIdx + 1);
+    }
+    entry.vars = vars;
+  }
+
+  // Ensure .ppg directory exists
+  const filePath = schedulesPath(projectRoot);
+  const ppgDirPath = path.dirname(filePath);
+  await fs.mkdir(ppgDirPath, { recursive: true });
+
+  // Locked read-modify-write
+  await updateSchedulesFile(filePath, (config) => {
+    // Check name uniqueness
+    if (config.schedules.some((s) => s.name === options.name)) {
+      throw new PpgError(`Schedule "${options.name}" already exists`, 'INVALID_ARGS');
+    }
+    config.schedules.push(entry);
+    return config;
+  });
+
+  if (options.json) {
+    output({ success: true, name: options.name, schedule: entry }, true);
+  } else {
+    success(`Schedule "${options.name}" added`);
+  }
+}
+
+export async function cronRemoveCommand(options: CronRemoveOptions): Promise<void> {
+  const projectRoot = options.project ?? await getRepoRoot();
+  await requireInit(projectRoot);
+
+  const filePath = schedulesPath(projectRoot);
+
+  // Locked read-modify-write
+  await updateSchedulesFile(filePath, (config) => {
+    const idx = config.schedules.findIndex((s) => s.name === options.name);
+    if (idx === -1) {
+      throw new PpgError(`Schedule "${options.name}" not found`, 'INVALID_ARGS');
+    }
+    config.schedules.splice(idx, 1);
+    return config;
+  });
+
+  if (options.json) {
+    output({ success: true, name: options.name }, true);
+  } else {
+    success(`Schedule "${options.name}" removed`);
+  }
+}
+
+/**
+ * Locked read-modify-write for schedules.yaml.
+ * Uses proper-lockfile + write-file-atomic, matching the manifest update pattern.
+ * Fails fast if the file exists but has an invalid shape (instead of silently resetting).
+ */
+async function updateSchedulesFile(
+  filePath: string,
+  updater: (config: SchedulesConfig) => SchedulesConfig,
+): Promise<void> {
+  const lockfile = await getLockfile();
+  const writeFileAtomic = await getWriteFileAtomic();
+  let release: (() => Promise<void>) | undefined;
+
+  try {
+    release = await lockfile.lock(filePath, {
+      stale: 10_000,
+      retries: { retries: 5, minTimeout: 100, maxTimeout: 1000 },
+      realpath: false,
+    });
+  } catch {
+    throw new PpgError('Could not acquire lock on schedules.yaml', 'MANIFEST_LOCK');
+  }
+
+  try {
+    let config: SchedulesConfig;
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const parsed = YAML.parse(raw) as SchedulesConfig;
+      if (!parsed || !Array.isArray(parsed.schedules)) {
+        throw new PpgError(
+          'Invalid schedules.yaml: missing or malformed "schedules" array. Fix the file manually or delete it to start fresh.',
+          'INVALID_ARGS',
+        );
+      }
+      config = parsed;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        config = { schedules: [] };
+      } else {
+        throw err;
+      }
+    }
+
+    const updated = updater(config);
+    await writeFileAtomic(filePath, YAML.stringify(updated));
+  } finally {
+    if (release) await release();
+  }
 }
 
 async function requireInit(projectRoot: string): Promise<void> {
