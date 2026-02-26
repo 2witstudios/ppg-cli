@@ -133,9 +133,26 @@ program
   });
 
 program
+  .command('prompt')
+  .description('Spawn a worktree+agent using a named prompt from .ppg/prompts/')
+  .argument('<name>', 'Prompt name (filename without .md)')
+  .option('-n, --name <name>', 'Name for the worktree')
+  .option('-a, --agent <type>', 'Agent type to use (default: claude)')
+  .option('--var <key=value...>', 'Template variables', collectVars, [])
+  .option('-b, --base <branch>', 'Base branch for the worktree')
+  .option('-c, --count <n>', 'Number of agents to spawn', parsePositiveInt('count'), 1)
+  .option('--split', 'Put all agents in one window as split panes')
+  .option('--open', 'Open a Terminal window for the spawned agents')
+  .option('--json', 'Output as JSON')
+  .action(async (name, options) => {
+    const { promptCommand } = await import('./commands/prompt.js');
+    await promptCommand(name, options);
+  });
+
+program
   .command('list')
-  .description('List available templates or swarms')
-  .argument('<type>', 'What to list: templates, swarms')
+  .description('List available templates, swarms, or prompts')
+  .argument('<type>', 'What to list: templates, swarms, prompts')
   .option('--json', 'Output as JSON')
   .action(async (type, options) => {
     const { listCommand } = await import('./commands/list.js');
