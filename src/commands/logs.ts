@@ -1,7 +1,7 @@
 import { requireManifest, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
 import * as tmux from '../core/tmux.js';
-import { PgError, AgentNotFoundError } from '../lib/errors.js';
+import { PoguError, AgentNotFoundError } from '../lib/errors.js';
 import { output, outputError } from '../lib/output.js';
 
 export interface LogsOptions {
@@ -69,7 +69,7 @@ export async function logsCommand(agentId: string, options: LogsOptions): Promis
         console.log(content);
       }
     } catch {
-      throw new PgError(`Could not capture pane for agent ${agentId}. Pane may no longer exist.`, 'PANE_NOT_FOUND');
+      throw new PoguError(`Could not capture pane for agent ${agentId}. Pane may no longer exist.`, 'PANE_NOT_FOUND');
     }
   }
 }
