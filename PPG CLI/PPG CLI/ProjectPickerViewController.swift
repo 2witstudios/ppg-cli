@@ -67,8 +67,9 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
         tableView.rowHeight = 56
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("project"))
-        column.width = 460
+        column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
+        tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.dataSource = self
         tableView.delegate = self
         tableView.doubleAction = #selector(tableDoubleClicked(_:))
@@ -130,13 +131,15 @@ class ProjectPickerViewController: NSViewController, NSTableViewDataSource, NSTa
         card.addSubview(buttonStack)
 
         let cardWidth: CGFloat = 520
-        let listHeight: CGFloat = recentProjects.isEmpty ? 100 : min(CGFloat(recentProjects.count) * 60 + 8, 300)
+        let listHeight: CGFloat = recentProjects.isEmpty ? 100 : min(CGFloat(recentProjects.count) * 60 + 8, 360)
 
         NSLayoutConstraint.activate([
             // Center the card
             card.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             card.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -20),
             card.widthAnchor.constraint(equalToConstant: cardWidth),
+            card.topAnchor.constraint(greaterThanOrEqualTo: view.topAnchor, constant: 20),
+            card.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20),
 
             // Icon
             iconView.topAnchor.constraint(equalTo: card.topAnchor),
