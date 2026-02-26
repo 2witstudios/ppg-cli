@@ -263,6 +263,53 @@ program
     await installDashboardCommand(options);
   });
 
+const cronCmd = program.command('cron').description('Manage scheduled runs');
+
+cronCmd
+  .command('start')
+  .description('Start the cron scheduler daemon in a tmux window')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronStartCommand } = await import('./commands/cron.js');
+    await cronStartCommand(options);
+  });
+
+cronCmd
+  .command('stop')
+  .description('Stop the cron scheduler daemon')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronStopCommand } = await import('./commands/cron.js');
+    await cronStopCommand(options);
+  });
+
+cronCmd
+  .command('list')
+  .description('List configured schedules and next run times')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronListCommand } = await import('./commands/cron.js');
+    await cronListCommand(options);
+  });
+
+cronCmd
+  .command('status')
+  .description('Show cron daemon status and recent log')
+  .option('-l, --lines <n>', 'Number of recent log lines to show', (v: string) => Number(v), 20)
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronStatusCommand } = await import('./commands/cron.js');
+    await cronStatusCommand(options);
+  });
+
+cronCmd
+  .command('_daemon', { hidden: true })
+  .description('Internal: run the cron daemon (called by ppg cron start)')
+  .action(async () => {
+    const { cronDaemonCommand } = await import('./commands/cron.js');
+    await cronDaemonCommand();
+  });
+
 // Error handling
 program.exitOverride();
 

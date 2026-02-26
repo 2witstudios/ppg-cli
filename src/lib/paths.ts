@@ -50,6 +50,18 @@ export function agentPromptFile(projectRoot: string, agentId: string): string {
   return path.join(agentPromptsDir(projectRoot), `${agentId}.md`);
 }
 
+export function schedulesPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'schedules.yaml');
+}
+
+export function cronLogPath(projectRoot: string): string {
+  return path.join(logsDir(projectRoot), 'cron.log');
+}
+
+export function cronPidPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'cron.pid');
+}
+
 export function worktreeBaseDir(projectRoot: string): string {
   return path.join(projectRoot, '.worktrees');
 }
