@@ -1,15 +1,33 @@
 import fs from 'node:fs/promises';
+import YAML from 'yaml';
 import { getRepoRoot } from '../core/worktree.js';
 import { readManifest } from '../core/manifest.js';
-import { loadSchedules, getNextRun, formatCronHuman } from '../core/schedule.js';
+import { loadSchedules, getNextRun, formatCronHuman, validateCronExpression } from '../core/schedule.js';
 import { runCronDaemon, isCronRunning, getCronPid, readCronLog } from '../core/cron.js';
 import * as tmux from '../core/tmux.js';
-import { cronPidPath, manifestPath } from '../lib/paths.js';
+import { cronPidPath, manifestPath, schedulesPath } from '../lib/paths.js';
 import { PpgError, NotInitializedError } from '../lib/errors.js';
 import { output, formatTable, info, success, warn } from '../lib/output.js';
 import type { Column } from '../lib/output.js';
+import type { ScheduleEntry, SchedulesConfig } from '../types/schedule.js';
 
 export interface CronOptions {
+  json?: boolean;
+}
+
+export interface CronAddOptions {
+  name: string;
+  cron: string;
+  swarm?: string;
+  prompt?: string;
+  var?: string[];
+  project?: string;
+  json?: boolean;
+}
+
+export interface CronRemoveOptions {
+  name: string;
+  project?: string;
   json?: boolean;
 }
 
@@ -182,6 +200,115 @@ export async function cronDaemonCommand(): Promise<void> {
   const projectRoot = await getRepoRoot();
   await requireInit(projectRoot);
   await runCronDaemon(projectRoot);
+}
+
+export async function cronAddCommand(options: CronAddOptions): Promise<void> {
+  const projectRoot = options.project ?? await getRepoRoot();
+  await requireInit(projectRoot);
+
+  const { name, cron } = options;
+  if (!name) throw new PpgError('--name is required', 'INVALID_ARGS');
+  if (!cron) throw new PpgError('--cron is required', 'INVALID_ARGS');
+  if (!/^[\w-]+$/.test(name)) {
+    throw new PpgError(`Invalid name "${name}" — must be alphanumeric, hyphens, or underscores`, 'INVALID_ARGS');
+  }
+
+  validateCronExpression(cron);
+
+  if (!options.swarm && !options.prompt) {
+    throw new PpgError('Must specify either --swarm or --prompt', 'INVALID_ARGS');
+  }
+  if (options.swarm && options.prompt) {
+    throw new PpgError('Specify either --swarm or --prompt, not both', 'INVALID_ARGS');
+  }
+
+  const filePath = schedulesPath(projectRoot);
+
+  // Parse vars
+  const vars: Record<string, string> = {};
+  if (options.var) {
+    for (const v of options.var) {
+      const eqIdx = v.indexOf('=');
+      if (eqIdx < 1) throw new PpgError(`Invalid --var format: "${v}" (expected KEY=VALUE)`, 'INVALID_ARGS');
+      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
+    }
+  }
+
+  // Load existing or create new
+  let config: SchedulesConfig;
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    config = YAML.parse(raw) as SchedulesConfig;
+    if (!config || !Array.isArray(config.schedules)) {
+      config = { schedules: [] };
+    }
+  } catch {
+    config = { schedules: [] };
+  }
+
+  // Check for duplicate name
+  if (config.schedules.some((s) => s.name === name)) {
+    throw new PpgError(`Schedule "${name}" already exists`, 'INVALID_ARGS');
+  }
+
+  const entry: ScheduleEntry = { name, cron };
+  if (options.swarm) entry.swarm = options.swarm;
+  if (options.prompt) entry.prompt = options.prompt;
+  if (Object.keys(vars).length > 0) entry.vars = vars;
+
+  config.schedules.push(entry);
+
+  await fs.mkdir(filePath.replace(/\/[^/]+$/, ''), { recursive: true });
+  await fs.writeFile(filePath, YAML.stringify(config), 'utf-8');
+
+  if (options.json) {
+    output({ success: true, name, cron, type: options.swarm ? 'swarm' : 'prompt', target: options.swarm ?? options.prompt }, true);
+  } else {
+    success(`Schedule "${name}" added`);
+    info(`Cron: ${cron}`);
+    info(`${options.swarm ? 'Swarm' : 'Prompt'}: ${options.swarm ?? options.prompt}`);
+  }
+}
+
+export async function cronRemoveCommand(options: CronRemoveOptions): Promise<void> {
+  const projectRoot = options.project ?? await getRepoRoot();
+  await requireInit(projectRoot);
+
+  const { name } = options;
+  if (!name) throw new PpgError('--name is required', 'INVALID_ARGS');
+
+  const filePath = schedulesPath(projectRoot);
+
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, 'utf-8');
+  } catch {
+    throw new PpgError('No schedules file found', 'INVALID_ARGS');
+  }
+
+  const config = YAML.parse(raw) as SchedulesConfig;
+  if (!config || !Array.isArray(config.schedules)) {
+    throw new PpgError('Invalid schedules.yaml', 'INVALID_ARGS');
+  }
+
+  const idx = config.schedules.findIndex((s) => s.name === name);
+  if (idx < 0) {
+    throw new PpgError(`Schedule "${name}" not found`, 'INVALID_ARGS');
+  }
+
+  config.schedules.splice(idx, 1);
+
+  if (config.schedules.length === 0) {
+    await fs.unlink(filePath);
+  } else {
+    await fs.writeFile(filePath, YAML.stringify(config), 'utf-8');
+  }
+
+  if (options.json) {
+    output({ success: true, name, removed: true }, true);
+  } else {
+    success(`Schedule "${name}" removed`);
+  }
 }
 
 async function requireInit(projectRoot: string): Promise<void> {

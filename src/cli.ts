@@ -320,6 +320,32 @@ cronCmd
   });
 
 cronCmd
+  .command('add')
+  .description('Add a new scheduled task')
+  .requiredOption('-n, --name <name>', 'Schedule name')
+  .requiredOption('-c, --cron <expression>', 'Cron expression (5-field)')
+  .option('-s, --swarm <name>', 'Swarm template to run')
+  .option('-p, --prompt <name>', 'Prompt template to run')
+  .option('--var <key=value...>', 'Template variables', collectVars, [])
+  .option('--project <path>', 'Project root (default: current repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronAddCommand } = await import('./commands/cron.js');
+    await cronAddCommand(options);
+  });
+
+cronCmd
+  .command('remove')
+  .description('Remove a scheduled task')
+  .requiredOption('-n, --name <name>', 'Schedule name to remove')
+  .option('--project <path>', 'Project root (default: current repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { cronRemoveCommand } = await import('./commands/cron.js');
+    await cronRemoveCommand(options);
+  });
+
+cronCmd
   .command('_daemon', { hidden: true })
   .description('Internal: run the cron daemon (called by ppg cron start)')
   .action(async () => {
