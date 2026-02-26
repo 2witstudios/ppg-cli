@@ -32,7 +32,7 @@ struct CronParser {
             minutes: parseField(parts[0], range: 0...59),
             hours: parseField(parts[1], range: 0...23),
             daysOfMonth: parseField(parts[2], range: 1...31),
-            months: parseField(parts[3], range: 1...12),
+            months: parseField(parts[3], range: 1...12, aliases: monthAliases),
             daysOfWeek: parseDowField(parts[4]),
             domRestricted: parts[2] != "*",
             dowRestricted: parts[4] != "*"
@@ -43,7 +43,7 @@ struct CronParser {
 
     /// Parse DOW field with range 0...7, mapping 7 → 0 (both mean Sunday, matching cron-parser).
     private static func parseDowField(_ field: String) -> Set<Int> {
-        var result = parseField(field, range: 0...7)
+        var result = parseField(field, range: 0...7, aliases: dowAliases)
         // Cron convention: 7 is an alias for 0 (Sunday)
         if result.contains(7) {
             result.remove(7)
@@ -202,8 +202,26 @@ struct CronParser {
 
     // MARK: - Field Parsing
 
+    // MARK: - Month / Weekday Aliases
+
+    private static let monthAliases: [String: Int] = [
+        "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+        "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12
+    ]
+    private static let dowAliases: [String: Int] = [
+        "SUN": 0, "MON": 1, "TUE": 2, "WED": 3, "THU": 4, "FRI": 5, "SAT": 6
+    ]
+
+    /// Resolve a token to an integer, supporting numeric values and text aliases.
+    private static func resolveToken(_ token: String, aliases: [String: Int]) -> Int? {
+        if let val = Int(token) { return val }
+        return aliases[token.uppercased()]
+    }
+
     /// Parse a single cron field into a set of matching integer values.
-    static func parseField(_ field: String, range: ClosedRange<Int>) -> Set<Int> {
+    /// Supports: wildcards (*), specific values (5), ranges (1-5), lists (1,3,5),
+    /// steps (*/15, 1-5/2), and text aliases (MON, JAN, etc.) for month/dow fields.
+    static func parseField(_ field: String, range: ClosedRange<Int>, aliases: [String: Int] = [:]) -> Set<Int> {
         var result = Set<Int>()
         let parts = field.split(separator: ",").map(String.init)
         for part in parts {
@@ -213,34 +231,47 @@ struct CronParser {
                 let slashParts = part.split(separator: "/").map(String.init)
                 guard slashParts.count == 2, let step = Int(slashParts[1]), step > 0 else { continue }
                 let basePart = slashParts[0]
-                let baseRange: ClosedRange<Int>
                 if basePart == "*" {
-                    baseRange = range
+                    var v = range.lowerBound
+                    while v <= range.upperBound {
+                        result.insert(v)
+                        v += step
+                    }
                 } else if basePart.contains("-") {
                     let dashParts = basePart.split(separator: "-").map(String.init)
-                    if dashParts.count == 2, let lo = Int(dashParts[0]), let hi = Int(dashParts[1]) {
-                        baseRange = max(lo, range.lowerBound)...min(hi, range.upperBound)
-                    } else {
-                        continue
+                    if dashParts.count == 2,
+                       let lo = resolveToken(dashParts[0], aliases: aliases),
+                       let hi = resolveToken(dashParts[1], aliases: aliases) {
+                        let clampedLo = max(lo, range.lowerBound)
+                        let clampedHi = min(hi, range.upperBound)
+                        guard clampedLo <= clampedHi else { continue }
+                        var v = clampedLo
+                        while v <= clampedHi {
+                            result.insert(v)
+                            v += step
+                        }
                     }
-                } else if let val = Int(basePart) {
-                    baseRange = val...range.upperBound
-                } else {
-                    continue
-                }
-                var v = baseRange.lowerBound
-                while v <= baseRange.upperBound {
-                    result.insert(v)
-                    v += step
+                } else if let val = resolveToken(basePart, aliases: aliases) {
+                    guard val <= range.upperBound else { continue }
+                    var v = val
+                    while v <= range.upperBound {
+                        result.insert(v)
+                        v += step
+                    }
                 }
             } else if part.contains("-") {
                 let dashParts = part.split(separator: "-").map(String.init)
-                if dashParts.count == 2, let lo = Int(dashParts[0]), let hi = Int(dashParts[1]) {
-                    for v in max(lo, range.lowerBound)...min(hi, range.upperBound) {
+                if dashParts.count == 2,
+                   let lo = resolveToken(dashParts[0], aliases: aliases),
+                   let hi = resolveToken(dashParts[1], aliases: aliases) {
+                    let clampedLo = max(lo, range.lowerBound)
+                    let clampedHi = min(hi, range.upperBound)
+                    guard clampedLo <= clampedHi else { continue }
+                    for v in clampedLo...clampedHi {
                         result.insert(v)
                     }
                 }
-            } else if let val = Int(part), range.contains(val) {
+            } else if let val = resolveToken(part, aliases: aliases), range.contains(val) {
                 result.insert(val)
             }
         }

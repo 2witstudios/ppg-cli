@@ -630,15 +630,32 @@ class SchedulesView: NSView {
             let (start, end) = dateRangeForCurrentView()
 
             if isHF {
-                // For high-frequency schedules, generate one event per day in the range
+                // For high-frequency schedules, generate one event per matching day in the range.
+                // Check month/DOM/DOW filters so expressions like "*/5 * * * 1" only show on Mondays.
+                guard let parsed = CronParser.parse(schedule.cronExpression) else { continue }
                 var dayStart = cal.startOfDay(for: start)
                 while dayStart <= end {
-                    events.append(CalendarEvent(
-                        schedule: schedule,
-                        date: dayStart,
-                        isHighFrequency: true,
-                        frequencyLabel: freqLabel
-                    ))
+                    let comps = cal.dateComponents([.day, .month, .weekday], from: dayStart)
+                    let day = comps.day ?? 1
+                    let month = comps.month ?? 1
+                    let cronDow = ((comps.weekday ?? 1) - 1) % 7
+
+                    let monthMatch = parsed.months.contains(month)
+                    let dateMatch: Bool
+                    if parsed.domRestricted && parsed.dowRestricted {
+                        dateMatch = parsed.daysOfMonth.contains(day) || parsed.daysOfWeek.contains(cronDow)
+                    } else {
+                        dateMatch = parsed.daysOfMonth.contains(day) && parsed.daysOfWeek.contains(cronDow)
+                    }
+
+                    if monthMatch && dateMatch {
+                        events.append(CalendarEvent(
+                            schedule: schedule,
+                            date: dayStart,
+                            isHighFrequency: true,
+                            frequencyLabel: freqLabel
+                        ))
+                    }
                     dayStart = cal.date(byAdding: .day, value: 1, to: dayStart) ?? end
                 }
             } else {
