@@ -4,13 +4,15 @@ dist/
 .worktrees/
 .DS_Store
 
-# Point Guard
-.pg/results/
-.pg/logs/
-.pg/manifest.json
-.pg/prompts/
-.pg/agent-prompts/
-.pg/dashboard-sessions.json
+# pogu runtime
+.pogu/results/
+.pogu/logs/
+.pogu/manifest.json
+.pogu/prompts/
+.pogu/agent-prompts/
+.pogu/dashboard-sessions.json
+.pogu/conductor-context.md
+.pogu/swarms/
 
 # Xcode
 PPG CLI/build/
@@ -18,9 +20,3 @@ DerivedData/
 **/xcuserdata/
 *.xcuserstate
 *.profraw
-
-# Point Guard
-.pg/conductor-context.md
-
-# Point Guard
-.pg/swarms/
