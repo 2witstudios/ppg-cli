@@ -34,7 +34,7 @@ ppg (Pure Point Guard) is a local orchestration system for parallel AI coding ag
 - **Requires tmux + git worktrees** — these are the foundational abstractions
 - **Node.js >= 20** — ESM-only, modern TypeScript
 - **Single-repo** — all worktrees are branches of the same repository
-- **Local filesystem** — manifest, config, prompts, results, and templates all live in `.pg/`
+- **Local filesystem** — manifest, config, prompts, results, and templates all live in `.ppg/`
 
 ## Architecture Decisions
 
@@ -43,7 +43,7 @@ ppg (Pure Point Guard) is a local orchestration system for parallel AI coding ag
 - **tmux process management** — One session per project, one window per worktree, one pane per agent. tmux provides attach, logs, kill, and status detection for free
 - **Manifest with file-level locking** — `proper-lockfile` (10s stale, 5 retries) + `write-file-atomic` for safe concurrent access from multiple ppg commands
 - **Template `{{VAR}}` system** — Simple, no dependencies, built-in variables for agent context (WORKTREE_PATH, BRANCH, AGENT_ID, RESULT_FILE, etc.)
-- **Agent-agnostic config** — Agents defined in `.pg/config.yaml` with `command`, `promptFlag`, `interactive` properties. Default: Claude Code
+- **Agent-agnostic config** — Agents defined in `.ppg/config.yaml` with `command`, `promptFlag`, `interactive` properties. Default: Claude Code
 - **Signal-stack status detection** — Layered priority: result file → pane existence → pane liveness → current command → running. No IPC required
 
 ## Success Criteria

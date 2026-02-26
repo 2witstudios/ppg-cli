@@ -27,7 +27,7 @@ npm run typecheck    # Type-check with tsc --noEmit
 
 - **TypeScript strict mode** — ES2022, NodeNext module resolution, ESM-only
 - **`.js` extensions in imports** — Required by NodeNext (e.g., `import { foo } from './bar.js'`)
-- **Functional style** — Pure functions, composition, `const`, destructuring, no classes except `PgError`
+- **Functional style** — Pure functions, composition, `const`, destructuring, no classes except `PpgError`
 - **Dual output** — Every command supports `--json`. Use `output()` and `outputError()` from `lib/output.ts`
 - **Manifest locking** — Always use `updateManifest()` for read-modify-write, never read + write separately
 - **Colocated tests** — Test files live next to source (e.g., `src/core/manifest.test.ts`)
