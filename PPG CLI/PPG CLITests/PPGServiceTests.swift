@@ -17,9 +17,9 @@ final class PPGServiceTests: XCTestCase {
     }
 
     private func writeFixture(_ json: String) -> String {
-        let pgDir = tempDir.appendingPathComponent(".pg")
-        try? FileManager.default.createDirectory(at: pgDir, withIntermediateDirectories: true)
-        let path = pgDir.appendingPathComponent("manifest.json").path
+        let ppgDir = tempDir.appendingPathComponent(".ppg")
+        try? FileManager.default.createDirectory(at: ppgDir, withIntermediateDirectories: true)
+        let path = ppgDir.appendingPathComponent("manifest.json").path
         FileManager.default.createFile(atPath: path, contents: json.data(using: .utf8))
         return path
     }
@@ -36,7 +36,7 @@ final class PPGServiceTests: XCTestCase {
             "ag-def456": {
               "id": "ag-def456", "name": "claude", "agentType": "claude",
               "status": "running", "tmuxTarget": "ppg-test:1",
-              "prompt": "Do something", "resultFile": "/tmp/test/.pg/results/ag-def456.md",
+              "prompt": "Do something", "resultFile": "/tmp/test/.ppg/results/ag-def456.md",
               "startedAt": "2026-02-23T12:00:00Z"
             }
           },
