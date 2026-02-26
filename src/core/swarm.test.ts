@@ -1,20 +1,32 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
-import { listSwarms, loadSwarm } from './swarm.js';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+import { listSwarms, listSwarmsWithSource, loadSwarm } from './swarm.js';
 
 let TMP_ROOT: string;
+let GLOBAL_TMP: string;
 let SWARMS_DIR: string;
+
+vi.mock('../lib/paths.js', async () => {
+  const actual = await vi.importActual<typeof import('../lib/paths.js')>('../lib/paths.js');
+  return {
+    ...actual,
+    globalSwarmsDir: () => path.join(GLOBAL_TMP, '.ppg', 'swarms'),
+  };
+});
 
 beforeEach(async () => {
   TMP_ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-swarm-test-'));
+  GLOBAL_TMP = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-swarm-global-'));
   SWARMS_DIR = path.join(TMP_ROOT, '.ppg', 'swarms');
   await fs.mkdir(SWARMS_DIR, { recursive: true });
+  await fs.mkdir(path.join(GLOBAL_TMP, '.ppg', 'swarms'), { recursive: true });
 });
 
 afterEach(async () => {
   await fs.rm(TMP_ROOT, { recursive: true, force: true });
+  await fs.rm(GLOBAL_TMP, { recursive: true, force: true });
 });
 
 const validYaml = `name: code-review
@@ -275,5 +287,62 @@ agents:
 
     await expect(loadSwarm(TMP_ROOT, 'bad-name'))
       .rejects.toThrow('Invalid swarm name');
+  });
+
+  test('given only global swarm file, should load from global', async () => {
+    await fs.writeFile(path.join(GLOBAL_TMP, '.ppg', 'swarms', 'global-review.yaml'), validYaml);
+
+    const actual = await loadSwarm(TMP_ROOT, 'global-review');
+
+    expect(actual.name).toBe('code-review');
+    expect(actual.agents).toHaveLength(2);
+  });
+
+  test('given both local and global, should prefer local', async () => {
+    const localYaml = `name: code-review
+description: Local version
+strategy: isolated
+agents:
+  - prompt: review-quality
+`;
+    await fs.writeFile(path.join(SWARMS_DIR, 'code-review.yaml'), localYaml);
+    await fs.writeFile(path.join(GLOBAL_TMP, '.ppg', 'swarms', 'code-review.yaml'), validYaml);
+
+    const actual = await loadSwarm(TMP_ROOT, 'code-review');
+
+    expect(actual.description).toBe('Local version');
+    expect(actual.strategy).toBe('isolated');
+  });
+});
+
+describe('listSwarmsWithSource', () => {
+  test('given local and global swarms, should annotate source', async () => {
+    await fs.writeFile(path.join(SWARMS_DIR, 'local.yaml'), validYaml);
+    await fs.writeFile(path.join(GLOBAL_TMP, '.ppg', 'swarms', 'global.yaml'), validYaml);
+
+    const result = await listSwarmsWithSource(TMP_ROOT);
+
+    expect(result).toEqual([
+      { name: 'local', source: 'local' },
+      { name: 'global', source: 'global' },
+    ]);
+  });
+
+  test('given name conflict, should only include local version', async () => {
+    await fs.writeFile(path.join(SWARMS_DIR, 'shared.yaml'), validYaml);
+    await fs.writeFile(path.join(GLOBAL_TMP, '.ppg', 'swarms', 'shared.yaml'), validYaml);
+
+    const result = await listSwarmsWithSource(TMP_ROOT);
+
+    expect(result).toEqual([{ name: 'shared', source: 'local' }]);
+  });
+
+  test('given only global swarms, should return global entries', async () => {
+    await fs.rm(SWARMS_DIR, { recursive: true, force: true });
+    await fs.writeFile(path.join(GLOBAL_TMP, '.ppg', 'swarms', 'global.yaml'), validYaml);
+
+    const result = await listSwarmsWithSource(TMP_ROOT);
+
+    expect(result).toEqual([{ name: 'global', source: 'global' }]);
   });
 });

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import YAML from 'yaml';
-import { swarmsDir } from '../lib/paths.js';
+import { swarmsDir, globalSwarmsDir } from '../lib/paths.js';
 import { PpgError } from '../lib/errors.js';
 
 export interface SwarmAgentEntry {
@@ -19,8 +19,12 @@ export interface SwarmTemplate {
 
 const SAFE_NAME = /^[\w-]+$/;
 
-export async function listSwarms(projectRoot: string): Promise<string[]> {
-  const dir = swarmsDir(projectRoot);
+export interface SwarmEntry {
+  name: string;
+  source: 'local' | 'global';
+}
+
+async function readSwarmNames(dir: string): Promise<string[]> {
   try {
     const files = await fs.readdir(dir);
     return files
@@ -32,6 +36,57 @@ export async function listSwarms(projectRoot: string): Promise<string[]> {
   }
 }
 
+export async function listSwarms(projectRoot: string): Promise<string[]> {
+  const entries = await listSwarmsWithSource(projectRoot);
+  return entries.map((e) => e.name);
+}
+
+export async function listSwarmsWithSource(projectRoot: string): Promise<SwarmEntry[]> {
+  const localNames = await readSwarmNames(swarmsDir(projectRoot));
+  const globalNames = await readSwarmNames(globalSwarmsDir());
+
+  const seen = new Set<string>();
+  const result: SwarmEntry[] = [];
+
+  for (const name of localNames) {
+    seen.add(name);
+    result.push({ name, source: 'local' });
+  }
+
+  for (const name of globalNames) {
+    if (!seen.has(name)) {
+      result.push({ name, source: 'global' });
+    }
+  }
+
+  return result;
+}
+
+async function trySwarmFile(dir: string, name: string): Promise<string | null> {
+  const yamlPath = path.join(dir, `${name}.yaml`);
+  try {
+    await fs.access(yamlPath);
+    return yamlPath;
+  } catch {
+    const ymlPath = path.join(dir, `${name}.yml`);
+    try {
+      await fs.access(ymlPath);
+      return ymlPath;
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function resolveSwarmFile(projectRoot: string, name: string): Promise<string | null> {
+  // Project-local first
+  const local = await trySwarmFile(swarmsDir(projectRoot), name);
+  if (local) return local;
+
+  // Global fallback
+  return trySwarmFile(globalSwarmsDir(), name);
+}
+
 export async function loadSwarm(projectRoot: string, name: string): Promise<SwarmTemplate> {
   if (!SAFE_NAME.test(name)) {
     throw new PpgError(
@@ -40,19 +95,11 @@ export async function loadSwarm(projectRoot: string, name: string): Promise<Swar
     );
   }
 
-  const dir = swarmsDir(projectRoot);
+  // Try project-local first, then global
+  const filePath = await resolveSwarmFile(projectRoot, name);
 
-  // Try .yaml first, then .yml
-  let filePath = path.join(dir, `${name}.yaml`);
-  try {
-    await fs.access(filePath);
-  } catch {
-    filePath = path.join(dir, `${name}.yml`);
-    try {
-      await fs.access(filePath);
-    } catch {
-      throw new PpgError(`Swarm template not found: ${name}`, 'INVALID_ARGS');
-    }
+  if (!filePath) {
+    throw new PpgError(`Swarm template not found: ${name}`, 'INVALID_ARGS');
   }
 
   const raw = await fs.readFile(filePath, 'utf-8');
