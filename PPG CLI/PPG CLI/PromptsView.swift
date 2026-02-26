@@ -456,55 +456,45 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
 
         let alert = NSAlert()
         alert.messageText = "New Prompt"
-        alert.informativeText = "Enter a name for the prompt file:"
+        alert.informativeText = ""
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
 
-        let accessory = NSStackView()
-        accessory.orientation = .vertical
-        accessory.spacing = 8
-        accessory.alignment = .leading
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 190))
 
-        let nameLabel = NSTextField(labelWithString: "Name:")
-        nameLabel.font = .systemFont(ofSize: 11, weight: .medium)
-        nameLabel.textColor = .secondaryLabelColor
-        accessory.addArrangedSubview(nameLabel)
+        var y: CGFloat = 190
 
-        let nameField = NSTextField(string: "")
-        nameField.placeholderString = "prompt-name"
-        nameField.translatesAutoresizingMaskIntoConstraints = false
-        accessory.addArrangedSubview(nameField)
-
-        let projectLabel = NSTextField(labelWithString: "Project:")
-        projectLabel.font = .systemFont(ofSize: 11, weight: .medium)
-        projectLabel.textColor = .secondaryLabelColor
-        accessory.addArrangedSubview(projectLabel)
-
-        let projectPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-        for ctx in projects {
-            projectPopup.addItem(withTitle: ctx.projectName.isEmpty ? ctx.projectRoot : ctx.projectName)
+        func addLabel(_ text: String) {
+            y -= 16
+            let label = NSTextField(labelWithString: text)
+            label.font = .systemFont(ofSize: 11, weight: .medium)
+            label.textColor = .secondaryLabelColor
+            label.frame = NSRect(x: 0, y: y, width: 260, height: 16)
+            accessory.addSubview(label)
+            y -= 2
         }
-        projectPopup.translatesAutoresizingMaskIntoConstraints = false
-        accessory.addArrangedSubview(projectPopup)
 
-        let dirLabel = NSTextField(labelWithString: "Directory:")
-        dirLabel.font = .systemFont(ofSize: 11, weight: .medium)
-        dirLabel.textColor = .secondaryLabelColor
-        accessory.addArrangedSubview(dirLabel)
+        func addPopup(_ items: [String]) -> NSPopUpButton {
+            y -= 24
+            let popup = NSPopUpButton(frame: NSRect(x: 0, y: y, width: 260, height: 24), pullsDown: false)
+            for item in items { popup.addItem(withTitle: item) }
+            accessory.addSubview(popup)
+            y -= 8
+            return popup
+        }
 
-        let dirPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-        dirPopup.addItem(withTitle: "prompts")
-        dirPopup.addItem(withTitle: "templates")
-        dirPopup.translatesAutoresizingMaskIntoConstraints = false
-        accessory.addArrangedSubview(dirPopup)
+        addLabel("Name:")
+        y -= 24
+        let nameField = NSTextField(frame: NSRect(x: 0, y: y, width: 260, height: 24))
+        nameField.placeholderString = "prompt-name"
+        accessory.addSubview(nameField)
+        y -= 12
 
-        accessory.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            accessory.widthAnchor.constraint(equalToConstant: 260),
-            nameField.widthAnchor.constraint(equalTo: accessory.widthAnchor),
-            projectPopup.widthAnchor.constraint(equalTo: accessory.widthAnchor),
-            dirPopup.widthAnchor.constraint(equalTo: accessory.widthAnchor),
-        ])
+        addLabel("Project:")
+        let projectPopup = addPopup(projects.map { $0.projectName.isEmpty ? $0.projectRoot : $0.projectName })
+
+        addLabel("Directory:")
+        let dirPopup = addPopup(["prompts", "templates"])
 
         alert.accessoryView = accessory
         alert.window.initialFirstResponder = nameField
