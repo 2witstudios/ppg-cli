@@ -31,7 +31,6 @@ nonisolated struct AgentEntryModel: Codable, Sendable {
     let status: String
     let tmuxTarget: String
     let prompt: String
-    let resultFile: String
     let startedAt: String
     let completedAt: String?
     let exitCode: Int?

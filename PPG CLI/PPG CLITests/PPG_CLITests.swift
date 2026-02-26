@@ -16,7 +16,7 @@ final class ManifestModelTests: XCTestCase {
             "ag-def456": {
               "id": "ag-def456", "name": "claude", "agentType": "claude",
               "status": "running", "tmuxTarget": "ppg-test:1",
-              "prompt": "Do something", "resultFile": "/tmp/test/.ppg/results/ag-def456.md",
+              "prompt": "Do something",
               "startedAt": "2026-02-23T12:00:00Z"
             }
           },
@@ -52,7 +52,7 @@ final class ManifestModelTests: XCTestCase {
               "agents": {
                 "ag-1": {
                   "id": "ag-1", "name": "c", "agentType": "claude", "status": "running",
-                  "tmuxTarget": "s:1", "prompt": "x", "resultFile": "/r", "startedAt": "t"
+                  "tmuxTarget": "s:1", "prompt": "x", "startedAt": "t"
                 }
               },
               "createdAt": "t"
@@ -75,7 +75,7 @@ final class AgentModelTests: XCTestCase {
     func testStatusMappingFromEntry() {
         let entry = AgentEntryModel(
             id: "ag-1", name: "c", agentType: "claude", status: "running",
-            tmuxTarget: "s:1", prompt: "x", resultFile: "/r", startedAt: "t",
+            tmuxTarget: "s:1", prompt: "x", startedAt: "t",
             completedAt: nil, exitCode: nil, error: nil, sessionId: nil
         )
         let model = AgentModel(from: entry)
@@ -85,7 +85,7 @@ final class AgentModelTests: XCTestCase {
     func testUnknownStatusMapsToLost() {
         let entry = AgentEntryModel(
             id: "ag-1", name: "c", agentType: "claude", status: "unknown_status",
-            tmuxTarget: "s:1", prompt: "x", resultFile: "/r", startedAt: "t",
+            tmuxTarget: "s:1", prompt: "x", startedAt: "t",
             completedAt: nil, exitCode: nil, error: nil, sessionId: nil
         )
         let model = AgentModel(from: entry)

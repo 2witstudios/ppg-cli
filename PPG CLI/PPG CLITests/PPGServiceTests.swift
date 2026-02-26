@@ -36,7 +36,7 @@ final class PPGServiceTests: XCTestCase {
             "ag-def456": {
               "id": "ag-def456", "name": "claude", "agentType": "claude",
               "status": "running", "tmuxTarget": "ppg-test:1",
-              "prompt": "Do something", "resultFile": "/tmp/test/.ppg/results/ag-def456.md",
+              "prompt": "Do something",
               "startedAt": "2026-02-23T12:00:00Z"
             }
           },
@@ -105,12 +105,12 @@ final class PPGServiceTests: XCTestCase {
               "agents": {
                 "ag-b": {
                   "id": "ag-b", "name": "b", "agentType": "claude", "status": "running",
-                  "tmuxTarget": "s:1.1", "prompt": "x", "resultFile": "/r",
+                  "tmuxTarget": "s:1.1", "prompt": "x",
                   "startedAt": "2026-02-23T14:00:00Z"
                 },
                 "ag-a": {
                   "id": "ag-a", "name": "a", "agentType": "claude", "status": "completed",
-                  "tmuxTarget": "s:1.0", "prompt": "y", "resultFile": "/r",
+                  "tmuxTarget": "s:1.0", "prompt": "y",
                   "startedAt": "2026-02-23T12:00:00Z"
                 }
               },
