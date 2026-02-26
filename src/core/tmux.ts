@@ -34,7 +34,7 @@ export async function createWindow(
   cwd: string,
 ): Promise<string> {
   // Use '=' prefix for exact session name matching to avoid tmux prefix ambiguity
-  // (e.g., 'ppg' would otherwise match both 'ppg' and 'ppg-dashboard')
+  // (e.g., 'pogu' would otherwise match both 'pogu' and 'pogu-dashboard')
   const result = await execa('tmux', [
     'new-window',
     '-t', `=${session}`,

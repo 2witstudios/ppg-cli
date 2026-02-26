@@ -27,7 +27,7 @@ describe('loadConfig', () => {
 
     const config = await loadConfig('/tmp/project');
 
-    expect(config.sessionName).toBe('ppg');
+    expect(config.sessionName).toBe('pogu');
     expect(config.defaultAgent).toBe('claude');
     expect(config.agents.claude).toBeDefined();
     expect(config.agents.claude.command).toBe('claude --dangerously-skip-permissions');
@@ -79,7 +79,7 @@ agents:
 
 describe('resolveAgentConfig', () => {
   const config: Config = {
-    sessionName: 'ppg',
+    sessionName: 'pogu',
     defaultAgent: 'claude',
     agents: {
       claude: {

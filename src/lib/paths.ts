@@ -1,21 +1,21 @@
 import path from 'node:path';
 
-const PG_DIR = '.pg';
+const POGU_DIR = '.pogu';
 
-export function pgDir(projectRoot: string): string {
-  return path.join(projectRoot, PG_DIR);
+export function poguDir(projectRoot: string): string {
+  return path.join(projectRoot, POGU_DIR);
 }
 
 export function manifestPath(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'manifest.json');
+  return path.join(poguDir(projectRoot), 'manifest.json');
 }
 
 export function configPath(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'config.yaml');
+  return path.join(poguDir(projectRoot), 'config.yaml');
 }
 
 export function resultsDir(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'results');
+  return path.join(poguDir(projectRoot), 'results');
 }
 
 export function resultFile(projectRoot: string, agentId: string): string {
@@ -23,19 +23,19 @@ export function resultFile(projectRoot: string, agentId: string): string {
 }
 
 export function templatesDir(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'templates');
+  return path.join(poguDir(projectRoot), 'templates');
 }
 
 export function logsDir(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'logs');
+  return path.join(poguDir(projectRoot), 'logs');
 }
 
 export function promptsDir(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'prompts');
+  return path.join(poguDir(projectRoot), 'prompts');
 }
 
 export function swarmsDir(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'swarms');
+  return path.join(poguDir(projectRoot), 'swarms');
 }
 
 export function promptFile(projectRoot: string, agentId: string): string {
@@ -43,7 +43,7 @@ export function promptFile(projectRoot: string, agentId: string): string {
 }
 
 export function agentPromptsDir(projectRoot: string): string {
-  return path.join(pgDir(projectRoot), 'agent-prompts');
+  return path.join(poguDir(projectRoot), 'agent-prompts');
 }
 
 export function agentPromptFile(projectRoot: string, agentId: string): string {
