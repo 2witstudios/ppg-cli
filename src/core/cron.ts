@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline';
 import { execa } from 'execa';
 import { loadSchedules, getNextRun } from './schedule.js';
-import { cronLogPath, cronPidPath, logsDir } from '../lib/paths.js';
+import { cronLogPath, cronPidPath, logsDir, schedulesPath } from '../lib/paths.js';
 import type { ScheduleEntry } from '../types/schedule.js';
 
 const CHECK_INTERVAL_MS = 30_000;
@@ -25,11 +27,8 @@ export async function runCronDaemon(projectRoot: string): Promise<void> {
 
   await logCron(projectRoot, 'Cron daemon starting');
 
-  const schedules = await loadSchedules(projectRoot);
-  const states: ScheduleState[] = schedules.map((entry) => ({
-    entry,
-    nextRun: getNextRun(entry.cron),
-  }));
+  let states = await loadScheduleStates(projectRoot);
+  let lastConfigMtime = await getFileMtime(schedulesPath(projectRoot));
 
   await logCron(projectRoot, `Loaded ${states.length} schedule(s)`);
   for (const s of states) {
@@ -49,16 +48,30 @@ export async function runCronDaemon(projectRoot: string): Promise<void> {
 
   // Main loop
   const tick = async () => {
+    // Reload schedules if config file changed
+    const currentMtime = await getFileMtime(schedulesPath(projectRoot));
+    if (currentMtime !== lastConfigMtime) {
+      try {
+        states = await loadScheduleStates(projectRoot);
+        lastConfigMtime = currentMtime;
+        await logCron(projectRoot, `Reloaded schedules (${states.length} schedule(s))`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await logCron(projectRoot, `Failed to reload schedules: ${msg}`);
+      }
+    }
+
     const now = new Date();
-    for (const state of states) {
-      if (now >= state.nextRun) {
+    const due = states.filter((s) => now >= s.nextRun);
+    // Fire all due schedules concurrently
+    await Promise.allSettled(
+      due.map(async (state) => {
         await triggerSchedule(state, projectRoot);
-        // Advance to next run time
         state.nextRun = getNextRun(state.entry.cron);
         state.lastTriggered = now;
         await logCron(projectRoot, `  ${state.entry.name}: next run at ${state.nextRun.toISOString()}`);
-      }
-    }
+      }),
+    );
   };
 
   // Run immediately, then on interval
@@ -67,6 +80,23 @@ export async function runCronDaemon(projectRoot: string): Promise<void> {
 
   // Keep alive
   await new Promise(() => {});
+}
+
+async function loadScheduleStates(projectRoot: string): Promise<ScheduleState[]> {
+  const schedules = await loadSchedules(projectRoot);
+  return schedules.map((entry) => ({
+    entry,
+    nextRun: getNextRun(entry.cron),
+  }));
+}
+
+async function getFileMtime(filePath: string): Promise<number> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.mtimeMs;
+  } catch {
+    return 0;
+  }
 }
 
 async function triggerSchedule(state: ScheduleState, projectRoot: string): Promise<void> {
@@ -130,35 +160,58 @@ export async function logCron(projectRoot: string, message: string): Promise<voi
 }
 
 export async function isCronRunning(projectRoot: string): Promise<boolean> {
-  const pidPath = cronPidPath(projectRoot);
-  try {
-    const pid = parseInt(await fs.readFile(pidPath, 'utf-8'), 10);
-    // Check if process is alive (signal 0 doesn't send a signal, just checks)
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await getCronPid(projectRoot)) !== null;
 }
 
 export async function getCronPid(projectRoot: string): Promise<number | null> {
   const pidPath = cronPidPath(projectRoot);
+  let raw: string;
   try {
-    const pid = parseInt(await fs.readFile(pidPath, 'utf-8'), 10);
-    process.kill(pid, 0);
-    return pid;
+    raw = await fs.readFile(pidPath, 'utf-8');
   } catch {
     return null;
   }
+  const pid = parseInt(raw, 10);
+  if (isNaN(pid)) {
+    await cleanupPidFile(pidPath);
+    return null;
+  }
+  try {
+    // Signal 0 doesn't send a signal, just checks if process is alive
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    // Process is dead — clean up stale PID file
+    await cleanupPidFile(pidPath);
+    return null;
+  }
+}
+
+async function cleanupPidFile(pidPath: string): Promise<void> {
+  try {
+    await fs.unlink(pidPath);
+  } catch { /* already gone */ }
 }
 
 export async function readCronLog(projectRoot: string, lines: number = 20): Promise<string[]> {
   const logPath = cronLogPath(projectRoot);
   try {
-    const content = await fs.readFile(logPath, 'utf-8');
-    const allLines = content.trim().split('\n').filter(Boolean);
-    return allLines.slice(-lines);
+    await fs.access(logPath);
   } catch {
     return [];
   }
+  // Stream the file and keep only the last N lines to avoid loading large logs into memory
+  const result: string[] = [];
+  const rl = readline.createInterface({
+    input: createReadStream(logPath, { encoding: 'utf-8' }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of rl) {
+    if (!line) continue;
+    result.push(line);
+    if (result.length > lines) {
+      result.shift();
+    }
+  }
+  return result;
 }

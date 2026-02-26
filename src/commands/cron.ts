@@ -6,7 +6,7 @@ import { runCronDaemon, isCronRunning, getCronPid, readCronLog } from '../core/c
 import * as tmux from '../core/tmux.js';
 import { cronPidPath, manifestPath } from '../lib/paths.js';
 import { PpgError, NotInitializedError } from '../lib/errors.js';
-import { output, outputError, formatTable, info, success, warn } from '../lib/output.js';
+import { output, formatTable, info, success, warn } from '../lib/output.js';
 import type { Column } from '../lib/output.js';
 
 export interface CronOptions {
@@ -66,6 +66,7 @@ export async function cronStartCommand(options: CronOptions): Promise<void> {
 export async function cronStopCommand(options: CronOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
+  // getCronPid already cleans up stale PID files
   const pid = await getCronPid(projectRoot);
   if (!pid) {
     if (options.json) {
@@ -83,7 +84,7 @@ export async function cronStopCommand(options: CronOptions): Promise<void> {
     // Already dead
   }
 
-  // Clean up PID file
+  // Clean up PID file (daemon cleanup handler may not have run yet)
   try {
     await fs.unlink(cronPidPath(projectRoot));
   } catch { /* already gone */ }
