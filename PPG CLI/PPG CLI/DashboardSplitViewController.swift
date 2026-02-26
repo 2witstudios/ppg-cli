@@ -117,6 +117,10 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.showSchedulesView()
         }
 
+        sidebar.onSkillsClicked = { [weak self] in
+            self?.showSkillsView()
+        }
+
         // Save grid layout when a grid is suspended (navigate away)
         content.onGridSuspended = { [weak self] ownerEntryId, layout in
             guard let self = self else { return }
@@ -585,6 +589,13 @@ class DashboardSplitViewController: NSSplitViewController {
         titleAccessory?.setTitle("ppg - Schedules", editable: false)
     }
 
+    func showSkillsView() {
+        content.showSkillsView()
+        currentSidebarItem = nil
+        view.window?.title = "ppg - Skills"
+        titleAccessory?.setTitle("ppg - Skills", editable: false)
+    }
+
     // MARK: - Selection & Refresh
 
     private func handleSelection(_ item: SidebarItem) {
@@ -693,7 +704,7 @@ class DashboardSplitViewController: NSSplitViewController {
     /// Actual refresh logic, invoked after coalescing delay.
     private func performRefresh(_ currentItem: SidebarItem?) {
         // If prompts, swarms, or schedules view is visible, just clean stale views
-        if content.isShowingPromptsView || content.isShowingSwarmsView || content.isShowingSchedulesView {
+        if content.isShowingPromptsView || content.isShowingSwarmsView || content.isShowingSchedulesView || content.isShowingSkillsView {
             let validIds = collectAllTerminalIds()
             content.clearStaleViews(validIds: validIds)
             return

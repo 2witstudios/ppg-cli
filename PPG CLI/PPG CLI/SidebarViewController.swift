@@ -3,7 +3,7 @@ import AppKit
 // MARK: - Sidebar Tab
 
 enum SidebarTab {
-    case dashboard, swarms, prompts, schedules
+    case dashboard, swarms, prompts, schedules, skills
 }
 
 // MARK: - Sidebar Item
@@ -91,6 +91,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onSwarmsClicked: (() -> Void)?
     var onPromptsClicked: (() -> Void)?
     var onSchedulesClicked: (() -> Void)?
+    var onSkillsClicked: (() -> Void)?
 
     private var safetyTimer: Timer?
     private var settingsObserver: NSObjectProtocol?
@@ -104,6 +105,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     private var swarmsRow: SidebarNavRow!
     private var promptsRow: SidebarNavRow!
     private var schedulesRow: SidebarNavRow!
+    private var skillsRow: SidebarNavRow!
     var projectNodes: [SidebarNode] = []
     private var suppressSelectionCallback = false
     private var contextClickedNode: SidebarNode?
@@ -159,8 +161,11 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         schedulesRow = SidebarNavRow(title: "Schedules", icon: "clock") { [weak self] in
             self?.schedulesButtonClicked()
         }
+        skillsRow = SidebarNavRow(title: "Skills", icon: "sparkles") { [weak self] in
+            self?.skillsButtonClicked()
+        }
 
-        let navStack = NSStackView(views: [dashboardRow, swarmsRow, promptsRow, schedulesRow])
+        let navStack = NSStackView(views: [dashboardRow, swarmsRow, promptsRow, schedulesRow, skillsRow])
         navStack.orientation = .vertical
         navStack.alignment = .leading
         navStack.spacing = 2
@@ -188,6 +193,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             swarmsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
             promptsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
             schedulesRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
+            skillsRow.widthAnchor.constraint(equalTo: navStack.widthAnchor),
 
             dashSeparator.bottomAnchor.constraint(equalTo: navBar.bottomAnchor),
             dashSeparator.leadingAnchor.constraint(equalTo: navBar.leadingAnchor),
@@ -279,6 +285,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         swarmsRow.isSelected = (tab == .swarms)
         promptsRow.isSelected = (tab == .prompts)
         schedulesRow.isSelected = (tab == .schedules)
+        skillsRow.isSelected = (tab == .skills)
     }
 
     private func deselectAllTabs() {
@@ -287,6 +294,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         swarmsRow.isSelected = false
         promptsRow.isSelected = false
         schedulesRow.isSelected = false
+        skillsRow.isSelected = false
     }
 
     private func dashboardButtonClicked() {
@@ -311,6 +319,12 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         outlineView.deselectAll(nil)
         selectTab(.schedules)
         onSchedulesClicked?()
+    }
+
+    private func skillsButtonClicked() {
+        outlineView.deselectAll(nil)
+        selectTab(.skills)
+        onSkillsClicked?()
     }
 
     @objc private func settingsButtonClicked() {
