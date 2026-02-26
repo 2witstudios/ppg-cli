@@ -1,7 +1,7 @@
 /**
  * Normalize a user-provided name into a valid git branch name component.
  *
- * Used to sanitize `--name` values before they become part of `ppg/<name>` branches.
+ * Used to sanitize `--name` values before they become part of `pogu/<name>` branches.
  */
 export function normalizeName(raw: string, fallback: string): string {
   const name = raw

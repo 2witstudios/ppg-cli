@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { resultFile, agentPromptFile, agentPromptsDir } from '../lib/paths.js';
 import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
 import { updateManifest } from './manifest.js';
-import { PgError } from '../lib/errors.js';
+import { PoguError } from '../lib/errors.js';
 import type { AgentEntry, AgentStatus } from '../types/manifest.js';
 import type { AgentConfig } from '../types/config.js';
 import { renderTemplate, type TemplateContext } from './template.js';
@@ -219,7 +219,7 @@ export async function resumeAgent(options: ResumeAgentOptions): Promise<string> 
   const { agent, worktreeId, sessionName, cwd, windowName, projectRoot } = options;
 
   if (!agent.sessionId) {
-    throw new PgError(
+    throw new PoguError(
       `Agent ${agent.id} has no session ID. Cannot resume agents spawned before session tracking was added.`,
       'NO_SESSION_ID',
     );

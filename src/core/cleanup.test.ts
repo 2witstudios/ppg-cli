@@ -51,17 +51,17 @@ function makeWorktree(overrides: Partial<WorktreeEntry> = {}): WorktreeEntry {
     id: 'wt-abc123',
     name: 'test-wt',
     path: '/tmp/wt',
-    branch: 'ppg/test-wt',
+    branch: 'pogu/test-wt',
     baseBranch: 'main',
     status: 'active',
-    tmuxWindow: 'ppg:1',
+    tmuxWindow: 'pogu:1',
     agents: {
       'ag-1': {
         id: 'ag-1',
         name: 'test',
         agentType: 'claude',
         status: 'running',
-        tmuxTarget: 'ppg:1.0',
+        tmuxTarget: 'pogu:1.0',
         prompt: 'test',
         resultFile: '/tmp/result.md',
         startedAt: new Date().toISOString(),
@@ -110,8 +110,8 @@ describe('cleanupWorktree', () => {
     const selfPaneId = '%5';
     const paneMap = new Map<string, PaneInfo>();
     paneMap.set('%5', makePaneInfo('%5'));
-    paneMap.set('ppg:1', makePaneInfo('%5'));
-    paneMap.set('ppg:1.0', makePaneInfo('%5'));
+    paneMap.set('pogu:1', makePaneInfo('%5'));
+    paneMap.set('pogu:1.0', makePaneInfo('%5'));
 
     const wt = makeWorktree();
     const result = await cleanupWorktree('/project', wt, { selfPaneId, paneMap });
@@ -149,14 +149,14 @@ describe('cleanupWorktree', () => {
   test('deduplicates tmux targets', async () => {
     // Agent target and window target are the same
     const wt = makeWorktree({
-      tmuxWindow: 'ppg:1',
+      tmuxWindow: 'pogu:1',
       agents: {
         'ag-1': {
           id: 'ag-1',
           name: 'test',
           agentType: 'claude',
           status: 'running',
-          tmuxTarget: 'ppg:1', // Same as tmuxWindow
+          tmuxTarget: 'pogu:1', // Same as tmuxWindow
           prompt: 'test',
           resultFile: '/tmp/result.md',
           startedAt: new Date().toISOString(),
