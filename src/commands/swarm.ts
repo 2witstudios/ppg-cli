@@ -11,7 +11,7 @@ import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { resultFile, promptsDir, manifestPath } from '../lib/paths.js';
-import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PoguError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
 import { parseVars } from '../lib/vars.js';
@@ -58,7 +58,7 @@ async function loadPromptFile(projectRoot: string, promptName: string): Promise<
   try {
     return await fs.readFile(filePath, 'utf-8');
   } catch {
-    throw new PgError(`Prompt file not found: ${promptName}.md in .pg/prompts/`, 'INVALID_ARGS');
+    throw new PoguError(`Prompt file not found: ${promptName}.md in .pogu/prompts/`, 'INVALID_ARGS');
   }
 }
 
@@ -113,7 +113,7 @@ async function swarmShared(
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
   const name = options.name ? normalizeName(options.name, swarm.name) : swarm.name;
-  const branchName = `ppg/${name}`;
+  const branchName = `pogu/${name}`;
 
   info(`Creating worktree ${wtId} on branch ${branchName}`);
   const wtPath = await createWorktree(projectRoot, wtId, {
@@ -195,7 +195,7 @@ async function swarmIsolated(
       wtName = `${wtName}-${suffix}`;
     }
     usedNames.add(wtName);
-    const branchName = `ppg/${wtName}`;
+    const branchName = `pogu/${wtName}`;
 
     info(`Creating worktree ${wtId} on branch ${branchName}`);
     const wtPath = await createWorktree(projectRoot, wtId, {
@@ -331,6 +331,6 @@ function outputResult(
     for (const a of agents) {
       info(`  Agent ${a.id} → ${a.tmuxTarget}`);
     }
-    info(`Attach: ppg attach ${wtId}`);
+    info(`Attach: pogu attach ${wtId}`);
   }
 }

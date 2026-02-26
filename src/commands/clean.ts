@@ -99,7 +99,7 @@ export async function cleanCommand(options: CleanOptions): Promise<void> {
     if (wt.status !== 'cleaned') {
       // Self-protection check before cleanup
       if (selfPaneId && paneMap && wouldCleanupAffectSelf(wt, selfPaneId, paneMap)) {
-        warn(`Skipping cleanup of worktree ${wt.id} (${wt.name}) — contains current ppg process`);
+        warn(`Skipping cleanup of worktree ${wt.id} (${wt.name}) — contains current pogu process`);
         skipped.push(wt.id);
         continue;
       }

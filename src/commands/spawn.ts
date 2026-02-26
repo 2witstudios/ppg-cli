@@ -9,7 +9,7 @@ import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { resultFile, manifestPath } from '../lib/paths.js';
-import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PoguError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
 import { parseVars } from '../lib/vars.js';
@@ -87,7 +87,7 @@ async function resolvePrompt(options: SpawnOptions, projectRoot: string): Promis
     return loadTemplate(projectRoot, options.template);
   }
 
-  throw new PgError('One of --prompt, --prompt-file, or --template is required', 'INVALID_ARGS');
+  throw new PoguError('One of --prompt, --prompt-file, or --template is required', 'INVALID_ARGS');
 }
 
 async function spawnNewWorktree(
@@ -102,7 +102,7 @@ async function spawnNewWorktree(
   const baseBranch = options.base ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
   const name = options.name ? normalizeName(options.name, wtId) : wtId;
-  const branchName = `ppg/${name}`;
+  const branchName = `pogu/${name}`;
 
   // Create git worktree
   info(`Creating worktree ${wtId} on branch ${branchName}`);
@@ -223,7 +223,7 @@ async function spawnNewWorktree(
     for (const a of agents) {
       info(`  Agent ${a.id} → ${a.tmuxTarget}`);
     }
-    info(`Attach: ppg attach ${wtId}`);
+    info(`Attach: pogu attach ${wtId}`);
   }
 }
 
