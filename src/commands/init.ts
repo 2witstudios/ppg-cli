@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { pgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir, configPath } from '../lib/paths.js';
+import { ppgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir, configPath } from '../lib/paths.js';
 import { NotGitRepoError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
 import { writeDefaultConfig } from '../core/config.js';
@@ -72,7 +72,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
 
   // 3. Create directories
   const dirs = [
-    pgDir(projectRoot),
+    ppgDir(projectRoot),
     resultsDir(projectRoot),
     logsDir(projectRoot),
     templatesDir(projectRoot),
@@ -85,7 +85,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
   }
 
-  info('Created .pg/ directory structure');
+  info('Created .ppg/ directory structure');
 
   // 4. Write default config (skip if exists)
   const cfgPath = configPath(projectRoot);
@@ -140,7 +140,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   }
 
   // 10. Write conductor context
-  const conductorPath = path.join(pgDir(projectRoot), 'conductor-context.md');
+  const conductorPath = path.join(ppgDir(projectRoot), 'conductor-context.md');
   await fs.writeFile(conductorPath, CONDUCTOR_CONTEXT, 'utf-8');
   info('Wrote conductor-context.md');
 
@@ -155,7 +155,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
       success: true,
       projectRoot,
       sessionName,
-      pgDir: pgDir(projectRoot),
+      ppgDir: ppgDir(projectRoot),
       pluginRegistered,
     }));
   } else {
@@ -215,13 +215,13 @@ async function registerClaudePlugin(): Promise<boolean> {
 async function updateGitignore(projectRoot: string): Promise<void> {
   const gitignorePath = path.join(projectRoot, '.gitignore');
   const entriesToAdd = [
-    '.pg/results/',
-    '.pg/logs/',
-    '.pg/manifest.json',
-    '.pg/prompts/',
-    '.pg/agent-prompts/',
-    '.pg/swarms/',
-    '.pg/conductor-context.md',
+    '.ppg/results/',
+    '.ppg/logs/',
+    '.ppg/manifest.json',
+    '.ppg/prompts/',
+    '.ppg/agent-prompts/',
+    '.ppg/swarms/',
+    '.ppg/conductor-context.md',
   ];
 
   let content = '';

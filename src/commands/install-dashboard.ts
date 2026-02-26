@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { execa } from 'execa';
 import { output, info, success } from '../lib/output.js';
-import { PgError } from '../lib/errors.js';
+import { PpgError } from '../lib/errors.js';
 
 const require = createRequire(import.meta.url);
 
@@ -36,12 +36,12 @@ export async function installDashboardCommand(options: {
     const res = await fetch(url);
     if (!res.ok) {
       if (res.status === 404) {
-        throw new PgError(
+        throw new PpgError(
           `Dashboard release not found for ${tag}. The dashboard may not be available for this version yet.\nCheck: https://github.com/${REPO}/releases/tag/${tag}`,
           'DASHBOARD_NOT_FOUND',
         );
       }
-      throw new PgError(
+      throw new PpgError(
         `Failed to download dashboard: HTTP ${res.status} ${res.statusText}`,
         'DOWNLOAD_FAILED',
       );
@@ -53,7 +53,7 @@ export async function installDashboardCommand(options: {
     const dmgPath = path.join(tmp, ASSET_NAME);
 
     const body = res.body;
-    if (!body) throw new PgError('Empty response body', 'DOWNLOAD_FAILED');
+    if (!body) throw new PpgError('Empty response body', 'DOWNLOAD_FAILED');
     await pipeline(
       Readable.fromWeb(body as import('stream/web').ReadableStream),
       createWriteStream(dmgPath),
@@ -67,7 +67,7 @@ export async function installDashboardCommand(options: {
     const mountPoint = mountLine.split('\t').pop()?.trim();
 
     if (!mountPoint) {
-      throw new PgError('Failed to mount DMG — could not determine mount point', 'INSTALL_FAILED');
+      throw new PpgError('Failed to mount DMG — could not determine mount point', 'INSTALL_FAILED');
     }
 
     try {
@@ -101,8 +101,8 @@ export async function installDashboardCommand(options: {
     // Clean up temp
     await rm(tmp, { recursive: true, force: true });
   } catch (err) {
-    if (err instanceof PgError) throw err;
+    if (err instanceof PpgError) throw err;
     const message = err instanceof Error ? err.message : String(err);
-    throw new PgError(`Dashboard installation failed: ${message}`, 'INSTALL_FAILED');
+    throw new PpgError(`Dashboard installation failed: ${message}`, 'INSTALL_FAILED');
   }
 }

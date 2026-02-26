@@ -9,7 +9,7 @@ import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { resultFile, manifestPath } from '../lib/paths.js';
-import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PpgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
 import { parseVars } from '../lib/vars.js';
@@ -87,7 +87,7 @@ async function resolvePrompt(options: SpawnOptions, projectRoot: string): Promis
     return loadTemplate(projectRoot, options.template);
   }
 
-  throw new PgError('One of --prompt, --prompt-file, or --template is required', 'INVALID_ARGS');
+  throw new PpgError('One of --prompt, --prompt-file, or --template is required', 'INVALID_ARGS');
 }
 
 async function spawnNewWorktree(

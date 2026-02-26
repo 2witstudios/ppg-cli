@@ -188,8 +188,8 @@ nonisolated class ProjectState: @unchecked Sendable {
         projectRoot = root
         projectName = URL(fileURLWithPath: root).lastPathComponent
 
-        let pgDir = (root as NSString).appendingPathComponent(".pg")
-        manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
+        let ppgDir = (root as NSString).appendingPathComponent(".ppg")
+        manifestPath = (ppgDir as NSString).appendingPathComponent("manifest.json")
 
         // Try to read sessionName from manifest
         if let data = FileManager.default.contents(atPath: manifestPath),
@@ -237,7 +237,7 @@ nonisolated class RecentProjects: @unchecked Sendable {
 
     func isValidProject(_ path: String) -> Bool {
         let manifestPath = (path as NSString)
-            .appendingPathComponent(".pg")
+            .appendingPathComponent(".ppg")
             .appending("/manifest.json")
         return FileManager.default.fileExists(atPath: manifestPath)
     }
@@ -261,8 +261,8 @@ class ProjectContext {
         self.projectRoot = projectRoot
         self.projectName = URL(fileURLWithPath: projectRoot).lastPathComponent
 
-        let pgDir = (projectRoot as NSString).appendingPathComponent(".pg")
-        self.manifestPath = (pgDir as NSString).appendingPathComponent("manifest.json")
+        let ppgDir = (projectRoot as NSString).appendingPathComponent(".ppg")
+        self.manifestPath = (ppgDir as NSString).appendingPathComponent("manifest.json")
 
         // Read sessionName from manifest
         if let data = FileManager.default.contents(atPath: self.manifestPath),

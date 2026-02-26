@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import path from 'node:path';
 import {
-  pgDir,
+  ppgDir,
   manifestPath,
   configPath,
   resultsDir,
@@ -20,57 +20,57 @@ import {
 const ROOT = '/tmp/project';
 
 describe('paths', () => {
-  test('pgDir', () => {
-    expect(pgDir(ROOT)).toBe(path.join(ROOT, '.pg'));
+  test('ppgDir', () => {
+    expect(ppgDir(ROOT)).toBe(path.join(ROOT, '.ppg'));
   });
 
   test('manifestPath', () => {
-    expect(manifestPath(ROOT)).toBe(path.join(ROOT, '.pg', 'manifest.json'));
+    expect(manifestPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'manifest.json'));
   });
 
   test('configPath', () => {
-    expect(configPath(ROOT)).toBe(path.join(ROOT, '.pg', 'config.yaml'));
+    expect(configPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'config.yaml'));
   });
 
   test('resultsDir', () => {
-    expect(resultsDir(ROOT)).toBe(path.join(ROOT, '.pg', 'results'));
+    expect(resultsDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'results'));
   });
 
   test('resultFile', () => {
     expect(resultFile(ROOT, 'ag-abc12345')).toBe(
-      path.join(ROOT, '.pg', 'results', 'ag-abc12345.md'),
+      path.join(ROOT, '.ppg', 'results', 'ag-abc12345.md'),
     );
   });
 
   test('templatesDir', () => {
-    expect(templatesDir(ROOT)).toBe(path.join(ROOT, '.pg', 'templates'));
+    expect(templatesDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'templates'));
   });
 
   test('logsDir', () => {
-    expect(logsDir(ROOT)).toBe(path.join(ROOT, '.pg', 'logs'));
+    expect(logsDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'logs'));
   });
 
   test('promptsDir', () => {
-    expect(promptsDir(ROOT)).toBe(path.join(ROOT, '.pg', 'prompts'));
+    expect(promptsDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'prompts'));
   });
 
   test('swarmsDir', () => {
-    expect(swarmsDir(ROOT)).toBe(path.join(ROOT, '.pg', 'swarms'));
+    expect(swarmsDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'swarms'));
   });
 
   test('promptFile', () => {
     expect(promptFile(ROOT, 'ag-abc12345')).toBe(
-      path.join(ROOT, '.pg', 'prompts', 'ag-abc12345.md'),
+      path.join(ROOT, '.ppg', 'prompts', 'ag-abc12345.md'),
     );
   });
 
   test('agentPromptsDir', () => {
-    expect(agentPromptsDir(ROOT)).toBe(path.join(ROOT, '.pg', 'agent-prompts'));
+    expect(agentPromptsDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'agent-prompts'));
   });
 
   test('agentPromptFile', () => {
     expect(agentPromptFile(ROOT, 'ag-abc12345')).toBe(
-      path.join(ROOT, '.pg', 'agent-prompts', 'ag-abc12345.md'),
+      path.join(ROOT, '.ppg', 'agent-prompts', 'ag-abc12345.md'),
     );
   });
 

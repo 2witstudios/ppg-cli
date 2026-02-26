@@ -5,7 +5,7 @@ import { getRepoRoot, getCurrentBranch } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId } from '../core/self.js';
 import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { PgError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
+import { PpgError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import { execaEnv } from '../lib/env.js';
 
@@ -35,7 +35,7 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
   if (incomplete.length > 0 && !options.force) {
     const ids = incomplete.map((a) => a.id).join(', ');
-    throw new PgError(
+    throw new PpgError(
       `${incomplete.length} agent(s) still running: ${ids}. Use --force to merge anyway.`,
       'AGENTS_RUNNING',
     );

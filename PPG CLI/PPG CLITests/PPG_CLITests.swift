@@ -16,7 +16,7 @@ final class ManifestModelTests: XCTestCase {
             "ag-def456": {
               "id": "ag-def456", "name": "claude", "agentType": "claude",
               "status": "running", "tmuxTarget": "ppg-test:1",
-              "prompt": "Do something", "resultFile": "/tmp/test/.pg/results/ag-def456.md",
+              "prompt": "Do something", "resultFile": "/tmp/test/.ppg/results/ag-def456.md",
               "startedAt": "2026-02-23T12:00:00Z"
             }
           },
@@ -103,8 +103,8 @@ final class WorktreeModelTests: XCTestCase {
 
 final class LaunchConfigTests: XCTestCase {
     func testParseWithValidArgs() {
-        let config = LaunchConfig.parse(["app", "--manifest-path", "/foo/.pg/manifest.json", "--session-name", "ppg-foo"])
-        XCTAssertEqual(config.manifestPath, "/foo/.pg/manifest.json")
+        let config = LaunchConfig.parse(["app", "--manifest-path", "/foo/.ppg/manifest.json", "--session-name", "ppg-foo"])
+        XCTAssertEqual(config.manifestPath, "/foo/.ppg/manifest.json")
         XCTAssertEqual(config.sessionName, "ppg-foo")
         XCTAssertEqual(config.projectName, "foo")
         XCTAssertEqual(config.projectRoot, "/foo")
@@ -119,20 +119,20 @@ final class LaunchConfigTests: XCTestCase {
     }
 
     func testParseWithArgsInDifferentOrder() {
-        let config = LaunchConfig.parse(["app", "--session-name", "ppg-bar", "--manifest-path", "/bar/.pg/manifest.json"])
-        XCTAssertEqual(config.manifestPath, "/bar/.pg/manifest.json")
+        let config = LaunchConfig.parse(["app", "--session-name", "ppg-bar", "--manifest-path", "/bar/.ppg/manifest.json"])
+        XCTAssertEqual(config.manifestPath, "/bar/.ppg/manifest.json")
         XCTAssertEqual(config.sessionName, "ppg-bar")
         XCTAssertEqual(config.projectName, "bar")
     }
 
     func testProjectNameDerivation() {
-        let config = LaunchConfig.parse(["app", "--manifest-path", "/Users/jono/Production/my-app/.pg/manifest.json"])
+        let config = LaunchConfig.parse(["app", "--manifest-path", "/Users/jono/Production/my-app/.ppg/manifest.json"])
         XCTAssertEqual(config.projectName, "my-app")
         XCTAssertEqual(config.projectRoot, "/Users/jono/Production/my-app")
     }
 
     func testExplicitProjectRoot() {
-        let config = LaunchConfig.parse(["app", "--project-root", "/custom/root", "--manifest-path", "/foo/.pg/manifest.json"])
+        let config = LaunchConfig.parse(["app", "--project-root", "/custom/root", "--manifest-path", "/foo/.ppg/manifest.json"])
         XCTAssertEqual(config.projectRoot, "/custom/root")
         XCTAssertEqual(config.projectName, "root")
     }

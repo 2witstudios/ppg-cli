@@ -95,7 +95,7 @@ class DashboardSession {
             }
             if variant.needsConductorContext, parentWorktreeId == nil {
                 let contextPath = ((projectRoot as NSString)
-                    .appendingPathComponent(".pg") as NSString)
+                    .appendingPathComponent(".ppg") as NSString)
                     .appendingPathComponent("conductor-context.md")
                 if FileManager.default.fileExists(atPath: contextPath) {
                     agentCmd += " --append-system-prompt \"$(cat \(shellEscape(contextPath)))\""
@@ -224,8 +224,8 @@ class DashboardSession {
 
     private var persistencePath: String? {
         guard !projectRoot.isEmpty, projectRoot != "/" else { return nil }
-        let pgDir = (projectRoot as NSString).appendingPathComponent(".pg")
-        return (pgDir as NSString).appendingPathComponent("dashboard-sessions.json")
+        let ppgDir = (projectRoot as NSString).appendingPathComponent(".ppg")
+        return (ppgDir as NSString).appendingPathComponent("dashboard-sessions.json")
     }
 
     private func saveToDisk() {

@@ -5,7 +5,7 @@ const baseContext: TemplateContext = {
   WORKTREE_PATH: '/tmp/wt',
   BRANCH: 'ppg/feat',
   AGENT_ID: 'ag-test1234',
-  RESULT_FILE: '/tmp/.pg/results/ag-test1234.md',
+  RESULT_FILE: '/tmp/.ppg/results/ag-test1234.md',
   PROJECT_ROOT: '/tmp/project',
 };
 

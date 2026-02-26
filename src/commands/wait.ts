@@ -1,7 +1,7 @@
 import { requireManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { PgError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PpgError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, info } from '../lib/output.js';
 import type { AgentEntry, AgentStatus, Manifest } from '../types/manifest.js';
 
@@ -21,7 +21,7 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
   const startTime = Date.now();
 
   if (!worktreeRef && !options.all) {
-    throw new PgError('Specify a worktree ID or use --all', 'INVALID_ARGS');
+    throw new PpgError('Specify a worktree ID or use --all', 'INVALID_ARGS');
   }
 
   if (!options.json) {
@@ -39,7 +39,7 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
           agents: agents.map(formatAgent),
         }, true);
       }
-      throw new PgError('Timed out waiting for agents', 'WAIT_TIMEOUT', 2);
+      throw new PpgError('Timed out waiting for agents', 'WAIT_TIMEOUT', 2);
     }
 
     const manifest = await refreshAndGet(projectRoot);
@@ -61,7 +61,7 @@ export async function waitCommand(worktreeRef: string | undefined, options: Wait
       }
 
       if (anyFailed) {
-        throw new PgError('Some agents failed', 'AGENTS_FAILED', 1);
+        throw new PpgError('Some agents failed', 'AGENTS_FAILED', 1);
       }
       return;
     }
