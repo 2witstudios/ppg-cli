@@ -9,7 +9,7 @@ let SWARMS_DIR: string;
 
 beforeEach(async () => {
   TMP_ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-swarm-test-'));
-  SWARMS_DIR = path.join(TMP_ROOT, '.pg', 'swarms');
+  SWARMS_DIR = path.join(TMP_ROOT, '.ppg', 'swarms');
   await fs.mkdir(SWARMS_DIR, { recursive: true });
 });
 

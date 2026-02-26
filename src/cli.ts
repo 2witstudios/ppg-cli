@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
-import { PgError } from './lib/errors.js';
+import { PpgError } from './lib/errors.js';
 import { outputError } from './lib/output.js';
 
 const require = createRequire(import.meta.url);
@@ -30,7 +30,7 @@ program
   .option('-a, --agent <type>', 'Agent type to use (default: claude)')
   .option('-p, --prompt <text>', 'Prompt text for the agent')
   .option('-f, --prompt-file <path>', 'File containing the prompt')
-  .option('-t, --template <name>', 'Template name from .pg/templates/')
+  .option('-t, --template <name>', 'Template name from .ppg/templates/')
   .option('--var <key=value...>', 'Template variables', collectVars, [])
   .option('-b, --base <branch>', 'Base branch for the worktree')
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
@@ -120,7 +120,7 @@ program
 program
   .command('swarm')
   .description('Run a swarm template — spawn multiple agents from a predefined workflow')
-  .argument('<template>', 'Swarm template name from .pg/swarms/')
+  .argument('<template>', 'Swarm template name from .ppg/swarms/')
   .option('-w, --worktree <ref>', 'Target an existing worktree by ID, name, or branch')
   .option('--var <key=value...>', 'Template variables', collectVars, [])
   .option('-n, --name <name>', 'Override worktree name')
@@ -284,7 +284,7 @@ async function main() {
   try {
     await program.parseAsync(process.argv);
   } catch (err) {
-    if (err instanceof PgError) {
+    if (err instanceof PpgError) {
       outputError(err, program.opts().json ?? false);
       process.exit(err.exitCode);
     }

@@ -11,7 +11,7 @@ import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { resultFile, promptsDir, manifestPath } from '../lib/paths.js';
-import { PgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
+import { PpgError, NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
 import { normalizeName } from '../lib/name.js';
 import { parseVars } from '../lib/vars.js';
@@ -58,7 +58,7 @@ async function loadPromptFile(projectRoot: string, promptName: string): Promise<
   try {
     return await fs.readFile(filePath, 'utf-8');
   } catch {
-    throw new PgError(`Prompt file not found: ${promptName}.md in .pg/prompts/`, 'INVALID_ARGS');
+    throw new PpgError(`Prompt file not found: ${promptName}.md in .ppg/prompts/`, 'INVALID_ARGS');
   }
 }
 

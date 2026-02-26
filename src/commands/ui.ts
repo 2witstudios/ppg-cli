@@ -4,7 +4,7 @@ import { execa } from 'execa';
 import { getRepoRoot } from '../core/worktree.js';
 import { readManifest } from '../core/manifest.js';
 import { manifestPath } from '../lib/paths.js';
-import { NotInitializedError, PgError } from '../lib/errors.js';
+import { NotInitializedError, PpgError } from '../lib/errors.js';
 import { info } from '../lib/output.js';
 
 export async function findDashboardBinary(projectRoot: string): Promise<string | null> {
@@ -68,7 +68,7 @@ export async function uiCommand(): Promise<void> {
 
   const binaryPath = await findDashboardBinary(projectRoot);
   if (!binaryPath) {
-    throw new PgError(
+    throw new PpgError(
       `Dashboard app not found. Install it with:\n  ppg install-dashboard\n\nOr build from source:\n  cd "PPG CLI" && xcodebuild -scheme "PPG CLI" -configuration Release -derivedDataPath build build`,
       'DASHBOARD_NOT_FOUND',
     );
