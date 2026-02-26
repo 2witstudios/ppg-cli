@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-25
+
+### Added
+
+- **Global prompts, templates, and swarms** — `~/.ppg/` directory for cross-project reuse; project-local always takes precedence
+- **Cron scheduling** — `ppg cron start/stop/list/status` for recurring agent tasks via `.ppg/schedules.yaml`
+- **`ppg prompt` command** — sugar for `ppg spawn --prompt-file .ppg/prompts/<name>.md`
+- **`ppg list prompts`** — list available prompt files with variables and source (local/global)
+- **Schedules dashboard tab** — manage cron schedules with YAML editor, daemon start/stop, and new schedule dialog
+- **Global entries in dashboard** — Prompts and Swarms views show `~/.ppg/` entries marked as "Global"
+
+### Changed
+
+- **Config directory renamed** — `.pg/` → `.ppg/` to match the CLI name
+- **Internal symbols renamed** — `PgError` → `PpgError`, `pgDir()` → `ppgDir()`
+
 ## [0.2.0] - 2026-02-25
 
 ### Added
@@ -65,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status detection via signal-stack: result file, pane existence, pane liveness, current command
 - Native macOS dashboard app (`ppg ui`)
 
+[0.3.0]: https://github.com/2witstudios/ppg-cli/releases/tag/v0.3.0
 [0.2.0]: https://github.com/2witstudios/ppg-cli/releases/tag/v0.2.0
 [0.1.1]: https://github.com/2witstudios/ppg-cli/releases/tag/v0.1.1
 [0.1.0]: https://github.com/2witstudios/ppg-cli/releases/tag/v0.1.0
