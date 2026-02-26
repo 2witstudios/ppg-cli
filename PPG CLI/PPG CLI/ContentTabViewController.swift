@@ -40,9 +40,11 @@ class ContentViewController: NSViewController {
     private var homeDashboardView: HomeDashboardView?
     private var promptsView: PromptsView?
     private var swarmsView: SwarmsView?
+    private var schedulesView: SchedulesView?
     private var dashboardConstraints: [NSLayoutConstraint] = []
     private var promptsConstraints: [NSLayoutConstraint] = []
     private var swarmsConstraints: [NSLayoutConstraint] = []
+    private var schedulesConstraints: [NSLayoutConstraint] = []
 
     // MARK: - Terminal Tracking (LRU eviction + status dedup)
     private struct TerminalTrackingState {
@@ -79,6 +81,7 @@ class ContentViewController: NSViewController {
     var isShowingHomeDashboard: Bool { homeDashboardView?.superview != nil }
     var isShowingPromptsView: Bool { promptsView?.superview != nil }
     var isShowingSwarmsView: Bool { swarmsView?.superview != nil }
+    var isShowingSchedulesView: Bool { schedulesView?.superview != nil }
 
     override func loadView() {
         let root = ThemeAwareView()
@@ -170,6 +173,7 @@ class ContentViewController: NSViewController {
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
+        schedulesView?.removeFromSuperview()
 
         // Suspend any active grid — sidebar clicks always navigate, never fill panes
         suspendGrid()
@@ -532,6 +536,7 @@ class ContentViewController: NSViewController {
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
+        schedulesView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -575,6 +580,7 @@ class ContentViewController: NSViewController {
         homeDashboardView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
+        schedulesView?.removeFromSuperview()
         suspendGrid()
         // Hide terminal views and clear current entry (only containerView-owned, not grid-owned)
         for (_, termView) in terminalViews where termView.superview === containerView {
@@ -643,6 +649,7 @@ class ContentViewController: NSViewController {
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         swarmsView?.removeFromSuperview()
+        schedulesView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -678,6 +685,7 @@ class ContentViewController: NSViewController {
         homeDashboardView?.removeFromSuperview()
         worktreeDetailView?.removeFromSuperview()
         promptsView?.removeFromSuperview()
+        schedulesView?.removeFromSuperview()
         placeholderLabel.isHidden = true
         containerView.isHidden = true
 
@@ -702,6 +710,42 @@ class ContentViewController: NSViewController {
         }
 
         sv.configure(projects: projects)
+    }
+
+    func showSchedulesView(projects: [ProjectContext]) {
+        suspendGrid()
+        for (_, termView) in terminalViews where termView.superview === containerView {
+            termView.isHidden = true
+        }
+        currentEntry = nil
+        homeDashboardView?.removeFromSuperview()
+        worktreeDetailView?.removeFromSuperview()
+        promptsView?.removeFromSuperview()
+        swarmsView?.removeFromSuperview()
+        placeholderLabel.isHidden = true
+        containerView.isHidden = true
+
+        if schedulesView == nil {
+            schedulesView = SchedulesView()
+        }
+        guard let schv = schedulesView else { return }
+
+        if schv.superview != view {
+            schv.removeFromSuperview()
+            schv.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(schv)
+            if schedulesConstraints.isEmpty {
+                schedulesConstraints = [
+                    schv.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                    schv.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                    schv.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+                    schv.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                ]
+            }
+            NSLayoutConstraint.activate(schedulesConstraints)
+        }
+
+        schv.configure(projects: projects)
     }
 
     // MARK: - Private
