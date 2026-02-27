@@ -94,7 +94,7 @@ function createManifest(tmuxWindow = ''): Manifest {
         baseBranch: 'main',
         status: 'active' as const,
         tmuxWindow,
-        agents: {} as Record<string, any>,
+        agents: {},
         createdAt: '2026-02-27T00:00:00.000Z',
       },
     },
