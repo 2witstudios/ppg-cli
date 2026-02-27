@@ -86,6 +86,36 @@ export class GhNotFoundError extends PpgError {
   }
 }
 
+export class PromptNotFoundError extends PpgError {
+  constructor(agentId: string) {
+    super(
+      `Could not read original prompt for agent ${agentId}. Use --prompt to provide one.`,
+      'PROMPT_NOT_FOUND',
+    );
+    this.name = 'PromptNotFoundError';
+  }
+}
+
+export class DuplicateTokenError extends PpgError {
+  constructor(label: string) {
+    super(
+      `Token with label "${label}" already exists`,
+      'DUPLICATE_TOKEN',
+    );
+    this.name = 'DuplicateTokenError';
+  }
+}
+
+export class AuthCorruptError extends PpgError {
+  constructor(filePath: string) {
+    super(
+      `Auth data is corrupt or unreadable: ${filePath}`,
+      'AUTH_CORRUPT',
+    );
+    this.name = 'AuthCorruptError';
+  }
+}
+
 export class UnmergedWorkError extends PpgError {
   constructor(names: string[]) {
     const list = names.map((n) => `  ${n}`).join('\n');

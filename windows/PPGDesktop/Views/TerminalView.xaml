@@ -1,0 +1,64 @@
+<UserControl x:Class="PPGDesktop.Views.TerminalView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             Background="{StaticResource ContentBackgroundBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Terminal Header -->
+        <Border Grid.Row="0" Padding="12,8"
+                Background="{StaticResource CardHeaderBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Ellipse Width="8" Height="8"
+                             Fill="{Binding AgentStatus, Converter={StaticResource StatusToColor}}"
+                             Margin="0,0,8,0" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding AgentName}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource ForegroundBrush}" />
+                    <TextBlock Text="{Binding AgentId, StringFormat=' ({0})'}" FontSize="12"
+                               Foreground="{StaticResource MutedForegroundBrush}" Margin="4,0,0,0" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Ellipse Width="6" Height="6" Margin="0,0,4,0" VerticalAlignment="Center">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="#9ca3af" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                        <Setter Property="Fill" Value="#34d399" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding IsConnected, StringFormat='Terminal {0}'}"
+                               FontSize="11" Foreground="{StaticResource MutedForegroundBrush}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- WebView2 Terminal -->
+        <wv2:WebView2 x:Name="TerminalWebView" Grid.Row="1"
+                      DefaultBackgroundColor="#1e1e1e" />
+
+        <!-- Placeholder when no agent -->
+        <Border Grid.Row="1" Background="{StaticResource ContentBackgroundBrush}"
+                Visibility="{Binding AgentId, Converter={StaticResource BoolToVisibility},
+                             ConverterParameter=invert}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="48"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           HorizontalAlignment="Center" Margin="0,0,0,12" />
+                <TextBlock Text="Select an agent to view its terminal"
+                           FontSize="14" Foreground="{StaticResource MutedForegroundBrush}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
