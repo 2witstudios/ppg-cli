@@ -2,11 +2,11 @@ import fs from 'node:fs/promises';
 import { updateManifest } from './manifest.js';
 import { removeWorktree } from './worktree.js';
 import { teardownWorktreeEnv } from './env.js';
-import * as tmux from './tmux.js';
+import { getBackend } from './backend.js';
 import { agentPromptFile } from '../lib/paths.js';
 import { warn } from '../lib/output.js';
 import { wouldAffectSelf } from './self.js';
-import type { PaneInfo } from './tmux.js';
+import type { PaneInfo } from './process-manager.js';
 import type { WorktreeEntry } from '../types/manifest.js';
 
 export interface CleanupOptions {
@@ -92,7 +92,7 @@ export async function cleanupWorktree(
       }
 
       try {
-        await tmux.killWindow(target);
+        await getBackend().killWindow(target);
         result.tmuxKilled++;
       } catch (err) {
         // killWindow now only throws on unexpected errors (not "not found")

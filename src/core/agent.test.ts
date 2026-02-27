@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { makeAgent, makePaneInfo } from '../test-fixtures.js';
-import type { PaneInfo } from './tmux.js';
+import type { PaneInfo } from './process-manager.js';
 
 // Mock node:fs/promises
 vi.mock('node:fs/promises', () => ({
@@ -11,15 +11,25 @@ vi.mock('node:fs/promises', () => ({
   },
 }));
 
-// Mock tmux module
-vi.mock('./tmux.js', () => ({
-  getPaneInfo: vi.fn(),
-  listSessionPanes: vi.fn(),
-  sendKeys: vi.fn(),
-  sendCtrlC: vi.fn(),
-  killPane: vi.fn(),
-  ensureSession: vi.fn(),
-  createWindow: vi.fn(),
+// Mock backend module
+const mockGetPaneInfo = vi.fn();
+const mockListSessionPanes = vi.fn();
+const mockSendKeys = vi.fn();
+const mockSendCtrlC = vi.fn();
+const mockKillPane = vi.fn();
+const mockEnsureSession = vi.fn();
+const mockCreateWindow = vi.fn();
+
+vi.mock('./backend.js', () => ({
+  getBackend: () => ({
+    getPaneInfo: mockGetPaneInfo,
+    listSessionPanes: mockListSessionPanes,
+    sendKeys: mockSendKeys,
+    sendCtrlC: mockSendCtrlC,
+    killPane: mockKillPane,
+    ensureSession: mockEnsureSession,
+    createWindow: mockCreateWindow,
+  }),
 }));
 
 // Mock manifest module
@@ -27,10 +37,9 @@ vi.mock('./manifest.js', () => ({
   updateManifest: vi.fn(),
 }));
 
-import { getPaneInfo } from './tmux.js';
 import { checkAgentStatus } from './agent.js';
 
-const mockedGetPaneInfo = vi.mocked(getPaneInfo);
+const mockedGetPaneInfo = mockGetPaneInfo;
 
 const PROJECT_ROOT = '/tmp/project';
 

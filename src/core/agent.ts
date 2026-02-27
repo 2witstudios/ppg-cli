@@ -1,11 +1,13 @@
 import fs from 'node:fs/promises';
 import { agentPromptFile, agentPromptsDir } from '../lib/paths.js';
-import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
+import { getBackend } from './backend.js';
+import type { PaneInfo } from './process-manager.js';
 import { updateManifest } from './manifest.js';
 import { PpgError } from '../lib/errors.js';
-import type { AgentEntry, AgentStatus } from '../types/manifest.js';
+import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
+import { renderTemplate, type TemplateContext } from './template.js';
+import type { AgentEntry, AgentStatus, WorktreeEntry } from '../types/manifest.js';
 import type { AgentConfig } from '../types/config.js';
-import * as tmux from './tmux.js';
 
 const SHELL_COMMANDS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'tcsh', 'csh']);
 
@@ -36,7 +38,7 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<AgentEntry
 
   // Build and send command
   const command = buildAgentCommand(agentConfig, pFile, options.sessionId);
-  await tmux.sendKeys(tmuxTarget, command);
+  await getBackend().sendKeys(tmuxTarget, command);
 
   return {
     id: agentId,
@@ -85,7 +87,7 @@ export async function checkAgentStatus(
   // 1. Check if tmux pane exists (use batch map if available)
   const paneInfo = paneMap
     ? (paneMap.get(agent.tmuxTarget) ?? null)
-    : await getPaneInfo(agent.tmuxTarget);
+    : await getBackend().getPaneInfo(agent.tmuxTarget);
   if (!paneInfo) {
     return { status: 'gone' };
   }
@@ -109,7 +111,7 @@ export async function refreshAllAgentStatuses(
   projectRoot: string,
 ): Promise<import('../types/manifest.js').Manifest> {
   // Batch-fetch all pane info in a single tmux call
-  const paneMap = await listSessionPanes(manifest.sessionName);
+  const paneMap = await getBackend().listSessionPanes(manifest.sessionName);
 
   // Collect all agents that need checking
   const checks: Array<{ agent: AgentEntry; promise: Promise<{ status: AgentStatus; exitCode?: number }> }> = [];
@@ -173,9 +175,9 @@ export async function resumeAgent(options: ResumeAgentOptions): Promise<string> 
     );
   }
 
-  await tmux.ensureSession(sessionName);
-  const newTarget = await tmux.createWindow(sessionName, windowName, cwd);
-  await tmux.sendKeys(newTarget, `unset CLAUDECODE; claude --resume ${agent.sessionId}`);
+  await getBackend().ensureSession(sessionName);
+  const newTarget = await getBackend().createWindow(sessionName, windowName, cwd);
+  await getBackend().sendKeys(newTarget, `unset CLAUDECODE; claude --resume ${agent.sessionId}`);
 
   await updateManifest(projectRoot, (m) => {
     const mAgent = m.worktrees[worktreeId]?.agents[agent.id];
@@ -191,12 +193,12 @@ export async function resumeAgent(options: ResumeAgentOptions): Promise<string> 
 
 export async function killAgent(agent: AgentEntry): Promise<void> {
   // Check if pane exists before attempting to kill
-  const initialInfo = await getPaneInfo(agent.tmuxTarget);
+  const initialInfo = await getBackend().getPaneInfo(agent.tmuxTarget);
   if (!initialInfo || initialInfo.isDead) return;
 
   // Send Ctrl-C first (pane may die between check and send)
   try {
-    await tmux.sendCtrlC(agent.tmuxTarget);
+    await getBackend().sendCtrlC(agent.tmuxTarget);
   } catch {
     // Pane died between check and send — already gone
     return;
@@ -206,10 +208,10 @@ export async function killAgent(agent: AgentEntry): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Check if still alive
-  const paneInfo = await getPaneInfo(agent.tmuxTarget);
+  const paneInfo = await getBackend().getPaneInfo(agent.tmuxTarget);
   if (paneInfo && !paneInfo.isDead) {
     // Kill the pane
-    await tmux.killPane(agent.tmuxTarget);
+    await getBackend().killPane(agent.tmuxTarget);
   }
 }
 
@@ -222,24 +224,106 @@ export async function killAgents(agents: AgentEntry[]): Promise<void> {
   // Filter to only agents with live panes
   const alive: AgentEntry[] = [];
   await Promise.all(agents.map(async (a) => {
-    const info = await getPaneInfo(a.tmuxTarget);
+    const info = await getBackend().getPaneInfo(a.tmuxTarget);
     if (info && !info.isDead) alive.push(a);
   }));
   if (alive.length === 0) return;
 
   // Send Ctrl-C to all live agents in parallel (catch pane-died-between-check-and-send)
-  await Promise.all(alive.map((a) => tmux.sendCtrlC(a.tmuxTarget).catch(() => {})));
+  await Promise.all(alive.map((a) => getBackend().sendCtrlC(a.tmuxTarget).catch(() => {})));
 
   // Wait for graceful shutdown (Claude Code needs more time)
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Check and force-kill survivors in parallel
   await Promise.all(alive.map(async (a) => {
-    const paneInfo = await getPaneInfo(a.tmuxTarget);
+    const paneInfo = await getBackend().getPaneInfo(a.tmuxTarget);
     if (paneInfo && !paneInfo.isDead) {
-      await tmux.killPane(a.tmuxTarget);
+      await getBackend().killPane(a.tmuxTarget);
     }
   }));
+}
+
+export interface RestartAgentOptions {
+  projectRoot: string;
+  agentId: string;
+  worktree: WorktreeEntry;
+  oldAgent: AgentEntry;
+  sessionName: string;
+  agentConfig: AgentConfig;
+  promptText: string;
+}
+
+export interface RestartAgentResult {
+  oldAgentId: string;
+  newAgentId: string;
+  tmuxTarget: string;
+  sessionId: string;
+  worktreeId: string;
+  worktreeName: string;
+  branch: string;
+  path: string;
+}
+
+/**
+ * Restart an agent: kill old, spawn new in a fresh tmux window, update manifest.
+ */
+export async function restartAgent(opts: RestartAgentOptions): Promise<RestartAgentResult> {
+  const { projectRoot, worktree: wt, oldAgent, sessionName, agentConfig, promptText } = opts;
+
+  // Kill old agent if still running
+  if (oldAgent.status === 'running') {
+    await killAgent(oldAgent);
+  }
+
+  await getBackend().ensureSession(sessionName);
+  const newAgentId = genAgentId();
+  const windowTarget = await getBackend().createWindow(sessionName, `${wt.name}-restart`, wt.path);
+
+  const ctx: TemplateContext = {
+    WORKTREE_PATH: wt.path,
+    BRANCH: wt.branch,
+    AGENT_ID: newAgentId,
+    PROJECT_ROOT: projectRoot,
+    TASK_NAME: wt.name,
+    PROMPT: promptText,
+  };
+  const renderedPrompt = renderTemplate(promptText, ctx);
+
+  const newSessionId = genSessionId();
+  const agentEntry = await spawnAgent({
+    agentId: newAgentId,
+    agentConfig,
+    prompt: renderedPrompt,
+    worktreePath: wt.path,
+    tmuxTarget: windowTarget,
+    projectRoot,
+    branch: wt.branch,
+    sessionId: newSessionId,
+  });
+
+  await updateManifest(projectRoot, (m) => {
+    const mWt = m.worktrees[wt.id];
+    if (mWt) {
+      const mOldAgent = mWt.agents[oldAgent.id];
+      if (mOldAgent && mOldAgent.status === 'running') {
+        mOldAgent.status = 'gone';
+      }
+      mWt.agents[newAgentId] = agentEntry;
+    }
+    return m;
+  });
+
+  return {
+    oldAgentId: oldAgent.id,
+    newAgentId,
+    tmuxTarget: windowTarget,
+    sessionId: newSessionId,
+    worktreeId: wt.id,
+    worktreeName: wt.name,
+    branch: wt.branch,
+    path: wt.path,
+  };
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

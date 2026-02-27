@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import type { WorktreeEntry } from '../types/manifest.js';
-import type { PaneInfo } from './tmux.js';
+import type { PaneInfo } from './process-manager.js';
 
 // Mock dependencies before importing the module under test
 vi.mock('./manifest.js', () => ({
@@ -25,8 +25,11 @@ vi.mock('./env.js', () => ({
   teardownWorktreeEnv: vi.fn(async () => {}),
 }));
 
-vi.mock('./tmux.js', () => ({
-  killWindow: vi.fn(async () => {}),
+const mockKillWindow = vi.fn(async () => {});
+vi.mock('./backend.js', () => ({
+  getBackend: () => ({
+    killWindow: mockKillWindow,
+  }),
 }));
 
 vi.mock('../lib/output.js', () => ({
@@ -39,7 +42,6 @@ import { cleanupWorktree } from './cleanup.js';
 import { updateManifest } from './manifest.js';
 import { removeWorktree } from './worktree.js';
 import { teardownWorktreeEnv } from './env.js';
-import * as tmux from './tmux.js';
 import { warn } from '../lib/output.js';
 
 function makePaneInfo(paneId: string): PaneInfo {
@@ -82,7 +84,7 @@ describe('cleanupWorktree', () => {
       callOrder.push('manifest');
       return {} as any;
     });
-    vi.mocked(tmux.killWindow).mockImplementation(async () => {
+    mockKillWindow.mockImplementation(async () => {
       callOrder.push('tmux');
     });
 
@@ -98,7 +100,7 @@ describe('cleanupWorktree', () => {
     const result = await cleanupWorktree('/project', wt);
 
     expect(updateManifest).toHaveBeenCalled();
-    expect(tmux.killWindow).toHaveBeenCalled();
+    expect(mockKillWindow).toHaveBeenCalled();
     expect(teardownWorktreeEnv).toHaveBeenCalledWith(wt.path);
     expect(removeWorktree).toHaveBeenCalled();
     expect(result.manifestUpdated).toBe(true);
@@ -126,14 +128,14 @@ describe('cleanupWorktree', () => {
     const result = await cleanupWorktree('/project', wt);
 
     expect(result.manifestUpdated).toBe(false);
-    expect(tmux.killWindow).not.toHaveBeenCalled();
+    expect(mockKillWindow).not.toHaveBeenCalled();
     // Still attempts filesystem cleanup
     expect(teardownWorktreeEnv).toHaveBeenCalled();
     expect(removeWorktree).toHaveBeenCalled();
   });
 
   test('handles tmux kill failures gracefully', async () => {
-    vi.mocked(tmux.killWindow).mockRejectedValueOnce(new Error('tmux server crash'));
+    mockKillWindow.mockRejectedValueOnce(new Error('tmux server crash'));
 
     const wt = makeWorktree();
     const result = await cleanupWorktree('/project', wt);
@@ -165,6 +167,6 @@ describe('cleanupWorktree', () => {
     await cleanupWorktree('/project', wt);
 
     // Should only kill once despite duplicate target
-    expect(tmux.killWindow).toHaveBeenCalledTimes(1);
+    expect(mockKillWindow).toHaveBeenCalledTimes(1);
   });
 });

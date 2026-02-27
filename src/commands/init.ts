@@ -10,7 +10,7 @@ import { createEmptyManifest, writeManifest } from '../core/manifest.js';
 import { bundledPrompts } from '../bundled/prompts.js';
 import { bundledSwarms } from '../bundled/swarms.js';
 import { execaEnv } from '../lib/env.js';
-import { checkTmux, sanitizeTmuxName } from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 
 const CONDUCTOR_CONTEXT = `# PPG Conductor Context
 
@@ -28,7 +28,6 @@ Never run \`claude\`, \`codex\`, or \`opencode\` directly as bash commands — t
 - \`ppg spawn --name <name> --prompt "<task>" --json\` — Spawn worktree + agent
 - \`ppg spawn --name <name> --agent codex --prompt "<task>" --json\` — Use Codex agent
 - \`ppg spawn --name <name> --agent opencode --prompt "<task>" --json\` — Use OpenCode agent
-- \`ppg spawn --branch <branch> --prompt "<task>" --json\` — Attach to existing branch (e.g. from a PR)
 - \`ppg spawn --worktree <id> --agent codex --prompt "review --base main" --json\` — Codex review
 - \`ppg status --json\` — Check statuses
 - \`ppg aggregate --all --json\` — Collect results (includes PR URLs)
@@ -73,7 +72,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   }
 
   // 2. Check tmux available
-  await checkTmux();
+  await getBackend().checkAvailable();
 
   // 3. Create directories
   const dirs = [
@@ -111,7 +110,7 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   const rawSessionName = config.sessionName !== 'ppg'
     ? config.sessionName
     : `ppg-${dirName}`;
-  const sessionName = sanitizeTmuxName(rawSessionName);
+  const sessionName = getBackend().sanitizeName(rawSessionName);
   const manifest = createEmptyManifest(projectRoot, sessionName);
   await writeManifest(projectRoot, manifest);
   info('Wrote empty manifest.json');
