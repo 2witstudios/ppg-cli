@@ -264,6 +264,18 @@ worktreeCmd
   });
 
 program
+  .command('serve')
+  .description('Start the API server with TLS and display pairing QR code')
+  .option('-p, --port <number>', 'Port to listen on', (v: string) => Number(v), 7700)
+  .option('-H, --host <address>', 'Host to bind to', '0.0.0.0')
+  .option('--daemon', 'Run in daemon mode (suppress QR code)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { serveCommand } = await import('./commands/serve.js');
+    await serveCommand(options);
+  });
+
+program
   .command('ui')
   .alias('dashboard')
   .description('Open the native dashboard')
