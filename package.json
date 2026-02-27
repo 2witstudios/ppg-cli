@@ -53,13 +53,13 @@
     "nanoid": "^5.1.5",
     "proper-lockfile": "^4.1.2",
     "write-file-atomic": "^7.0.0",
-    "yaml": "^2.7.1",
-    "fastify": "^5.7.4",
-    "@fastify/cors": "^11.2.0"
+    "ws": "^8.19.0",
+    "yaml": "^2.7.1"
   },
   "devDependencies": {
     "@types/node": "^22.19.13",
     "@types/proper-lockfile": "^4.1.4",
+    "@types/ws": "^8.18.1",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
