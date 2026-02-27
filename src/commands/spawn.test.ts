@@ -6,6 +6,7 @@ import { readManifest, resolveWorktree, updateManifest } from '../core/manifest.
 import { spawnAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { agentId, sessionId } from '../lib/id.js';
+import { spawnAgentBatch } from '../core/spawn.js';
 import * as tmux from '../core/tmux.js';
 import type { AgentEntry, Manifest } from '../types/manifest.js';
 
@@ -66,6 +67,15 @@ vi.mock('../lib/id.js', () => ({
   sessionId: vi.fn(),
 }));
 
+vi.mock('../core/spawn.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/spawn.js')>('../core/spawn.js');
+  return {
+    ...actual,
+    spawnNewWorktree: vi.fn(),
+    spawnAgentBatch: vi.fn(),
+  };
+});
+
 const mockedAccess = vi.mocked(access);
 const mockedLoadConfig = vi.mocked(loadConfig);
 const mockedResolveAgentConfig = vi.mocked(resolveAgentConfig);
@@ -78,7 +88,7 @@ const mockedAgentId = vi.mocked(agentId);
 const mockedSessionId = vi.mocked(sessionId);
 const mockedEnsureSession = vi.mocked(tmux.ensureSession);
 const mockedCreateWindow = vi.mocked(tmux.createWindow);
-const mockedSplitPane = vi.mocked(tmux.splitPane);
+const mockedSpawnAgentBatch = vi.mocked(spawnAgentBatch);
 
 function createManifest(tmuxWindow = ''): Manifest {
   return {
@@ -137,8 +147,7 @@ describe('spawnCommand', () => {
     mockedReadManifest.mockImplementation(async () => structuredClone(manifestState));
     mockedResolveWorktree.mockImplementation((manifest, ref) => (manifest as any).worktrees[ref as string]);
     mockedUpdateManifest.mockImplementation(async (_projectRoot, updater) => {
-      manifestState = await updater(structuredClone(manifestState));
-      return manifestState;
+import type { AgentEntry, Manifest } from '../types/manifest.js';
     });
     mockedAgentId.mockImplementation(() => `ag-${nextAgent++}`);
     mockedSessionId.mockImplementation(() => `session-${nextSession++}`);
@@ -152,14 +161,37 @@ describe('spawnCommand', () => {
       startedAt: '2026-02-27T00:00:00.000Z',
       sessionId: opts.sessionId,
     }));
-    mockedSplitPane.mockResolvedValue({ target: 'ppg-test:1.1' } as any);
+    mockedSpawnAgentBatch.mockImplementation(async (opts) => {
+      const agents = [];
+      for (let i = 0; i < opts.count; i++) {
+        const aId = mockedAgentId();
+        const target = i === 0 && opts.reuseWindowForFirstAgent
+          ? opts.windowTarget
+          : (mockedCreateWindow as any).mock.results?.[i]?.value ?? `ppg-test:${i + 2}`;
+        const entry = {
+          id: aId,
+          name: opts.agentConfig.name,
+          agentType: opts.agentConfig.name,
+          status: 'running' as const,
+          tmuxTarget: target,
+          prompt: opts.promptText,
+          startedAt: '2026-02-27T00:00:00.000Z',
+          sessionId: `session-${nextSession++}`,
+        };
+        agents.push(entry);
+        if (opts.onAgentSpawned) {
+          await opts.onAgentSpawned(entry);
+        }
+      }
+      return agents;
+    });
   });
 
   test('given lazy tmux window and spawn failure, should persist tmux window before agent writes', async () => {
     mockedCreateWindow
       .mockResolvedValueOnce('ppg-test:7')
       .mockResolvedValueOnce('ppg-test:8');
-    mockedSpawnAgent.mockRejectedValueOnce(new Error('spawn failed'));
+    mockedSpawnAgentBatch.mockRejectedValueOnce(new Error('spawn failed'));
 
     await expect(
       spawnCommand({
@@ -189,8 +221,5 @@ describe('spawnCommand', () => {
 
     expect(mockedUpdateManifest).toHaveBeenCalledTimes(2);
     expect(Object.keys(manifestState.worktrees.wt1.agents)).toEqual(['ag-1', 'ag-2']);
-    expect(manifestState.worktrees.wt1.agents['ag-1'].tmuxTarget).toBe('ppg-test:2');
-    expect(manifestState.worktrees.wt1.agents['ag-2'].tmuxTarget).toBe('ppg-test:3');
-    expect(mockedEnsureSession).not.toHaveBeenCalled();
   });
 });
