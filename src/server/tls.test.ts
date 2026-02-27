@@ -25,8 +25,8 @@ afterEach(() => {
 });
 
 describe('ensureTls', () => {
-  test('generates valid PEM certificates', async () => {
-    const bundle = await ensureTls(tmpDir);
+  test('generates valid PEM certificates', () => {
+    const bundle = ensureTls(tmpDir);
 
     expect(bundle.caCert).toMatch(/^-----BEGIN CERTIFICATE-----/);
     expect(bundle.caCert).toMatch(/-----END CERTIFICATE-----\n$/);
@@ -35,8 +35,8 @@ describe('ensureTls', () => {
     expect(bundle.serverKey).toMatch(/^-----BEGIN PRIVATE KEY-----/);
   });
 
-  test('CA cert has cA:TRUE and ~10 year validity', async () => {
-    const bundle = await ensureTls(tmpDir);
+  test('CA cert has cA:TRUE and ~10 year validity', () => {
+    const bundle = ensureTls(tmpDir);
     const ca = new crypto.X509Certificate(bundle.caCert);
 
     expect(ca.subject).toBe('CN=ppg-ca');
@@ -49,8 +49,8 @@ describe('ensureTls', () => {
     expect(yearsFromNow).toBeLessThan(11);
   });
 
-  test('server cert is signed by CA with ~1 year validity', async () => {
-    const bundle = await ensureTls(tmpDir);
+  test('server cert is signed by CA with ~1 year validity', () => {
+    const bundle = ensureTls(tmpDir);
     const ca = new crypto.X509Certificate(bundle.caCert);
     const server = new crypto.X509Certificate(bundle.serverCert);
 
@@ -65,22 +65,20 @@ describe('ensureTls', () => {
     expect(daysFromNow).toBeLessThan(370);
   });
 
-  test('server cert includes correct SANs', async () => {
-    const bundle = await ensureTls(tmpDir);
+  test('server cert includes correct SANs', () => {
+    const bundle = ensureTls(tmpDir);
     const server = new crypto.X509Certificate(bundle.serverCert);
     const sanStr = server.subjectAltName ?? '';
 
-    // Must include 127.0.0.1
     expect(sanStr).toContain('IP Address:127.0.0.1');
 
-    // All reported SANs should match
     for (const ip of bundle.sans) {
       expect(sanStr).toContain(`IP Address:${ip}`);
     }
   });
 
-  test('persists files with correct permissions', async () => {
-    await ensureTls(tmpDir);
+  test('persists files with correct permissions', () => {
+    ensureTls(tmpDir);
 
     const files = [
       tlsCaKeyPath(tmpDir),
@@ -92,19 +90,18 @@ describe('ensureTls', () => {
     for (const f of files) {
       expect(fs.existsSync(f)).toBe(true);
       const stat = fs.statSync(f);
-      // Owner read+write (0o600 = 384 decimal), mask out non-permission bits
       expect(stat.mode & 0o777).toBe(0o600);
     }
   });
 
   test('reuses valid certs without rewriting', async () => {
-    const bundle1 = await ensureTls(tmpDir);
+    const bundle1 = ensureTls(tmpDir);
     const mtime1 = fs.statSync(tlsCaCertPath(tmpDir)).mtimeMs;
 
-    // Small delay to ensure mtime would differ
+    // Small delay to ensure mtime would differ if rewritten
     await new Promise((r) => setTimeout(r, 50));
 
-    const bundle2 = await ensureTls(tmpDir);
+    const bundle2 = ensureTls(tmpDir);
     const mtime2 = fs.statSync(tlsCaCertPath(tmpDir)).mtimeMs;
 
     expect(bundle2.caFingerprint).toBe(bundle1.caFingerprint);
@@ -113,49 +110,59 @@ describe('ensureTls', () => {
     expect(mtime2).toBe(mtime1);
   });
 
-  test('regenerates server cert when SAN is missing', async () => {
-    const bundle1 = await ensureTls(tmpDir);
+  test('regenerates server cert when SAN is missing', () => {
+    const bundle1 = ensureTls(tmpDir);
 
-    // Overwrite server cert with one that has no SANs (corrupt it by removing SANs)
-    // Easiest: write a cert with a bogus SAN that won't match current IPs
-    const serverCertPath = tlsServerCertPath(tmpDir);
-    // Replace server cert content with CA cert (wrong SANs)
-    fs.writeFileSync(serverCertPath, bundle1.caCert, { mode: 0o600 });
+    // Replace server cert with CA cert (has no SANs matching LAN IPs)
+    fs.writeFileSync(tlsServerCertPath(tmpDir), bundle1.caCert, { mode: 0o600 });
 
-    const bundle2 = await ensureTls(tmpDir);
+    const bundle2 = ensureTls(tmpDir);
 
     // CA should be preserved
     expect(bundle2.caCert).toBe(bundle1.caCert);
     expect(bundle2.caFingerprint).toBe(bundle1.caFingerprint);
 
-    // Server cert should be regenerated (different from CA cert)
+    // Server cert should be regenerated
     expect(bundle2.serverCert).not.toBe(bundle1.caCert);
     const server = new crypto.X509Certificate(bundle2.serverCert);
     expect(server.subject).toBe('CN=ppg-server');
   });
 
-  test('regenerates everything when CA cert file is missing', async () => {
-    const bundle1 = await ensureTls(tmpDir);
+  test('regenerates everything when CA cert file is missing', () => {
+    const bundle1 = ensureTls(tmpDir);
 
-    // Delete CA cert
     fs.unlinkSync(tlsCaCertPath(tmpDir));
 
-    const bundle2 = await ensureTls(tmpDir);
+    const bundle2 = ensureTls(tmpDir);
 
-    // Should have new CA
     expect(bundle2.caFingerprint).not.toBe(bundle1.caFingerprint);
   });
 
-  test('CA fingerprint is colon-delimited SHA-256 hex', async () => {
-    const bundle = await ensureTls(tmpDir);
+  test('regenerates everything when PEM files contain garbage', () => {
+    ensureTls(tmpDir);
+
+    // Corrupt both cert files with garbage
+    fs.writeFileSync(tlsCaCertPath(tmpDir), 'not a cert', { mode: 0o600 });
+    fs.writeFileSync(tlsServerCertPath(tmpDir), 'also garbage', { mode: 0o600 });
+
+    // Should regenerate without throwing
+    const bundle = ensureTls(tmpDir);
+
+    expect(bundle.caCert).toMatch(/^-----BEGIN CERTIFICATE-----/);
+    const ca = new crypto.X509Certificate(bundle.caCert);
+    expect(ca.subject).toBe('CN=ppg-ca');
+  });
+
+  test('CA fingerprint is colon-delimited SHA-256 hex', () => {
+    const bundle = ensureTls(tmpDir);
 
     // Format: XX:XX:XX:... (32 hex pairs with colons)
     expect(bundle.caFingerprint).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
   });
 
-  test('CA fingerprint is stable across calls', async () => {
-    const bundle1 = await ensureTls(tmpDir);
-    const bundle2 = await ensureTls(tmpDir);
+  test('CA fingerprint is stable across calls', () => {
+    const bundle1 = ensureTls(tmpDir);
+    const bundle2 = ensureTls(tmpDir);
 
     expect(bundle2.caFingerprint).toBe(bundle1.caFingerprint);
   });

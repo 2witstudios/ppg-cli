@@ -30,7 +30,8 @@ export interface TlsBundle {
 function derLength(len: number): Buffer {
   if (len < 0x80) return Buffer.from([len]);
   if (len < 0x100) return Buffer.from([0x81, len]);
-  return Buffer.from([0x82, (len >> 8) & 0xff, len & 0xff]);
+  if (len <= 0xffff) return Buffer.from([0x82, (len >> 8) & 0xff, len & 0xff]);
+  throw new Error(`DER length ${len} exceeds 2-byte encoding`);
 }
 
 function derTlv(tag: number, value: Buffer): Buffer {
@@ -224,11 +225,6 @@ function buildTbs(options: {
   ]);
 }
 
-function signTbs(tbs: Buffer, privateKey: crypto.KeyObject): Buffer {
-  const sig = crypto.sign('sha256', tbs, privateKey);
-  return sig;
-}
-
 function wrapCertificate(tbs: Buffer, signature: Buffer): Buffer {
   return derSeq([tbs, buildAlgorithmIdentifier(), derBitString(signature)]);
 }
@@ -242,83 +238,73 @@ function toPem(tag: string, der: Buffer): string {
   return `-----BEGIN ${tag}-----\n${lines.join('\n')}\n-----END ${tag}-----\n`;
 }
 
-function generateKeyPair(): { publicKey: crypto.KeyObject; privateKey: crypto.KeyObject } {
-  return crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+function wrapAndSign(
+  tbs: Buffer,
+  signingKey: crypto.KeyObject,
+  subjectKey: crypto.KeyObject,
+): { cert: string; key: string } {
+  const signature = crypto.sign('sha256', tbs, signingKey);
+  return {
+    cert: toPem('CERTIFICATE', wrapCertificate(tbs, signature)),
+    key: subjectKey.export({ type: 'pkcs8', format: 'pem' }) as string,
+  };
+}
+
+function buildCertTbs(options: {
+  issuerCn: string;
+  subjectCn: string;
+  validityYears: number;
+  publicKeyDer: Buffer;
+  extensions: Buffer[];
+}): Buffer {
+  const now = new Date();
+  const notAfter = new Date(now);
+  notAfter.setUTCFullYear(notAfter.getUTCFullYear() + options.validityYears);
+
+  return buildTbs({
+    serial: generateSerial(),
+    issuer: buildName(options.issuerCn),
+    subject: buildName(options.subjectCn),
+    validity: buildValidity(now, notAfter),
+    publicKeyInfo: Buffer.from(options.publicKeyDer),
+    extensions: buildExtensions(options.extensions),
+  });
 }
 
 function generateCaCert(): { cert: string; key: string } {
-  const { publicKey, privateKey } = generateKeyPair();
+  // Self-signed: same keypair for subject and signer
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 
-  const now = new Date();
-  const notAfter = new Date(now);
-  notAfter.setUTCFullYear(notAfter.getUTCFullYear() + 10);
-
-  const publicKeyDer = publicKey.export({ type: 'spki', format: 'der' });
-
-  const issuer = buildName('ppg-ca');
-  const subject = buildName('ppg-ca');
-
-  const exts = buildExtensions([
-    buildBasicConstraintsExt(true, true),
-    buildKeyUsageExt(true, true),
-  ]);
-
-  const tbs = buildTbs({
-    serial: generateSerial(),
-    issuer,
-    subject,
-    validity: buildValidity(now, notAfter),
-    publicKeyInfo: Buffer.from(publicKeyDer),
-    extensions: exts,
+  const tbs = buildCertTbs({
+    issuerCn: 'ppg-ca',
+    subjectCn: 'ppg-ca',
+    validityYears: 10,
+    publicKeyDer: publicKey.export({ type: 'spki', format: 'der' }),
+    extensions: [
+      buildBasicConstraintsExt(true, true),
+      buildKeyUsageExt(true, true),
+    ],
   });
 
-  const signature = signTbs(tbs, privateKey);
-  const certDer = wrapCertificate(tbs, signature);
-
-  const certPem = toPem('CERTIFICATE', certDer);
-  const keyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
-
-  return { cert: certPem, key: keyPem };
+  return wrapAndSign(tbs, privateKey, privateKey);
 }
 
-function generateServerCert(
-  caKey: string,
-  sans: string[],
-): { cert: string; key: string } {
-  const { publicKey, privateKey } = generateKeyPair();
-  const caPrivateKey = crypto.createPrivateKey(caKey);
+function generateServerCert(caKey: string, sans: string[]): { cert: string; key: string } {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 
-  const now = new Date();
-  const notAfter = new Date(now);
-  notAfter.setUTCFullYear(notAfter.getUTCFullYear() + 1);
-
-  const publicKeyDer = publicKey.export({ type: 'spki', format: 'der' });
-
-  const issuer = buildName('ppg-ca');
-  const subject = buildName('ppg-server');
-
-  const exts = buildExtensions([
-    buildBasicConstraintsExt(false, false),
-    buildKeyUsageExt(false, false),
-    buildSanExt(sans),
-  ]);
-
-  const tbs = buildTbs({
-    serial: generateSerial(),
-    issuer,
-    subject,
-    validity: buildValidity(now, notAfter),
-    publicKeyInfo: Buffer.from(publicKeyDer),
-    extensions: exts,
+  const tbs = buildCertTbs({
+    issuerCn: 'ppg-ca',
+    subjectCn: 'ppg-server',
+    validityYears: 1,
+    publicKeyDer: publicKey.export({ type: 'spki', format: 'der' }),
+    extensions: [
+      buildBasicConstraintsExt(false, false),
+      buildKeyUsageExt(false, false),
+      buildSanExt(sans),
+    ],
   });
 
-  const signature = signTbs(tbs, caPrivateKey);
-  const certDer = wrapCertificate(tbs, signature);
-
-  const certPem = toPem('CERTIFICATE', certDer);
-  const keyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
-
-  return { cert: certPem, key: keyPem };
+  return wrapAndSign(tbs, crypto.createPrivateKey(caKey), privateKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -440,7 +426,7 @@ function writePemFile(filePath: string, content: string): void {
 // Main entry point
 // ---------------------------------------------------------------------------
 
-export async function ensureTls(projectRoot: string): Promise<TlsBundle> {
+export function ensureTls(projectRoot: string): TlsBundle {
   const dir = tlsDir(projectRoot);
   fs.mkdirSync(dir, { recursive: true });
 

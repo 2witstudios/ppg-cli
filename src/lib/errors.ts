@@ -86,13 +86,6 @@ export class GhNotFoundError extends PpgError {
   }
 }
 
-export class TlsError extends PpgError {
-  constructor(message: string) {
-    super(message, 'TLS_ERROR');
-    this.name = 'TlsError';
-  }
-}
-
 export class UnmergedWorkError extends PpgError {
   constructor(names: string[]) {
     const list = names.map((n) => `  ${n}`).join('\n');
