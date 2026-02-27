@@ -4,13 +4,9 @@ dist/
 .worktrees/
 .DS_Store
 
-# Point Guard
-.ppg/results/
-.ppg/logs/
-.ppg/manifest.json
-.ppg/prompts/
-.ppg/agent-prompts/
-.ppg/dashboard-sessions.json
+# Point Guard runtime state
+.ppg/
+.pg/
 
 # Xcode
 PPG CLI/build/
@@ -18,9 +14,3 @@ DerivedData/
 **/xcuserdata/
 *.xcuserstate
 *.profraw
-
-# Point Guard
-.ppg/conductor-context.md
-
-# Point Guard
-.ppg/swarms/
