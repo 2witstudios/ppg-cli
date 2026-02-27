@@ -4,7 +4,7 @@ import { execa } from 'execa';
 import { readManifest, resolveWorktree, updateManifest } from '../../core/manifest.js';
 import { refreshAllAgentStatuses } from '../../core/agent.js';
 import { computeLifecycle } from '../../core/lifecycle.js';
-import { PpgError } from '../../lib/errors.js';
+import { NotInitializedError, PpgError } from '../../lib/errors.js';
 import { execaEnv } from '../../lib/env.js';
 
 export interface StatusRouteOptions {
@@ -13,8 +13,26 @@ export interface StatusRouteOptions {
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const aBuffer = Buffer.from(a);
+  const bBuffer = Buffer.from(b);
+  if (aBuffer.length !== bBuffer.length) return false;
+  return crypto.timingSafeEqual(aBuffer, bBuffer);
+}
+
+function parseNumstatLine(line: string): { file: string; added: number; removed: number } {
+  const [addedRaw = '', removedRaw = '', ...fileParts] = line.split('\t');
+
+  const parseCount = (value: string): number => {
+    if (value === '-') return 0;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  return {
+    file: fileParts.join('\t'),
+    added: parseCount(addedRaw),
+    removed: parseCount(removedRaw),
+  };
 }
 
 function authenticate(token: string) {
@@ -92,7 +110,15 @@ export default async function statusRoutes(
   fastify.get<{ Params: { id: string } }>(
     '/api/worktrees/:id/diff',
     async (request, reply) => {
-      const manifest = await readManifest(projectRoot);
+      let manifest;
+      try {
+        manifest = await readManifest(projectRoot);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw new NotInitializedError(projectRoot);
+        }
+        throw error;
+      }
 
       const wt = resolveWorktree(manifest, request.params.id);
       if (!wt) {
@@ -110,14 +136,7 @@ export default async function statusRoutes(
         .trim()
         .split('\n')
         .filter(Boolean)
-        .map((line) => {
-          const [added, removed, file] = line.split('\t');
-          return {
-            file,
-            added: added === '-' ? 0 : parseInt(added, 10),
-            removed: removed === '-' ? 0 : parseInt(removed, 10),
-          };
-        });
+        .map((line) => parseNumstatLine(line));
 
       reply.send({
         worktreeId: wt.id,

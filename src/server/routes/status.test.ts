@@ -261,6 +261,21 @@ describe('status routes', () => {
       expect(res.json()).toEqual({ error: 'Worktree not found: wt-unknown' });
     });
 
+    test('given missing manifest file, should return 503', async () => {
+      const enoentError = Object.assign(new Error('not found'), { code: 'ENOENT' });
+      mockedReadManifest.mockRejectedValue(enoentError);
+
+      const app = buildApp();
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/worktrees/wt-abc123/diff',
+        headers: authHeaders(),
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.json().code).toBe('NOT_INITIALIZED');
+    });
+
     test('should call git diff with correct range', async () => {
       mockedResolveWorktree.mockReturnValue(mockManifest.worktrees['wt-abc123']);
       mockedExeca.mockResolvedValue({ stdout: '' } as never);
