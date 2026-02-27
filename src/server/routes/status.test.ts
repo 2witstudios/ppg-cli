@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import statusRoutes from './status.js';
 import { makeWorktree, makeAgent } from '../../test-fixtures.js';
 import type { Manifest } from '../../types/manifest.js';
+import { NotInitializedError, ManifestLockError } from '../../lib/errors.js';
 
 const PROJECT_ROOT = '/tmp/project';
 const TOKEN = 'test-token-123';
@@ -24,7 +25,7 @@ const mockManifest: Manifest = {
 };
 
 vi.mock('../../core/manifest.js', () => ({
-  requireManifest: vi.fn(),
+  readManifest: vi.fn(),
   resolveWorktree: vi.fn(),
   updateManifest: vi.fn(),
 }));
@@ -37,12 +38,12 @@ vi.mock('execa', () => ({
   execa: vi.fn(),
 }));
 
-import { requireManifest, resolveWorktree, updateManifest } from '../../core/manifest.js';
+import { readManifest, resolveWorktree, updateManifest } from '../../core/manifest.js';
 import { refreshAllAgentStatuses } from '../../core/agent.js';
 import { execa } from 'execa';
 
 const mockedUpdateManifest = vi.mocked(updateManifest);
-const mockedRequireManifest = vi.mocked(requireManifest);
+const mockedReadManifest = vi.mocked(readManifest);
 const mockedResolveWorktree = vi.mocked(resolveWorktree);
 const mockedRefreshAllAgentStatuses = vi.mocked(refreshAllAgentStatuses);
 const mockedExeca = vi.mocked(execa);
@@ -53,6 +54,10 @@ function buildApp(): FastifyInstance {
   return app;
 }
 
+function authHeaders() {
+  return { authorization: `Bearer ${TOKEN}` };
+}
+
 describe('status routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,7 +65,7 @@ describe('status routes', () => {
     mockedUpdateManifest.mockImplementation(async (_root, updater) => {
       return updater(structuredClone(mockManifest));
     });
-    mockedRequireManifest.mockResolvedValue(structuredClone(mockManifest));
+    mockedReadManifest.mockResolvedValue(structuredClone(mockManifest));
     mockedRefreshAllAgentStatuses.mockImplementation(async (m) => m);
   });
 
@@ -87,9 +92,15 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/status',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
       expect(res.statusCode).toBe(200);
+    });
+
+    test('given failed auth, should not execute route handler', async () => {
+      const app = buildApp();
+      await app.inject({ method: 'GET', url: '/api/status' });
+      expect(mockedUpdateManifest).not.toHaveBeenCalled();
     });
   });
 
@@ -99,7 +110,7 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/status',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.statusCode).toBe(200);
@@ -114,10 +125,38 @@ describe('status routes', () => {
       await app.inject({
         method: 'GET',
         url: '/api/status',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(mockedRefreshAllAgentStatuses).toHaveBeenCalled();
+    });
+
+    test('given manifest lock error, should return 503', async () => {
+      mockedUpdateManifest.mockRejectedValue(new ManifestLockError());
+
+      const app = buildApp();
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/status',
+        headers: authHeaders(),
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.json().code).toBe('MANIFEST_LOCK');
+    });
+
+    test('given not initialized error, should return 503', async () => {
+      mockedUpdateManifest.mockRejectedValue(new NotInitializedError('/tmp/project'));
+
+      const app = buildApp();
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/status',
+        headers: authHeaders(),
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.json().code).toBe('NOT_INITIALIZED');
     });
   });
 
@@ -129,7 +168,7 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/worktrees/wt-abc123',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.statusCode).toBe(200);
@@ -146,7 +185,7 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/worktrees/feature-auth',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.statusCode).toBe(200);
@@ -160,7 +199,7 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/worktrees/wt-unknown',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.statusCode).toBe(404);
@@ -179,7 +218,7 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/worktrees/wt-abc123/diff',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.statusCode).toBe(200);
@@ -201,7 +240,7 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/worktrees/wt-abc123/diff',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.statusCode).toBe(200);
@@ -215,7 +254,7 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/worktrees/wt-unknown/diff',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.statusCode).toBe(404);
@@ -230,7 +269,7 @@ describe('status routes', () => {
       await app.inject({
         method: 'GET',
         url: '/api/worktrees/wt-abc123/diff',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(mockedExeca).toHaveBeenCalledWith(
@@ -250,12 +289,41 @@ describe('status routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/worktrees/wt-abc123/diff',
-        headers: { authorization: `Bearer ${TOKEN}` },
+        headers: authHeaders(),
       });
 
       expect(res.json().files).toEqual([
         { file: 'image.png', added: 0, removed: 0 },
       ]);
+    });
+
+    test('given git diff failure, should return 500', async () => {
+      mockedResolveWorktree.mockReturnValue(mockManifest.worktrees['wt-abc123']);
+      mockedExeca.mockRejectedValue(new Error('git diff failed'));
+
+      const app = buildApp();
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/worktrees/wt-abc123/diff',
+        headers: authHeaders(),
+      });
+
+      expect(res.statusCode).toBe(500);
+    });
+
+    test('should use readManifest instead of updateManifest', async () => {
+      mockedResolveWorktree.mockReturnValue(mockManifest.worktrees['wt-abc123']);
+      mockedExeca.mockResolvedValue({ stdout: '' } as never);
+
+      const app = buildApp();
+      await app.inject({
+        method: 'GET',
+        url: '/api/worktrees/wt-abc123/diff',
+        headers: authHeaders(),
+      });
+
+      expect(mockedReadManifest).toHaveBeenCalledWith(PROJECT_ROOT);
+      expect(mockedUpdateManifest).not.toHaveBeenCalled();
     });
   });
 });

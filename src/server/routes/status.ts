@@ -1,9 +1,10 @@
+import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { execa } from 'execa';
-import { requireManifest, resolveWorktree, updateManifest } from '../../core/manifest.js';
+import { readManifest, resolveWorktree, updateManifest } from '../../core/manifest.js';
 import { refreshAllAgentStatuses } from '../../core/agent.js';
-import { computeLifecycle } from '../../commands/status.js';
-import { WorktreeNotFoundError } from '../../lib/errors.js';
+import { computeLifecycle } from '../../core/lifecycle.js';
+import { PpgError } from '../../lib/errors.js';
 import { execaEnv } from '../../lib/env.js';
 
 export interface StatusRouteOptions {
@@ -11,14 +12,27 @@ export interface StatusRouteOptions {
   bearerToken: string;
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 function authenticate(token: string) {
+  const expected = `Bearer ${token}`;
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const auth = request.headers.authorization;
-    if (!auth || auth !== `Bearer ${token}`) {
-      reply.code(401).send({ error: 'Unauthorized' });
+    const auth = request.headers.authorization ?? '';
+    if (!timingSafeEqual(auth, expected)) {
+      return reply.code(401).send({ error: 'Unauthorized' });
     }
   };
 }
+
+const ppgErrorToStatus: Record<string, number> = {
+  NOT_INITIALIZED: 503,
+  MANIFEST_LOCK: 503,
+  WORKTREE_NOT_FOUND: 404,
+  AGENT_NOT_FOUND: 404,
+};
 
 export default async function statusRoutes(
   fastify: FastifyInstance,
@@ -27,6 +41,15 @@ export default async function statusRoutes(
   const { projectRoot, bearerToken } = options;
 
   fastify.addHook('onRequest', authenticate(bearerToken));
+
+  fastify.setErrorHandler((error, _request, reply) => {
+    if (error instanceof PpgError) {
+      const status = ppgErrorToStatus[error.code] ?? 500;
+      reply.code(status).send({ error: error.message, code: error.code });
+      return;
+    }
+    reply.code(500).send({ error: 'Internal server error' });
+  });
 
   // GET /api/status — full manifest with live agent statuses
   fastify.get('/api/status', async (_request, reply) => {
@@ -69,10 +92,7 @@ export default async function statusRoutes(
   fastify.get<{ Params: { id: string } }>(
     '/api/worktrees/:id/diff',
     async (request, reply) => {
-      await requireManifest(projectRoot);
-      const manifest = await updateManifest(projectRoot, async (m) => {
-        return refreshAllAgentStatuses(m, projectRoot);
-      });
+      const manifest = await readManifest(projectRoot);
 
       const wt = resolveWorktree(manifest, request.params.id);
       if (!wt) {
