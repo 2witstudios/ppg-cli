@@ -6,6 +6,7 @@ import { refreshAllAgentStatuses } from '../../core/agent.js';
 import { computeLifecycle } from '../../core/lifecycle.js';
 import { NotInitializedError, PpgError } from '../../lib/errors.js';
 import { execaEnv } from '../../lib/env.js';
+import type { Manifest } from '../../types/manifest.js';
 
 export interface StatusRouteOptions {
   projectRoot: string;
@@ -110,7 +111,7 @@ export default async function statusRoutes(
   fastify.get<{ Params: { id: string } }>(
     '/api/worktrees/:id/diff',
     async (request, reply) => {
-      let manifest;
+      let manifest: Manifest;
       try {
         manifest = await readManifest(projectRoot);
       } catch (error) {
