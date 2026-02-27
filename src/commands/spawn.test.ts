@@ -7,6 +7,7 @@ import { spawnAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { agentId, sessionId } from '../lib/id.js';
 import * as tmux from '../core/tmux.js';
+import type { Manifest } from '../types/manifest.js';
 
 vi.mock('node:fs/promises', async () => {
   const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
@@ -103,7 +104,7 @@ function createManifest(tmuxWindow = '') {
 }
 
 describe('spawnCommand', () => {
-  let manifestState = createManifest();
+  let manifestState: Manifest = createManifest();
   let nextAgent = 1;
   let nextSession = 1;
 
