@@ -4,6 +4,7 @@ import os from 'node:os';
 import { createRequire } from 'node:module';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { agentRoutes } from './routes/agents.js';
 import { serveStatePath, servePidPath } from '../lib/paths.js';
 import { info, success } from '../lib/output.js';
 
@@ -109,6 +110,9 @@ export async function startServer(options: ServeOptions): Promise<void> {
       version: packageVersion,
     };
   });
+
+  // Register route plugins
+  await app.register(agentRoutes, { prefix: '/api', projectRoot });
 
   const lanAddress = detectLanAddress();
 
