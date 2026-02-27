@@ -1,5 +1,5 @@
 import { loadConfig, resolveAgentConfig } from './config.js';
-import { readManifest, updateManifest } from './manifest.js';
+import { requireManifest, updateManifest } from './manifest.js';
 import { getCurrentBranch, createWorktree } from './worktree.js';
 import { setupWorktreeEnv } from './env.js';
 import { loadTemplate, renderTemplate, type TemplateContext } from './template.js';
@@ -126,6 +126,8 @@ export async function spawnNewWorktree(
   const agentConfig = resolveAgentConfig(config, opts.agentName);
   const count = opts.count ?? 1;
   const userVars = opts.userVars ?? {};
+  const manifest = await requireManifest(projectRoot);
+  const sessionName = manifest.sessionName;
 
   const baseBranch = opts.baseBranch ?? await getCurrentBranch(projectRoot);
   const wtId = genWorktreeId();
@@ -142,8 +144,6 @@ export async function spawnNewWorktree(
   await setupWorktreeEnv(projectRoot, wtPath, config);
 
   // Ensure tmux session (manifest is the source of truth for session name)
-  const manifest = await readManifest(projectRoot);
-  const sessionName = manifest.sessionName;
   await tmux.ensureSession(sessionName);
 
   // Create tmux window

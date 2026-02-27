@@ -61,6 +61,17 @@ function validateVars(vars: Record<string, string>): void {
   }
 }
 
+function statusForPpgError(code: string): number {
+  switch (code) {
+    case 'INVALID_ARGS':
+      return 400;
+    case 'NOT_INITIALIZED':
+      return 409;
+    default:
+      return 500;
+  }
+}
+
 export interface SpawnRouteOptions {
   projectRoot: string;
 }
@@ -78,37 +89,53 @@ export default async function spawnRoute(
       request: FastifyRequest<{ Body: SpawnRequestBody }>,
       reply: FastifyReply,
     ) => {
-      const body = request.body;
+      try {
+        const body = request.body;
 
-      // Validate vars for shell safety before any side effects
-      if (body.vars) {
-        validateVars(body.vars);
+        // Validate vars for shell safety before any side effects
+        if (body.vars) {
+          validateVars(body.vars);
+        }
+
+        const promptText = await resolvePromptText(
+          { prompt: body.prompt, template: body.template },
+          projectRoot,
+        );
+
+        const result = await spawnNewWorktree({
+          projectRoot,
+          name: body.name,
+          promptText,
+          userVars: body.vars,
+          agentName: body.agent,
+          baseBranch: body.base,
+          count: body.count,
+        });
+
+        const response: SpawnResponseBody = {
+          worktreeId: result.worktreeId,
+          name: result.name,
+          branch: result.branch,
+          agents: result.agents.map((a) => ({
+            id: a.id,
+            tmuxTarget: a.tmuxTarget,
+            sessionId: a.sessionId,
+          })),
+        };
+
+        return reply.status(201).send(response);
+      } catch (err) {
+        if (err instanceof PpgError) {
+          return reply.status(statusForPpgError(err.code)).send({
+            message: err.message,
+            code: err.code,
+          });
+        }
+
+        return reply.status(500).send({
+          message: err instanceof Error ? err.message : 'Internal server error',
+        });
       }
-
-      const promptText = await resolvePromptText(body, projectRoot);
-
-      const result = await spawnNewWorktree({
-        projectRoot,
-        name: body.name,
-        promptText,
-        userVars: body.vars,
-        agentName: body.agent,
-        baseBranch: body.base,
-        count: body.count,
-      });
-
-      const response: SpawnResponseBody = {
-        worktreeId: result.worktreeId,
-        name: result.name,
-        branch: result.branch,
-        agents: result.agents.map((a) => ({
-          id: a.id,
-          tmuxTarget: a.tmuxTarget,
-          sessionId: a.sessionId,
-        })),
-      };
-
-      return reply.status(201).send(response);
     },
   );
 }

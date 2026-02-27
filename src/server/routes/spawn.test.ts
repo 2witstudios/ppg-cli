@@ -108,7 +108,7 @@ describe('POST /api/spawn', () => {
     });
 
     expect(vi.mocked(resolvePromptText)).toHaveBeenCalledWith(
-      { name: 'my-task', template: 'review' },
+      { prompt: undefined, template: 'review' },
       PROJECT_ROOT,
     );
   });
@@ -195,28 +195,30 @@ describe('POST /api/spawn', () => {
 
   // ─── Input Sanitization ─────────────────────────────────────────────────────
 
-  test('given vars with shell metacharacters in value, should return 500 INVALID_ARGS', async () => {
+  test('given vars with shell metacharacters in value, should return 400 INVALID_ARGS', async () => {
     const res = await postSpawn(app, {
       name: 'my-task',
       prompt: 'Fix the bug',
       vars: { ISSUE: '$(whoami)' },
     });
 
-    expect(res.statusCode).toBe(500);
-    const body = res.json<{ message: string }>();
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ message: string; code: string }>();
     expect(body.message).toMatch(/shell metacharacters/i);
+    expect(body.code).toBe('INVALID_ARGS');
   });
 
-  test('given vars with shell metacharacters in key, should return 500 INVALID_ARGS', async () => {
+  test('given vars with shell metacharacters in key, should return 400 INVALID_ARGS', async () => {
     const res = await postSpawn(app, {
       name: 'my-task',
       prompt: 'Fix the bug',
       vars: { 'KEY;rm': 'value' },
     });
 
-    expect(res.statusCode).toBe(500);
-    const body = res.json<{ message: string }>();
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ message: string; code: string }>();
     expect(body.message).toMatch(/shell metacharacters/i);
+    expect(body.code).toBe('INVALID_ARGS');
   });
 
   test('given vars with backtick in value, should reject', async () => {
@@ -226,9 +228,10 @@ describe('POST /api/spawn', () => {
       vars: { CMD: '`whoami`' },
     });
 
-    expect(res.statusCode).toBe(500);
-    const body = res.json<{ message: string }>();
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ message: string; code: string }>();
     expect(body.message).toMatch(/shell metacharacters/i);
+    expect(body.code).toBe('INVALID_ARGS');
   });
 
   test('given safe vars, should pass through', async () => {
@@ -250,7 +253,7 @@ describe('POST /api/spawn', () => {
 
   // ─── Error Paths ────────────────────────────────────────────────────────────
 
-  test('given neither prompt nor template, should return 500 with INVALID_ARGS', async () => {
+  test('given neither prompt nor template, should return 400 with INVALID_ARGS', async () => {
     const { resolvePromptText } = await import('../../core/spawn.js');
     const { PpgError } = await import('../../lib/errors.js');
     vi.mocked(resolvePromptText).mockRejectedValueOnce(
@@ -261,11 +264,10 @@ describe('POST /api/spawn', () => {
       name: 'my-task',
     });
 
-    // PpgError thrown — Fastify returns 500 without a custom error handler
-    // (the error handler from issue-66 would map INVALID_ARGS to 400)
-    expect(res.statusCode).toBe(500);
-    const body = res.json<{ message: string }>();
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ message: string; code: string }>();
     expect(body.message).toMatch(/prompt.*template/i);
+    expect(body.code).toBe('INVALID_ARGS');
   });
 
   test('given unknown agent type, should propagate error', async () => {
@@ -297,6 +299,24 @@ describe('POST /api/spawn', () => {
     });
 
     expect(res.statusCode).toBe(500);
+  });
+
+  test('given not initialized error, should return 409', async () => {
+    const { spawnNewWorktree } = await import('../../core/spawn.js');
+    const { PpgError } = await import('../../lib/errors.js');
+    vi.mocked(spawnNewWorktree).mockRejectedValueOnce(
+      new PpgError('Point Guard not initialized in /fake/project', 'NOT_INITIALIZED'),
+    );
+
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      prompt: 'Fix it',
+    });
+
+    expect(res.statusCode).toBe(409);
+    const body = res.json<{ message: string; code: string }>();
+    expect(body.message).toMatch(/not initialized/i);
+    expect(body.code).toBe('NOT_INITIALIZED');
   });
 
   test('given tmux not available, should propagate TmuxNotFoundError', async () => {
