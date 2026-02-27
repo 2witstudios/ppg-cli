@@ -282,6 +282,18 @@ program
     await installDashboardCommand(options);
   });
 
+program
+  .command('serve')
+  .description('Start the ppg API server')
+  .option('-p, --port <number>', 'Port to listen on', parsePort, 3100)
+  .option('-H, --host <address>', 'Host to bind to', '127.0.0.1')
+  .option('--token <secret>', 'Bearer token for authentication')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { serveCommand } = await import('./commands/serve.js');
+    await serveCommand(options);
+  });
+
 const cronCmd = program.command('cron').description('Manage scheduled runs');
 
 cronCmd
@@ -370,6 +382,14 @@ function parsePositiveInt(optionName: string) {
     }
     return n;
   };
+}
+
+function parsePort(v: string): number {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new Error('--port must be an integer between 1 and 65535');
+  }
+  return n;
 }
 
 async function main() {
