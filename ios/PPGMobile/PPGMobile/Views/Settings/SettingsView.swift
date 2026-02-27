@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var testResult: TestResult?
     @State private var showQRError = false
 
+    private let repositoryURL = URL(string: "https://github.com/2witstudios/ppg-cli")
+
     private enum TestResult: Equatable {
         case testing
         case success
@@ -76,9 +78,7 @@ struct SettingsView: View {
                 testConnectionRow
 
                 Button("Disconnect", role: .destructive) {
-                    Task { @MainActor in
-                        appState.disconnect()
-                    }
+                    appState.disconnect()
                 }
             } else {
                 Text("Not connected")
@@ -146,8 +146,10 @@ struct SettingsView: View {
             LabeledContent("PPG Mobile", value: appVersion)
             LabeledContent("Server Protocol", value: "v1")
 
-            Link(destination: URL(string: "https://github.com/2witstudios/ppg-cli")!) {
-                Label("GitHub Repository", systemImage: "link")
+            if let repositoryURL {
+                Link(destination: repositoryURL) {
+                    Label("GitHub Repository", systemImage: "link")
+                }
             }
         }
     }

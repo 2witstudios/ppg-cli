@@ -73,16 +73,40 @@ struct AddServerView: View {
     }
 
     private var isValid: Bool {
-        !host.trimmingCharacters(in: .whitespaces).isEmpty
-            && !token.trimmingCharacters(in: .whitespaces).isEmpty
+        !trimmedHost.isEmpty
+            && !trimmedToken.isEmpty
+            && parsedPort != nil
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedHost: String {
+        host.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedToken: String {
+        token.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var parsedPort: Int? {
+        guard
+            let value = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)),
+            (1...65_535).contains(value)
+        else {
+            return nil
+        }
+        return value
     }
 
     private func addServer() {
+        guard let validatedPort = parsedPort else { return }
         let connection = ServerConnection(
-            name: name.trimmingCharacters(in: .whitespaces),
-            host: host.trimmingCharacters(in: .whitespaces),
-            port: Int(port) ?? 7700,
-            token: token.trimmingCharacters(in: .whitespaces)
+            name: trimmedName.isEmpty ? "My Mac" : trimmedName,
+            host: trimmedHost,
+            port: validatedPort,
+            token: trimmedToken
         )
         appState.addConnection(connection)
         Task { await appState.connect(to: connection) }
