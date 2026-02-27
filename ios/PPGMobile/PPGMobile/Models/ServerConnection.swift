@@ -27,28 +27,36 @@ struct ServerConnection: Codable, Identifiable, Hashable {
     }
 
     /// Base URL for REST API requests (e.g. `http://192.168.1.5:7700`).
-    var baseURL: URL {
-        URL(string: "\(scheme)://\(host):\(port)")!
+    /// Returns `nil` if the host is malformed.
+    var baseURL: URL? {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.port = port
+        return components.url
     }
 
     /// URL for a specific REST API endpoint.
+    /// Returns `nil` if the base URL cannot be constructed.
     ///
     ///     connection.restURL(for: "/api/status")
-    func restURL(for path: String) -> URL {
-        baseURL.appendingPathComponent(path)
+    func restURL(for path: String) -> URL? {
+        guard let base = baseURL else { return nil }
+        return base.appending(path: path)
     }
 
     /// WebSocket URL with auth token in query string.
+    /// Returns `nil` if the host is malformed.
     ///
     ///     connection.webSocketURL  // ws://192.168.1.5:7700/ws?token=abc123
-    var webSocketURL: URL {
+    var webSocketURL: URL? {
         var components = URLComponents()
         components.scheme = wsScheme
         components.host = host
         components.port = port
         components.path = "/ws"
         components.queryItems = [URLQueryItem(name: "token", value: token)]
-        return components.url!
+        return components.url
     }
 
     // MARK: - QR Code
@@ -58,14 +66,19 @@ struct ServerConnection: Codable, Identifiable, Hashable {
     ///     ppg://connect?host=192.168.1.5&port=7700&token=abc123
     ///     ppg://connect?host=192.168.1.5&port=7700&ca=BASE64...&token=abc123
     var qrCodeString: String {
-        var parts = "ppg://connect?host=\(host)&port=\(port)"
+        var components = URLComponents()
+        components.scheme = "ppg"
+        components.host = "connect"
+        var items = [
+            URLQueryItem(name: "host", value: host),
+            URLQueryItem(name: "port", value: String(port)),
+        ]
         if let ca = caCertificate {
-            let encoded = ca.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ca
-            parts += "&ca=\(encoded)"
+            items.append(URLQueryItem(name: "ca", value: ca))
         }
-        let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
-        parts += "&token=\(encodedToken)"
-        return parts
+        items.append(URLQueryItem(name: "token", value: token))
+        components.queryItems = items
+        return components.string ?? "ppg://connect"
     }
 
     /// Parse a `ppg://connect?host=...&port=...&token=...` QR code string.

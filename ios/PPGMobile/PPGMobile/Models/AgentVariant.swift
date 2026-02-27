@@ -4,7 +4,8 @@ import SwiftUI
 ///
 /// Maps to the `agentType` field on `AgentEntry`. New variants can be added
 /// without schema changes since `agentType` is a free-form string — unknown
-/// values fall back to `AgentVariant.unknown`.
+/// values return `nil` from `AgentVariant.from(_:)` and fall back to defaults
+/// in the `AgentEntry` convenience extensions.
 enum AgentVariant: String, CaseIterable, Identifiable {
     case claude
     case codex

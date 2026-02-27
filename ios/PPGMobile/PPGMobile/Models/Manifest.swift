@@ -6,6 +6,9 @@ import SwiftUI
 ///
 /// Matches the ppg agent lifecycle:
 ///   spawning → running → completed | failed | killed | lost
+///
+/// Custom decoding also accepts the current TypeScript status values:
+///   `"idle"` → `.running`, `"exited"` → `.completed`, `"gone"` → `.lost`
 enum AgentStatus: String, Codable, CaseIterable {
     case spawning
     case running
@@ -13,6 +16,32 @@ enum AgentStatus: String, Codable, CaseIterable {
     case failed
     case killed
     case lost
+
+    /// Maps legacy/TS status strings to lifecycle values.
+    private static let aliases: [String: AgentStatus] = [
+        "idle": .running,
+        "exited": .completed,
+        "gone": .lost,
+    ]
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if let direct = AgentStatus(rawValue: raw) {
+            self = direct
+        } else if let mapped = Self.aliases[raw] {
+            self = mapped
+        } else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath,
+                      debugDescription: "Unknown AgentStatus: \(raw)")
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 
     var label: String {
         rawValue.capitalized
