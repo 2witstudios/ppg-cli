@@ -9,6 +9,8 @@ export interface ErrorResponseBody {
   };
 }
 
+export type LogFn = (message: string, error: Error) => void;
+
 const httpStatusByCode: Record<string, number> = {
   INVALID_ARGS: 400,
   NO_SESSION_ID: 400,
@@ -20,10 +22,15 @@ const httpStatusByCode: Record<string, number> = {
   UNMERGED_WORK: 409,
   WORKTREE_NOT_FOUND: 404,
   AGENT_NOT_FOUND: 404,
+  PANE_NOT_FOUND: 404,
+  NO_TMUX_WINDOW: 404,
+  TARGET_NOT_FOUND: 404,
   WAIT_TIMEOUT: 408,
   AGENTS_FAILED: 500,
   TMUX_NOT_FOUND: 500,
   GH_NOT_FOUND: 500,
+  DOWNLOAD_FAILED: 502,
+  INSTALL_FAILED: 500,
 };
 
 export function getHttpStatus(ppgCode: string): number {
@@ -33,10 +40,10 @@ export function getHttpStatus(ppgCode: string): number {
 function isFastifyValidationError(
   error: Error | FastifyError,
 ): error is FastifyError & { validation: unknown[] } {
-  return 'validation' in error && Array.isArray((error as FastifyError).validation);
+  return 'validation' in error && Array.isArray((error as { validation: unknown }).validation);
 }
 
-export function buildErrorResponse(error: Error): {
+export function buildErrorResponse(error: Error, log?: LogFn): {
   status: number;
   body: ErrorResponseBody;
 } {
@@ -59,11 +66,13 @@ export function buildErrorResponse(error: Error): {
         error: {
           code: 'VALIDATION_ERROR',
           message: error.message,
-          details: (error as FastifyError).validation,
+          details: error.validation,
         },
       },
     };
   }
+
+  log?.('Unhandled error', error);
 
   return {
     status: 500,
@@ -78,10 +87,11 @@ export function buildErrorResponse(error: Error): {
 
 export function errorHandler(
   error: Error,
-  _request: FastifyRequest,
+  request: FastifyRequest,
   reply: FastifyReply,
 ): void {
-  const { status, body } = buildErrorResponse(error);
+  const log: LogFn = (message, err) => request.log.error({ err }, message);
+  const { status, body } = buildErrorResponse(error, log);
   reply.status(status).send(body);
 }
 
