@@ -65,6 +65,14 @@ describe('diffLines', () => {
     const result = diffLines(prev, curr);
     expect(result).toEqual(['f']);
   });
+
+  test('given trailing empty lines from tmux, should handle correctly', () => {
+    // capturePane often returns "line1\nline2\n" → split gives trailing ''
+    const prev = ['line1', 'line2', ''];
+    const curr = ['line1', 'line2', '', 'line3', ''];
+    const result = diffLines(prev, curr);
+    expect(result).toEqual(['line3', '']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -134,6 +142,18 @@ describe('TerminalStreamer', () => {
 
       const unsub = streamer.subscribe('ag-001', 'ppg:1.0', send);
       unsub();
+
+      expect(streamer.subscriberCount('ag-001')).toBe(0);
+      expect(streamer.isPolling('ag-001')).toBe(false);
+    });
+
+    test('given double unsubscribe, should be idempotent', () => {
+      mockCapture.mockResolvedValue('hello');
+      const send = vi.fn();
+
+      const unsub = streamer.subscribe('ag-001', 'ppg:1.0', send);
+      unsub();
+      unsub(); // second call should not throw
 
       expect(streamer.subscriberCount('ag-001')).toBe(0);
       expect(streamer.isPolling('ag-001')).toBe(false);
@@ -237,6 +257,7 @@ describe('TerminalStreamer', () => {
 
   describe('error handling', () => {
     test('given pane capture fails, should send error and cleanup', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockCapture.mockRejectedValue(new Error('pane not found'));
       const send = vi.fn();
 
@@ -250,9 +271,15 @@ describe('TerminalStreamer', () => {
       expect(msg.agentId).toBe('ag-001');
       expect(msg.error).toBe('Pane no longer available');
 
+      // Original error should be logged
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('pane not found'),
+      );
+
       // Stream should be cleaned up
       expect(streamer.subscriberCount('ag-001')).toBe(0);
       expect(streamer.isPolling('ag-001')).toBe(false);
+      consoleSpy.mockRestore();
     });
 
     test('given dead subscriber send throws, should remove subscriber', async () => {

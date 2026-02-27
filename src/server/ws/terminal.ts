@@ -31,7 +31,7 @@ interface Subscriber {
 interface AgentStream {
   tmuxTarget: string;
   subscribers: Map<number, Subscriber>;
-  timer: ReturnType<typeof setInterval> | null;
+  timer: ReturnType<typeof setTimeout> | null;
   /** Previous captured lines, used by the diff algorithm. */
   lastLines: string[];
 }
@@ -124,7 +124,7 @@ export class TerminalStreamer {
 
     // Lazy init: start polling only when the first subscriber arrives
     if (stream.timer === null) {
-      this.startPolling(agentId, stream);
+      this.scheduleNextPoll(agentId, stream);
     }
 
     // Return unsubscribe function
@@ -140,14 +140,15 @@ export class TerminalStreamer {
 
   /** Whether a polling timer is active for an agent. */
   isPolling(agentId: string): boolean {
-    return this.streams.get(agentId)?.timer != null;
+    const stream = this.streams.get(agentId);
+    return stream !== undefined && stream.timer !== null;
   }
 
   /** Tear down all streams and timers. */
   destroy(): void {
-    for (const [agentId, stream] of this.streams) {
+    for (const stream of this.streams.values()) {
       if (stream.timer !== null) {
-        clearInterval(stream.timer);
+        clearTimeout(stream.timer);
         stream.timer = null;
       }
       stream.subscribers.clear();
@@ -168,15 +169,15 @@ export class TerminalStreamer {
     // Auto-cleanup: stop polling when no subscribers remain
     if (stream.subscribers.size === 0) {
       if (stream.timer !== null) {
-        clearInterval(stream.timer);
+        clearTimeout(stream.timer);
         stream.timer = null;
       }
       this.streams.delete(agentId);
     }
   }
 
-  private startPolling(agentId: string, stream: AgentStream): void {
-    stream.timer = setInterval(() => {
+  private scheduleNextPoll(agentId: string, stream: AgentStream): void {
+    stream.timer = setTimeout(() => {
       void this.poll(agentId, stream);
     }, this.pollIntervalMs);
   }
@@ -189,29 +190,38 @@ export class TerminalStreamer {
       const newLines = diffLines(stream.lastLines, currentLines);
       stream.lastLines = currentLines;
 
-      if (newLines.length === 0) return;
+      if (newLines.length > 0) {
+        const message = JSON.stringify({
+          type: 'terminal',
+          agentId,
+          lines: newLines,
+        } satisfies TerminalData);
 
-      const message = JSON.stringify({
-        type: 'terminal',
-        agentId,
-        lines: newLines,
-      } satisfies TerminalData);
-
-      for (const sub of stream.subscribers.values()) {
-        try {
-          sub.send(message);
-        } catch {
-          // Dead client — remove on next tick
-          stream.subscribers.delete(sub.id);
+        for (const sub of stream.subscribers.values()) {
+          try {
+            sub.send(message);
+          } catch {
+            // Dead client — remove immediately
+            stream.subscribers.delete(sub.id);
+          }
         }
       }
-    } catch {
+
+      // Schedule next poll only after this one completes
+      if (stream.subscribers.size > 0) {
+        this.scheduleNextPoll(agentId, stream);
+      }
+    } catch (err) {
       // Pane gone / tmux error — notify subscribers and clean up
       const errorMsg = JSON.stringify({
         type: 'terminal:error',
         agentId,
         error: 'Pane no longer available',
       } satisfies TerminalError);
+
+      if (err instanceof Error) {
+        console.error(`[ppg] terminal poll failed for ${agentId}: ${err.message}`);
+      }
 
       for (const sub of stream.subscribers.values()) {
         try {
@@ -222,10 +232,7 @@ export class TerminalStreamer {
       }
 
       // Stop polling — pane is dead
-      if (stream.timer !== null) {
-        clearInterval(stream.timer);
-        stream.timer = null;
-      }
+      stream.timer = null;
       stream.subscribers.clear();
       this.streams.delete(agentId);
     }
