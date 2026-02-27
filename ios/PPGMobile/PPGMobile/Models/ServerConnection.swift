@@ -27,7 +27,8 @@ struct ServerConnection: Codable, Identifiable, Hashable {
 
     var wsURL: URL {
         let scheme = ca != nil ? "wss" : "ws"
-        return URL(string: "\(scheme)://\(host):\(port)/ws?token=\(token)")!
+        let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
+        return URL(string: "\(scheme)://\(host):\(port)/ws?token=\(encodedToken)")!
     }
 
     var apiURL: URL {
@@ -45,9 +46,10 @@ struct ServerConnection: Codable, Identifiable, Hashable {
         }
 
         let params = Dictionary(
-            uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            (components.queryItems ?? []).compactMap { item in
                 item.value.map { (item.name, $0) }
-            }
+            },
+            uniquingKeysWith: { _, last in last }
         )
 
         guard let host = params["host"], !host.isEmpty,
@@ -57,7 +59,7 @@ struct ServerConnection: Codable, Identifiable, Hashable {
         }
 
         let port = params["port"].flatMap(Int.init) ?? 7700
-        let ca = params["ca"]
+        let ca = params["ca"].flatMap { Data(base64Encoded: $0) != nil ? $0 : nil }
 
         return ServerConnection(
             name: host == "0.0.0.0" ? "Local Mac" : host,

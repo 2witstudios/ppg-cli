@@ -189,7 +189,9 @@ struct QRCameraView: UIViewRepresentable {
 
         func stopSession() {
             guard let session, session.isRunning else { return }
-            session.stopRunning()
+            DispatchQueue.global(qos: .userInitiated).async {
+                session.stopRunning()
+            }
         }
 
         func metadataOutput(
