@@ -7,6 +7,7 @@ struct QRScannerView: View {
     let onScan: (ServerConnection) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var scannedCode: String?
+    @State private var scannerResetToken = UUID()
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var permissionDenied = false
@@ -18,6 +19,7 @@ struct QRScannerView: View {
                     cameraPermissionView
                 } else {
                     QRCameraView(onCodeScanned: handleScan)
+                        .id(scannerResetToken)
                         .ignoresSafeArea()
 
                     scanOverlay
@@ -31,7 +33,7 @@ struct QRScannerView: View {
                 }
             }
             .alert("Invalid QR Code", isPresented: $showError) {
-                Button("OK") {}
+                Button("OK") { restartScanner() }
             } message: {
                 Text(errorMessage)
             }
@@ -78,6 +80,7 @@ struct QRScannerView: View {
         }
     }
 
+    @MainActor
     private func checkCameraPermission() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -101,8 +104,12 @@ struct QRScannerView: View {
         } else {
             errorMessage = "This QR code doesn't contain a valid ppg server connection.\n\nExpected format: ppg://connect?host=...&port=...&token=..."
             showError = true
-            scannedCode = nil
         }
+    }
+
+    private func restartScanner() {
+        scannedCode = nil
+        scannerResetToken = UUID()
     }
 }
 
@@ -206,7 +213,7 @@ struct QRCameraView: UIViewRepresentable {
             else { return }
 
             hasScanned = true
-            session?.stopRunning()
+            stopSession()
             onCodeScanned(value)
         }
     }

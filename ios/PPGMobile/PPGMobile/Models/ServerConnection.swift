@@ -20,27 +20,32 @@ struct ServerConnection: Codable, Identifiable, Hashable {
         self.isDefault = isDefault
     }
 
-    var baseURL: URL {
-        let scheme = ca != nil ? "https" : "http"
-        return URL(string: "\(scheme)://\(host):\(port)")!
+    private var usesTLS: Bool {
+        ca != nil
     }
 
-    var wsURL: URL {
-        let scheme = ca != nil ? "wss" : "ws"
-        let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
-        return URL(string: "\(scheme)://\(host):\(port)/ws?token=\(encodedToken)")!
+    var baseURL: URL? {
+        makeURL(scheme: usesTLS ? "https" : "http")
     }
 
-    var apiURL: URL {
-        baseURL.appendingPathComponent("api")
+    var wsURL: URL? {
+        makeURL(
+            scheme: usesTLS ? "wss" : "ws",
+            path: "/ws",
+            queryItems: [URLQueryItem(name: "token", value: token)]
+        )
+    }
+
+    var apiURL: URL? {
+        baseURL?.appendingPathComponent("api")
     }
 
     /// Parse a ppg serve QR code payload.
     /// Format: ppg://connect?host=<host>&port=<port>&token=<token>[&ca=<base64>]
     static func fromQRCode(_ payload: String) -> ServerConnection? {
         guard let components = URLComponents(string: payload),
-              components.scheme == "ppg",
-              components.host == "connect"
+              components.scheme?.lowercased() == "ppg",
+              components.host?.lowercased() == "connect"
         else {
             return nil
         }
@@ -52,13 +57,14 @@ struct ServerConnection: Codable, Identifiable, Hashable {
             uniquingKeysWith: { _, last in last }
         )
 
-        guard let host = params["host"], !host.isEmpty,
+        guard let host = params["host"], isValidHost(host),
               let token = params["token"], !token.isEmpty
         else {
             return nil
         }
 
         let port = params["port"].flatMap(Int.init) ?? 7700
+        guard (1...65_535).contains(port) else { return nil }
         let ca = params["ca"].flatMap { Data(base64Encoded: $0) != nil ? $0 : nil }
 
         return ServerConnection(
@@ -68,5 +74,32 @@ struct ServerConnection: Codable, Identifiable, Hashable {
             token: token,
             ca: ca
         )
+    }
+
+    private func makeURL(
+        scheme: String,
+        path: String = "",
+        queryItems: [URLQueryItem] = []
+    ) -> URL? {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.port = port
+        components.path = path
+        components.queryItems = queryItems.isEmpty ? nil : queryItems
+        return components.url
+    }
+
+    private static func isValidHost(_ host: String) -> Bool {
+        guard !host.isEmpty,
+              host.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+        else {
+            return false
+        }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host
+        return components.url != nil
     }
 }

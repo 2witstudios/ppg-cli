@@ -56,6 +56,16 @@ final class ServerConnectionTests: XCTestCase {
         XCTAssertEqual(conn?.port, 7700)
     }
 
+    func testInvalidPortReturnsNil() {
+        XCTAssertNil(ServerConnection.fromQRCode("ppg://connect?host=myhost&port=0&token=abc123"))
+        XCTAssertNil(ServerConnection.fromQRCode("ppg://connect?host=myhost&port=70000&token=abc123"))
+    }
+
+    func testInvalidHostReturnsNil() {
+        let qr = "ppg://connect?host=my%20host&port=7700&token=abc123"
+        XCTAssertNil(ServerConnection.fromQRCode(qr))
+    }
+
     func testWrongSchemeReturnsNil() {
         let qr = "http://connect?host=myhost&port=7700&token=abc123"
         XCTAssertNil(ServerConnection.fromQRCode(qr))
@@ -107,23 +117,35 @@ final class ServerConnectionTests: XCTestCase {
 
     func testBaseURLUsesHTTPWithoutCA() {
         let conn = ServerConnection(host: "myhost", port: 7700, token: "abc")
-        XCTAssertEqual(conn.baseURL.absoluteString, "http://myhost:7700")
+        XCTAssertEqual(conn.baseURL?.absoluteString, "http://myhost:7700")
     }
 
     func testBaseURLUsesHTTPSWithCA() {
         let conn = ServerConnection(host: "myhost", port: 7700, token: "abc", ca: "dGVzdA==")
-        XCTAssertEqual(conn.baseURL.absoluteString, "https://myhost:7700")
+        XCTAssertEqual(conn.baseURL?.absoluteString, "https://myhost:7700")
     }
 
     func testWsURLUsesWSSWithCA() {
         let conn = ServerConnection(host: "myhost", port: 7700, token: "abc", ca: "dGVzdA==")
-        XCTAssertTrue(conn.wsURL.absoluteString.hasPrefix("wss://"))
+        XCTAssertEqual(conn.wsURL?.scheme, "wss")
     }
 
     func testWsURLPercentEncodesToken() {
         let conn = ServerConnection(host: "myhost", port: 7700, token: "abc+def&ghi=jkl")
-        let url = conn.wsURL.absoluteString
-        XCTAssertFalse(url.contains("abc+def&ghi=jkl"))
-        XCTAssertTrue(url.contains("token="))
+        guard let url = conn.wsURL else {
+            XCTFail("Expected wsURL to be generated")
+            return
+        }
+
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let tokenValue = components?.queryItems?.first(where: { $0.name == "token" })?.value
+        XCTAssertEqual(tokenValue, "abc+def&ghi=jkl")
+        XCTAssertEqual(components?.queryItems?.count, 1)
+    }
+
+    func testInvalidHostDoesNotCrashURLBuilding() {
+        let conn = ServerConnection(host: "bad host", port: 7700, token: "abc")
+        XCTAssertNil(conn.baseURL)
+        XCTAssertNil(conn.wsURL)
     }
 }
