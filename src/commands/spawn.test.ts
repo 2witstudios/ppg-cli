@@ -94,7 +94,7 @@ function createManifest(tmuxWindow = ''): Manifest {
         baseBranch: 'main',
         status: 'active',
         tmuxWindow,
-        agents: {} as Record<string, AgentEntry>,
+import type { AgentEntry, Manifest } from '../types/manifest.js';
         createdAt: '2026-02-27T00:00:00.000Z',
       },
     },
@@ -138,7 +138,7 @@ describe('spawnCommand', () => {
     mockedResolveWorktree.mockImplementation((manifest, ref) => (manifest as any).worktrees[ref as string]);
     mockedUpdateManifest.mockImplementation(async (_projectRoot, updater) => {
       manifestState = await updater(structuredClone(manifestState));
-      return manifestState as any;
+      return manifestState;
     });
     mockedAgentId.mockImplementation(() => `ag-${nextAgent++}`);
     mockedSessionId.mockImplementation(() => `session-${nextSession++}`);

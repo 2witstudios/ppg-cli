@@ -6,10 +6,22 @@ import Foundation
 /// communicate with a ppg server over REST and WebSocket.
 struct ServerConnection: Codable, Identifiable, Hashable {
     let id: UUID
+    var name: String
     var host: String
     var port: Int
-    var caCertificate: String?
     var token: String
+    var caCertificate: String?
+    var isDefault: Bool
+
+    init(name: String = "My Mac", host: String, port: Int = 7700, token: String, caCertificate: String? = nil, isDefault: Bool = false) {
+        self.id = UUID()
+        self.name = name
+        self.host = host
+        self.port = port
+        self.token = token
+        self.caCertificate = caCertificate
+        self.isDefault = isDefault
+    }
 
     /// Human-readable label (e.g. "192.168.1.5:7700").
     var displayName: String {
@@ -18,22 +30,27 @@ struct ServerConnection: Codable, Identifiable, Hashable {
 
     // MARK: - URL Builders
 
+    private var usesTLS: Bool {
+        caCertificate != nil
+    }
+
     private var scheme: String {
-        caCertificate != nil ? "https" : "http"
+        usesTLS ? "https" : "http"
     }
 
     private var wsScheme: String {
-        caCertificate != nil ? "wss" : "ws"
+        usesTLS ? "wss" : "ws"
     }
 
     /// Base URL for REST API requests (e.g. `http://192.168.1.5:7700`).
     /// Returns `nil` if the host is malformed.
     var baseURL: URL? {
-        var components = URLComponents()
-        components.scheme = scheme
-        components.host = host
-        components.port = port
-        return components.url
+        makeURL(scheme: scheme)
+    }
+
+    /// URL for the API root.
+    var apiURL: URL? {
+        baseURL?.appendingPathComponent("api")
     }
 
     /// URL for a specific REST API endpoint.
@@ -50,13 +67,11 @@ struct ServerConnection: Codable, Identifiable, Hashable {
     ///
     ///     connection.webSocketURL  // ws://192.168.1.5:7700/ws?token=abc123
     var webSocketURL: URL? {
-        var components = URLComponents()
-        components.scheme = wsScheme
-        components.host = host
-        components.port = port
-        components.path = "/ws"
-        components.queryItems = [URLQueryItem(name: "token", value: token)]
-        return components.url
+        makeURL(
+            scheme: wsScheme,
+            path: "/ws",
+            queryItems: [URLQueryItem(name: "token", value: token)]
+        )
     }
 
     // MARK: - QR Code
@@ -81,32 +96,39 @@ struct ServerConnection: Codable, Identifiable, Hashable {
         return components.string ?? "ppg://connect"
     }
 
-    /// Parse a `ppg://connect?host=...&port=...&token=...` QR code string.
-    ///
-    /// Returns `nil` if the string doesn't match the expected scheme.
-    static func fromQRCode(_ content: String) -> ServerConnection? {
-        guard let components = URLComponents(string: content),
-              components.scheme == "ppg",
-              components.host == "connect" else {
+    /// Parse a ppg serve QR code payload.
+    /// Format: ppg://connect?host=<host>&port=<port>&token=<token>[&ca=<base64>]
+    static func fromQRCode(_ payload: String) -> ServerConnection? {
+        guard let components = URLComponents(string: payload),
+              components.scheme?.lowercased() == "ppg",
+              components.host?.lowercased() == "connect"
+        else {
             return nil
         }
 
-        let items = components.queryItems ?? []
-        guard let host = items.first(where: { $0.name == "host" })?.value,
-              let portString = items.first(where: { $0.name == "port" })?.value,
-              let port = Int(portString),
-              let token = items.first(where: { $0.name == "token" })?.value else {
+        let params = Dictionary(
+            (components.queryItems ?? []).compactMap { item in
+                item.value.map { (item.name, $0) }
+            },
+            uniquingKeysWith: { _, last in last }
+        )
+
+        guard let host = params["host"], isValidHost(host),
+              let token = params["token"], !token.isEmpty
+        else {
             return nil
         }
 
-        let ca = items.first(where: { $0.name == "ca" })?.value
+        let port = params["port"].flatMap(Int.init) ?? 7700
+        guard (1...65_535).contains(port) else { return nil }
+        let ca = params["ca"].flatMap { Data(base64Encoded: $0) != nil ? $0 : nil }
 
         return ServerConnection(
-            id: UUID(),
+            name: host == "0.0.0.0" ? "Local Mac" : host,
             host: host,
             port: port,
-            caCertificate: ca,
-            token: token
+            token: token,
+            caCertificate: ca
         )
     }
 
@@ -115,5 +137,34 @@ struct ServerConnection: Codable, Identifiable, Hashable {
     /// Authorization header value for REST requests.
     var authorizationHeader: String {
         "Bearer \(token)"
+    }
+
+    // MARK: - Private Helpers
+
+    private func makeURL(
+        scheme: String,
+        path: String = "",
+        queryItems: [URLQueryItem] = []
+    ) -> URL? {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.port = port
+        components.path = path
+        components.queryItems = queryItems.isEmpty ? nil : queryItems
+        return components.url
+    }
+
+    private static func isValidHost(_ host: String) -> Bool {
+        guard !host.isEmpty,
+              host.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+        else {
+            return false
+        }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host
+        return components.url != nil
     }
 }
