@@ -41,6 +41,7 @@ final class ManifestStore {
     func refresh() async {
         isLoading = true
         error = nil
+        defer { isLoading = false }
 
         do {
             let fetched = try await client.fetchStatus()
@@ -49,8 +50,6 @@ final class ManifestStore {
         } catch {
             self.error = error.localizedDescription
         }
-
-        isLoading = false
     }
 
     // MARK: - Incremental Updates
@@ -71,6 +70,8 @@ final class ManifestStore {
                 worktree.agents[agentId] = agent
                 m.worktrees[wtId] = worktree
                 manifest = m
+                lastRefreshed = Date()
+                error = nil
                 return
             }
         }
@@ -83,6 +84,8 @@ final class ManifestStore {
         worktree.status = status
         m.worktrees[worktreeId] = worktree
         manifest = m
+        lastRefreshed = Date()
+        error = nil
     }
 
     // MARK: - Clear

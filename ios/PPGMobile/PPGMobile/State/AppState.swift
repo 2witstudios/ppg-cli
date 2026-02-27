@@ -139,7 +139,11 @@ final class AppState {
         // Clean up orphaned Keychain token if replacing a duplicate
         if let existing = connections.first(where: { $0.host == connection.host && $0.port == connection.port }),
            existing.id != connection.id {
-            try? TokenStorage.delete(for: existing.id)
+            do {
+                try TokenStorage.delete(for: existing.id)
+            } catch {
+                errorMessage = "Failed to remove stale credentials from Keychain."
+            }
         }
 
         if let index = connections.firstIndex(where: { $0.host == connection.host && $0.port == connection.port }) {
@@ -160,7 +164,11 @@ final class AppState {
             disconnect()
         }
         connections.removeAll { $0.id == connection.id }
-        try? TokenStorage.delete(for: connection.id)
+        do {
+            try TokenStorage.delete(for: connection.id)
+        } catch {
+            errorMessage = "Failed to remove connection credentials from Keychain."
+        }
         saveConnections()
 
         if let lastId = UserDefaults.standard.string(forKey: DefaultsKey.lastConnectionId),
@@ -236,25 +244,58 @@ final class AppState {
     // MARK: - Persistence
 
     private func loadConnections() {
-        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.savedConnections),
-              let persisted = try? JSONDecoder().decode([PersistedConnection].self, from: data) else {
+        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.savedConnections) else {
             return
         }
-        connections = persisted.compactMap { entry in
-            guard let token = try? TokenStorage.load(for: entry.id) else { return nil }
-            return entry.toServerConnection(token: token)
+
+        let persisted: [PersistedConnection]
+        do {
+            persisted = try JSONDecoder().decode([PersistedConnection].self, from: data)
+        } catch {
+            errorMessage = "Failed to load saved connections."
+            return
+        }
+
+        var loaded: [ServerConnection] = []
+        var failedTokenLoad = false
+        for entry in persisted {
+            do {
+                let token = try TokenStorage.load(for: entry.id)
+                loaded.append(entry.toServerConnection(token: token))
+            } catch {
+                failedTokenLoad = true
+            }
+        }
+        connections = loaded
+
+        if failedTokenLoad {
+            errorMessage = "Some saved connection tokens could not be loaded."
         }
     }
 
     private func saveConnections() {
         // Persist metadata to UserDefaults (no tokens)
         let persisted = connections.map { PersistedConnection(from: $0) }
-        guard let data = try? JSONEncoder().encode(persisted) else { return }
-        UserDefaults.standard.set(data, forKey: DefaultsKey.savedConnections)
+        do {
+            let data = try JSONEncoder().encode(persisted)
+            UserDefaults.standard.set(data, forKey: DefaultsKey.savedConnections)
+        } catch {
+            errorMessage = "Failed to save connections."
+            return
+        }
 
         // Persist tokens to Keychain
+        var failedTokenSave = false
         for connection in connections {
-            try? TokenStorage.save(token: connection.token, for: connection.id)
+            do {
+                try TokenStorage.save(token: connection.token, for: connection.id)
+            } catch {
+                failedTokenSave = true
+            }
+        }
+
+        if failedTokenSave {
+            errorMessage = "Some connection tokens could not be saved."
         }
     }
 }
