@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
-import path from 'node:path';
+import { getWriteFileAtomic } from '../lib/cjs-compat.js';
+import { AuthCorruptError, DuplicateTokenError } from '../lib/errors.js';
 import { authPath, serveDir } from '../lib/paths.js';
 
 // --- Types ---
@@ -25,6 +26,7 @@ interface RateLimitEntry {
 
 const RATE_LIMIT_MAX_FAILURES = 5;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const RATE_LIMIT_MAX_ENTRIES = 10_000;
 
 // --- Token Generation & Hashing ---
 
@@ -50,6 +52,16 @@ export function createRateLimiter(
 ): RateLimiter {
   const entries = new Map<string, RateLimitEntry>();
 
+  function prune(): void {
+    if (entries.size <= RATE_LIMIT_MAX_ENTRIES) return;
+    const currentTime = now();
+    for (const [ip, entry] of entries) {
+      if (currentTime - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
+        entries.delete(ip);
+      }
+    }
+  }
+
   return {
     check(ip: string): boolean {
       const entry = entries.get(ip);
@@ -69,6 +81,7 @@ export function createRateLimiter(
 
       if (!entry || currentTime - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
         entries.set(ip, { failures: 1, windowStart: currentTime });
+        prune();
         return;
       }
 
@@ -92,22 +105,31 @@ export interface AuthStore {
 
 export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
   const filePath = authPath(projectRoot);
+  let cache: AuthData | null = null;
 
   async function readData(): Promise<AuthData> {
+    if (cache) return cache;
     try {
       const raw = await fs.readFile(filePath, 'utf-8');
-      return JSON.parse(raw) as AuthData;
-    } catch {
-      return { tokens: [] };
+      cache = JSON.parse(raw) as AuthData;
+      return cache;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        cache = { tokens: [] };
+        return cache;
+      }
+      throw new AuthCorruptError(filePath);
     }
   }
 
   async function writeData(data: AuthData): Promise<void> {
     const dir = serveDir(projectRoot);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), {
+    const writeFileAtomic = await getWriteFileAtomic();
+    await writeFileAtomic(filePath, JSON.stringify(data, null, 2), {
       mode: 0o600,
     });
+    cache = data;
   }
 
   return {
@@ -115,7 +137,7 @@ export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
       const data = await readData();
       const existing = data.tokens.find((t) => t.label === label);
       if (existing) {
-        throw new Error(`Token with label "${label}" already exists`);
+        throw new DuplicateTokenError(label);
       }
 
       const token = generateToken();
@@ -132,12 +154,11 @@ export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
 
     async validateToken(token: string): Promise<TokenEntry | null> {
       const data = await readData();
-      const incoming = hashToken(token);
+      const incomingBuf = Buffer.from(hashToken(token), 'hex');
 
       for (const entry of data.tokens) {
-        const a = Buffer.from(incoming, 'hex');
-        const b = Buffer.from(entry.hash, 'hex');
-        if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+        const storedBuf = Buffer.from(entry.hash, 'hex');
+        if (incomingBuf.length === storedBuf.length && crypto.timingSafeEqual(incomingBuf, storedBuf)) {
           entry.lastUsedAt = new Date().toISOString();
           await writeData(data);
           return entry;
@@ -170,11 +191,17 @@ export interface AuthHookDeps {
   rateLimiter: RateLimiter;
 }
 
+export interface AuthenticatedRequest {
+  headers: Record<string, string | undefined>;
+  ip: string;
+  tokenEntry?: TokenEntry;
+}
+
 export function createAuthHook(deps: AuthHookDeps) {
   const { store, rateLimiter } = deps;
 
   return async function authHook(
-    request: { headers: Record<string, string | undefined>; ip: string },
+    request: AuthenticatedRequest,
     reply: { code(statusCode: number): { send(body: unknown): void } },
   ): Promise<void> {
     const ip = request.ip;
@@ -200,6 +227,7 @@ export function createAuthHook(deps: AuthHookDeps) {
       return;
     }
 
+    request.tokenEntry = entry;
     rateLimiter.reset(ip);
   };
 }

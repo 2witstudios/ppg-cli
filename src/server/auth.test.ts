@@ -3,9 +3,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { DuplicateTokenError } from '../lib/errors.js';
 import { authPath } from '../lib/paths.js';
 import {
   type AuthStore,
+  type AuthenticatedRequest,
   type RateLimiter,
   createAuthHook,
   createAuthStore,
@@ -13,6 +15,35 @@ import {
   generateToken,
   hashToken,
 } from './auth.js';
+
+// --- Test Helpers ---
+
+function makeReply() {
+  let sentStatus: number | null = null;
+  let sentBody: unknown = null;
+  return {
+    reply: {
+      code(status: number) {
+        sentStatus = status;
+        return {
+          send(body: unknown) {
+            sentBody = body;
+          },
+        };
+      },
+    },
+    status: () => sentStatus,
+    body: () => sentBody,
+  };
+}
+
+function makeRequest(overrides: Partial<{ headers: Record<string, string | undefined>; ip: string }> = {}): AuthenticatedRequest {
+  return {
+    headers: {},
+    ip: '127.0.0.1',
+    ...overrides,
+  };
+}
 
 // --- Token Generation ---
 
@@ -119,6 +150,20 @@ describe('createRateLimiter', () => {
     limiter.reset(ip);
     expect(limiter.check(ip)).toBe(true);
   });
+
+  test('prunes stale entries when map exceeds max size', () => {
+    // Fill with 10001 stale entries
+    for (let i = 0; i <= 10_000; i++) {
+      limiter.record(`stale-${i}`);
+    }
+    // Advance past the window so all are stale
+    clock += 5 * 60 * 1000;
+    // One more record triggers prune
+    limiter.record('fresh');
+    // The fresh one should be tracked; stale ones should allow through
+    expect(limiter.check('stale-0')).toBe(true);
+    expect(limiter.check('fresh')).toBe(true);
+  });
 });
 
 // --- Auth Store ---
@@ -150,8 +195,9 @@ describe('createAuthStore', () => {
       expect(raw).not.toContain(token);
     });
 
-    test('rejects duplicate labels', async () => {
+    test('rejects duplicate labels with DuplicateTokenError', async () => {
       await store.addToken('ipad');
+      await expect(store.addToken('ipad')).rejects.toThrow(DuplicateTokenError);
       await expect(store.addToken('ipad')).rejects.toThrow(
         'Token with label "ipad" already exists',
       );
@@ -285,6 +331,13 @@ describe('createAuthStore', () => {
       const entry = await store2.validateToken(token);
       expect(entry!.label).toBe('iphone');
     });
+
+    test('throws AuthCorruptError on corrupt auth.json', async () => {
+      await store.addToken('iphone');
+      await fs.writeFile(authPath(tmpDir), '{{{invalid json');
+      const store2 = await createAuthStore(tmpDir);
+      await expect(store2.listTokens()).rejects.toThrow('Auth data is corrupt');
+    });
   });
 });
 
@@ -295,32 +348,7 @@ describe('createAuthHook', () => {
   let limiter: RateLimiter;
   let hook: ReturnType<typeof createAuthHook>;
   let tmpDir: string;
-  let sentStatus: number | null;
-  let sentBody: unknown;
   let token: string;
-
-  function makeReply() {
-    sentStatus = null;
-    sentBody = null;
-    return {
-      code(status: number) {
-        sentStatus = status;
-        return {
-          send(body: unknown) {
-            sentBody = body;
-          },
-        };
-      },
-    };
-  }
-
-  function makeRequest(overrides: Partial<{ headers: Record<string, string | undefined>; ip: string }> = {}) {
-    return {
-      headers: {},
-      ip: '127.0.0.1',
-      ...overrides,
-    };
-  }
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-auth-hook-'));
@@ -335,111 +363,119 @@ describe('createAuthHook', () => {
   });
 
   test('passes with valid Bearer token', async () => {
-    const reply = makeReply();
+    const { reply, status } = makeReply();
     await hook(
       makeRequest({ headers: { authorization: `Bearer ${token}` } }),
       reply,
     );
-    expect(sentStatus).toBeNull();
+    expect(status()).toBeNull();
+  });
+
+  test('attaches tokenEntry to request on success', async () => {
+    const { reply } = makeReply();
+    const request = makeRequest({ headers: { authorization: `Bearer ${token}` } });
+    await hook(request, reply);
+    expect(request.tokenEntry).toBeDefined();
+    expect(request.tokenEntry!.label).toBe('test-device');
   });
 
   test('rejects missing Authorization header', async () => {
-    const reply = makeReply();
+    const { reply, status, body } = makeReply();
     await hook(makeRequest(), reply);
-    expect(sentStatus).toBe(401);
-    expect(sentBody).toEqual({ error: 'Missing or malformed Authorization header' });
+    expect(status()).toBe(401);
+    expect(body()).toEqual({ error: 'Missing or malformed Authorization header' });
   });
 
   test('rejects non-Bearer scheme', async () => {
-    const reply = makeReply();
+    const { reply, status } = makeReply();
     await hook(
       makeRequest({ headers: { authorization: `Basic ${token}` } }),
       reply,
     );
-    expect(sentStatus).toBe(401);
+    expect(status()).toBe(401);
   });
 
   test('rejects invalid token', async () => {
-    const reply = makeReply();
+    const { reply, status, body } = makeReply();
     await hook(
       makeRequest({ headers: { authorization: 'Bearer tk_invalid' } }),
       reply,
     );
-    expect(sentStatus).toBe(401);
-    expect(sentBody).toEqual({ error: 'Invalid token' });
+    expect(status()).toBe(401);
+    expect(body()).toEqual({ error: 'Invalid token' });
   });
 
   test('returns 429 when rate limited', async () => {
     for (let i = 0; i < 5; i++) {
       limiter.record('127.0.0.1');
     }
-    const reply = makeReply();
+    const { reply, status, body } = makeReply();
     await hook(
       makeRequest({ headers: { authorization: `Bearer ${token}` } }),
       reply,
     );
-    expect(sentStatus).toBe(429);
-    expect(sentBody).toEqual({ error: 'Too many failed attempts. Try again later.' });
+    expect(status()).toBe(429);
+    expect(body()).toEqual({ error: 'Too many failed attempts. Try again later.' });
   });
 
   test('records failure on missing header', async () => {
-    const reply = makeReply();
     for (let i = 0; i < 5; i++) {
-      await hook(makeRequest(), makeReply());
+      await hook(makeRequest(), makeReply().reply);
     }
+    const { reply, status } = makeReply();
     await hook(makeRequest(), reply);
-    expect(sentStatus).toBe(429);
+    expect(status()).toBe(429);
   });
 
   test('records failure on invalid token', async () => {
     for (let i = 0; i < 5; i++) {
       await hook(
         makeRequest({ headers: { authorization: 'Bearer tk_bad' } }),
-        makeReply(),
+        makeReply().reply,
       );
     }
-    const reply = makeReply();
+    const { reply, status } = makeReply();
     await hook(
       makeRequest({ headers: { authorization: `Bearer ${token}` } }),
       reply,
     );
-    expect(sentStatus).toBe(429);
+    expect(status()).toBe(429);
   });
 
   test('resets rate limit on successful auth', async () => {
     for (let i = 0; i < 4; i++) {
       await hook(
         makeRequest({ headers: { authorization: 'Bearer tk_bad' } }),
-        makeReply(),
+        makeReply().reply,
       );
     }
     // Successful auth should reset
     await hook(
       makeRequest({ headers: { authorization: `Bearer ${token}` } }),
-      makeReply(),
+      makeReply().reply,
     );
     // Should not be rate limited now
-    const reply = makeReply();
+    const { reply, status } = makeReply();
     await hook(
       makeRequest({ headers: { authorization: 'Bearer tk_bad' } }),
       reply,
     );
-    expect(sentStatus).toBe(401); // not 429
+    expect(status()).toBe(401); // not 429
   });
 
   test('rate limits per IP independently', async () => {
     for (let i = 0; i < 5; i++) {
       await hook(
         makeRequest({ ip: '10.0.0.1', headers: { authorization: 'Bearer tk_bad' } }),
-        makeReply(),
+        makeReply().reply,
       );
     }
     // Different IP should still work
-    const reply = makeReply();
+    const { reply, status } = makeReply();
     await hook(
       makeRequest({ ip: '10.0.0.2', headers: { authorization: `Bearer ${token}` } }),
       reply,
     );
-    expect(sentStatus).toBeNull();
+    expect(status()).toBeNull();
   });
 });
