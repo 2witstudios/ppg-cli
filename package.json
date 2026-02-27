@@ -52,6 +52,7 @@
     "fastify": "^5.7.4",
     "nanoid": "^5.1.5",
     "proper-lockfile": "^4.1.2",
+    "qrcode-terminal": "^0.12.0",
     "write-file-atomic": "^7.0.0",
     "ws": "^8.19.0",
     "yaml": "^2.7.1"
@@ -59,6 +60,7 @@
   "devDependencies": {
     "@types/node": "^22.19.13",
     "@types/proper-lockfile": "^4.1.4",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.18.1",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",

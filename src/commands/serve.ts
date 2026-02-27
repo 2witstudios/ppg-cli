@@ -1,4 +1,6 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { getRepoRoot } from '../core/worktree.js';
 import { requireManifest, readManifest } from '../core/manifest.js';
 import { runServeDaemon, isServeRunning, getServePid, getServeInfo, readServeLog } from '../core/serve.js';
@@ -26,6 +28,40 @@ export interface ServeStatusOptions {
 
 const SERVE_WINDOW_NAME = 'ppg-serve';
 const VALID_HOST = /^[\w.:-]+$/;
+
+export function buildPairingUrl(params: {
+  host: string;
+  port: number;
+  fingerprint: string;
+  token: string;
+}): string {
+  const { host, port, fingerprint, token } = params;
+  const url = new URL('ppg://connect');
+  url.searchParams.set('host', host);
+  url.searchParams.set('port', String(port));
+  url.searchParams.set('ca', fingerprint);
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
+export function getLocalIp(): string {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] ?? []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+}
+
+export function verifyToken(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 export async function serveStartCommand(options: ServeStartOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
