@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { makeAgent, makeWorktree } from '../../test-fixtures.js';
 import type { Manifest } from '../../types/manifest.js';
+import type { AgentStatus } from '../../types/manifest.js';
 
 // Mock node:fs/promises
 vi.mock('node:fs/promises', () => ({
@@ -48,7 +49,7 @@ vi.mock('../tmux.js', () => ({
 }));
 
 vi.mock('../template.js', () => ({
-  renderTemplate: vi.fn((_content: string, _ctx: unknown) => 'rendered prompt'),
+  renderTemplate: vi.fn((content: string) => content),
 }));
 
 vi.mock('../../lib/id.js', () => ({
@@ -99,19 +100,19 @@ beforeEach(() => {
 });
 
 describe('performRestart', () => {
-  const oldAgent = makeAgent({ id: 'ag-oldagent', status: 'running' });
-  const wt = makeWorktree({
-    id: 'wt-abc123',
-    name: 'feature-auth',
-    agents: { 'ag-oldagent': oldAgent },
-  });
-
-  function setupDefaults() {
+  function setupDefaults(agentOverrides?: { status?: AgentStatus }) {
+    const status = agentOverrides?.status ?? 'running';
+    const agent = makeAgent({ id: 'ag-oldagent', status });
+    const wt = makeWorktree({
+      id: 'wt-abc123',
+      name: 'feature-auth',
+      agents: { 'ag-oldagent': agent },
+    });
     const manifest = makeManifest({ worktrees: { [wt.id]: wt } });
     mockedRequireManifest.mockResolvedValue(manifest);
-    mockedFindAgent.mockReturnValue({ worktree: wt, agent: oldAgent });
+    mockedFindAgent.mockReturnValue({ worktree: wt, agent });
     mockedCreateWindow.mockResolvedValue('ppg:2');
-    mockedReadFile.mockResolvedValue('original prompt' as never);
+    mockedReadFile.mockResolvedValue('original prompt' as unknown as never);
     mockedSpawnAgent.mockResolvedValue(makeAgent({
       id: 'ag-newagent',
       tmuxTarget: 'ppg:2',
@@ -121,41 +122,59 @@ describe('performRestart', () => {
       const m = JSON.parse(JSON.stringify(manifest)) as Manifest;
       return updater(m);
     });
+    return { agent, wt, manifest };
   }
 
   test('given running agent, should kill old agent before restarting', async () => {
-    setupDefaults();
+    const { agent } = setupDefaults({ status: 'running' });
 
     await performRestart({ agentRef: 'ag-oldagent' });
 
-    expect(mockedKillAgent).toHaveBeenCalledWith(oldAgent);
+    expect(mockedKillAgent).toHaveBeenCalledWith(agent);
+  });
+
+  test('given running agent, should return killedOldAgent true', async () => {
+    setupDefaults({ status: 'running' });
+
+    const result = await performRestart({ agentRef: 'ag-oldagent' });
+
+    expect(result.killedOldAgent).toBe(true);
   });
 
   test('given idle agent, should not kill old agent', async () => {
-    const idleAgent = makeAgent({ id: 'ag-oldagent', status: 'idle' });
-    const idleWt = makeWorktree({
-      id: 'wt-abc123',
-      name: 'feature-auth',
-      agents: { 'ag-oldagent': idleAgent },
-    });
-    const manifest = makeManifest({ worktrees: { [idleWt.id]: idleWt } });
-    mockedRequireManifest.mockResolvedValue(manifest);
-    mockedFindAgent.mockReturnValue({ worktree: idleWt, agent: idleAgent });
-    mockedCreateWindow.mockResolvedValue('ppg:2');
-    mockedReadFile.mockResolvedValue('original prompt' as never);
-    mockedSpawnAgent.mockResolvedValue(makeAgent({ id: 'ag-newagent', tmuxTarget: 'ppg:2' }));
-    mockedUpdateManifest.mockImplementation(async (_root, updater) => {
-      const m = JSON.parse(JSON.stringify(manifest)) as Manifest;
-      return updater(m);
-    });
+    setupDefaults({ status: 'idle' });
 
     await performRestart({ agentRef: 'ag-oldagent' });
 
     expect(mockedKillAgent).not.toHaveBeenCalled();
   });
 
+  test('given exited agent, should not kill old agent', async () => {
+    setupDefaults({ status: 'exited' });
+
+    await performRestart({ agentRef: 'ag-oldagent' });
+
+    expect(mockedKillAgent).not.toHaveBeenCalled();
+  });
+
+  test('given gone agent, should not kill old agent', async () => {
+    setupDefaults({ status: 'gone' });
+
+    await performRestart({ agentRef: 'ag-oldagent' });
+
+    expect(mockedKillAgent).not.toHaveBeenCalled();
+  });
+
+  test('given non-running agent, should return killedOldAgent false', async () => {
+    setupDefaults({ status: 'idle' });
+
+    const result = await performRestart({ agentRef: 'ag-oldagent' });
+
+    expect(result.killedOldAgent).toBe(false);
+  });
+
   test('should create tmux window in same worktree', async () => {
-    setupDefaults();
+    const { wt } = setupDefaults();
 
     await performRestart({ agentRef: 'ag-oldagent' });
 
@@ -163,8 +182,29 @@ describe('performRestart', () => {
     expect(mockedCreateWindow).toHaveBeenCalledWith('ppg', 'feature-auth-restart', wt.path);
   });
 
+  test('should spawn agent with correct options', async () => {
+    const { wt } = setupDefaults();
+
+    await performRestart({ agentRef: 'ag-oldagent' });
+
+    expect(mockedSpawnAgent).toHaveBeenCalledWith({
+      agentId: 'ag-newagent',
+      agentConfig: {
+        name: 'claude',
+        command: 'claude --dangerously-skip-permissions',
+        interactive: true,
+      },
+      prompt: 'original prompt',
+      worktreePath: wt.path,
+      tmuxTarget: 'ppg:2',
+      projectRoot: PROJECT_ROOT,
+      branch: wt.branch,
+      sessionId: 'sess-new123',
+    });
+  });
+
   test('should update manifest with new agent and mark old as gone', async () => {
-    setupDefaults();
+    const { wt } = setupDefaults();
 
     await performRestart({ agentRef: 'ag-oldagent' });
 
@@ -210,7 +250,7 @@ describe('performRestart', () => {
     expect(mockedReadFile).not.toHaveBeenCalled();
   });
 
-  test('given no prompt and missing prompt file, should throw PROMPT_NOT_FOUND', async () => {
+  test('given no prompt and missing prompt file, should throw PromptNotFoundError', async () => {
     setupDefaults();
     mockedReadFile.mockRejectedValue(new Error('ENOENT'));
 
@@ -223,5 +263,15 @@ describe('performRestart', () => {
     mockedFindAgent.mockReturnValue(undefined);
 
     await expect(performRestart({ agentRef: 'ag-nonexist' })).rejects.toThrow('Agent not found');
+  });
+
+  test('given explicit projectRoot, should use it instead of getRepoRoot', async () => {
+    setupDefaults();
+
+    await performRestart({ agentRef: 'ag-oldagent', projectRoot: PROJECT_ROOT });
+
+    // getRepoRoot is mocked — if projectRoot is passed, the operation still works
+    // (verifiable because requireManifest receives the correct root)
+    expect(mockedUpdateManifest).toHaveBeenCalledWith(PROJECT_ROOT, expect.any(Function));
   });
 });

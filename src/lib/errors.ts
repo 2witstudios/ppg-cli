@@ -86,6 +86,16 @@ export class GhNotFoundError extends PpgError {
   }
 }
 
+export class PromptNotFoundError extends PpgError {
+  constructor(agentId: string) {
+    super(
+      `Could not read original prompt for agent ${agentId}. Use --prompt to provide one.`,
+      'PROMPT_NOT_FOUND',
+    );
+    this.name = 'PromptNotFoundError';
+  }
+}
+
 export class UnmergedWorkError extends PpgError {
   constructor(names: string[]) {
     const list = names.map((n) => `  ${n}`).join('\n');

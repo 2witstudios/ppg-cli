@@ -6,17 +6,19 @@ import { getRepoRoot } from '../worktree.js';
 import * as tmux from '../tmux.js';
 import { agentId as genAgentId, sessionId as genSessionId } from '../../lib/id.js';
 import { agentPromptFile } from '../../lib/paths.js';
-import { PpgError, AgentNotFoundError } from '../../lib/errors.js';
+import { AgentNotFoundError, PromptNotFoundError } from '../../lib/errors.js';
 import { renderTemplate, type TemplateContext } from '../template.js';
 
 export interface RestartParams {
   agentRef: string;
   prompt?: string;
   agentType?: string;
+  projectRoot?: string;
 }
 
 export interface RestartResult {
   oldAgentId: string;
+  killedOldAgent: boolean;
   newAgent: {
     id: string;
     tmuxTarget: string;
@@ -32,7 +34,7 @@ export interface RestartResult {
 export async function performRestart(params: RestartParams): Promise<RestartResult> {
   const { agentRef, prompt: promptOverride, agentType } = params;
 
-  const projectRoot = await getRepoRoot();
+  const projectRoot = params.projectRoot ?? await getRepoRoot();
   const config = await loadConfig(projectRoot);
   const manifest = await requireManifest(projectRoot);
 
@@ -42,8 +44,10 @@ export async function performRestart(params: RestartParams): Promise<RestartResu
   const { worktree: wt, agent: oldAgent } = found;
 
   // Kill old agent if still running
+  let killedOldAgent = false;
   if (oldAgent.status === 'running') {
     await killAgent(oldAgent);
+    killedOldAgent = true;
   }
 
   // Read original prompt from prompt file, or use override
@@ -55,10 +59,7 @@ export async function performRestart(params: RestartParams): Promise<RestartResu
     try {
       promptText = await fs.readFile(pFile, 'utf-8');
     } catch {
-      throw new PpgError(
-        `Could not read original prompt for agent ${oldAgent.id}. Use --prompt to provide one.`,
-        'PROMPT_NOT_FOUND',
-      );
+      throw new PromptNotFoundError(oldAgent.id);
     }
   }
 
@@ -110,6 +111,7 @@ export async function performRestart(params: RestartParams): Promise<RestartResu
 
   return {
     oldAgentId: oldAgent.id,
+    killedOldAgent,
     newAgent: {
       id: newAgentId,
       tmuxTarget: windowTarget,

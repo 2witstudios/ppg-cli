@@ -28,6 +28,9 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
       newAgent: result.newAgent,
     }, true);
   } else {
+    if (result.killedOldAgent) {
+      info(`Killed existing agent ${result.oldAgentId}`);
+    }
     success(`Restarted agent ${result.oldAgentId} → ${result.newAgent.id} in worktree ${result.newAgent.worktreeName}`);
     info(`  New agent ${result.newAgent.id} → ${result.newAgent.tmuxTarget}`);
   }
