@@ -1,15 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { loadConfig, resolveAgentConfig } from '../../core/config.js';
-import { readManifest, updateManifest } from '../../core/manifest.js';
-import { getRepoRoot, getCurrentBranch, createWorktree } from '../../core/worktree.js';
-import { setupWorktreeEnv } from '../../core/env.js';
-import { loadTemplate, renderTemplate, type TemplateContext } from '../../core/template.js';
-import { spawnAgent } from '../../core/agent.js';
-import * as tmux from '../../core/tmux.js';
-import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../../lib/id.js';
+import { spawnNewWorktree, resolvePromptText } from '../../core/spawn.js';
 import { PpgError } from '../../lib/errors.js';
-import { normalizeName } from '../../lib/name.js';
-import type { WorktreeEntry, AgentEntry } from '../../types/manifest.js';
 
 export interface SpawnRequestBody {
   name: string;
@@ -50,23 +41,36 @@ const spawnBodySchema = {
   additionalProperties: false,
 };
 
-async function resolvePrompt(
-  body: SpawnRequestBody,
-  projectRoot: string,
-): Promise<string> {
-  if (body.prompt) return body.prompt;
+// Shell metacharacters that could be injected via tmux send-keys
+const SHELL_META_RE = /[`$\\!;|&()<>{}[\]"'\n\r]/;
 
-  if (body.template) {
-    return loadTemplate(projectRoot, body.template);
+function validateVars(vars: Record<string, string>): void {
+  for (const [key, value] of Object.entries(vars)) {
+    if (SHELL_META_RE.test(key)) {
+      throw new PpgError(
+        `Var key "${key}" contains shell metacharacters`,
+        'INVALID_ARGS',
+      );
+    }
+    if (SHELL_META_RE.test(value)) {
+      throw new PpgError(
+        `Var value for "${key}" contains shell metacharacters`,
+        'INVALID_ARGS',
+      );
+    }
   }
-
-  throw new PpgError(
-    'Either "prompt" or "template" is required',
-    'INVALID_ARGS',
-  );
 }
 
-export default async function spawnRoute(app: FastifyInstance): Promise<void> {
+export interface SpawnRouteOptions {
+  projectRoot: string;
+}
+
+export default async function spawnRoute(
+  app: FastifyInstance,
+  opts: SpawnRouteOptions,
+): Promise<void> {
+  const { projectRoot } = opts;
+
   app.post(
     '/api/spawn',
     { schema: { body: spawnBodySchema } },
@@ -75,108 +79,32 @@ export default async function spawnRoute(app: FastifyInstance): Promise<void> {
       reply: FastifyReply,
     ) => {
       const body = request.body;
-      const projectRoot = await getRepoRoot();
-      const config = await loadConfig(projectRoot);
-      const agentConfig = resolveAgentConfig(config, body.agent);
-      const count = body.count ?? 1;
-      const userVars = body.vars ?? {};
 
-      const promptText = await resolvePrompt(body, projectRoot);
-
-      const baseBranch = body.base ?? await getCurrentBranch(projectRoot);
-      const wtId = genWorktreeId();
-      const name = normalizeName(body.name, wtId);
-      const branchName = `ppg/${name}`;
-
-      // Create git worktree
-      const wtPath = await createWorktree(projectRoot, wtId, {
-        branch: branchName,
-        base: baseBranch,
-      });
-
-      // Setup env (copy .env, symlink node_modules)
-      await setupWorktreeEnv(projectRoot, wtPath, config);
-
-      // Ensure tmux session
-      const manifest = await readManifest(projectRoot);
-      const sessionName = manifest.sessionName;
-      await tmux.ensureSession(sessionName);
-
-      // Create tmux window
-      const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
-
-      // Register worktree in manifest
-      const worktreeEntry: WorktreeEntry = {
-        id: wtId,
-        name,
-        path: wtPath,
-        branch: branchName,
-        baseBranch,
-        status: 'active',
-        tmuxWindow: windowTarget,
-        agents: {},
-        createdAt: new Date().toISOString(),
-      };
-
-      await updateManifest(projectRoot, (m) => {
-        m.worktrees[wtId] = worktreeEntry;
-        return m;
-      });
-
-      // Spawn agents
-      const agents: AgentEntry[] = [];
-      for (let i = 0; i < count; i++) {
-        const aId = genAgentId();
-
-        // For count > 1, create additional windows
-        let target = windowTarget;
-        if (i > 0) {
-          target = await tmux.createWindow(
-            sessionName,
-            `${name}-${i}`,
-            wtPath,
-          );
-        }
-
-        const ctx: TemplateContext = {
-          WORKTREE_PATH: wtPath,
-          BRANCH: branchName,
-          AGENT_ID: aId,
-          PROJECT_ROOT: projectRoot,
-          TASK_NAME: name,
-          PROMPT: promptText,
-          ...userVars,
-        };
-
-        const agentEntry = await spawnAgent({
-          agentId: aId,
-          agentConfig,
-          prompt: renderTemplate(promptText, ctx),
-          worktreePath: wtPath,
-          tmuxTarget: target,
-          projectRoot,
-          branch: branchName,
-          sessionId: genSessionId(),
-        });
-
-        agents.push(agentEntry);
-
-        await updateManifest(projectRoot, (m) => {
-          if (m.worktrees[wtId]) {
-            m.worktrees[wtId].agents[agentEntry.id] = agentEntry;
-          }
-          return m;
-        });
+      // Validate vars for shell safety before any side effects
+      if (body.vars) {
+        validateVars(body.vars);
       }
 
+      const promptText = await resolvePromptText(body, projectRoot);
+
+      const result = await spawnNewWorktree({
+        projectRoot,
+        name: body.name,
+        promptText,
+        userVars: body.vars,
+        agentName: body.agent,
+        baseBranch: body.base,
+        count: body.count,
+      });
+
       const response: SpawnResponseBody = {
-        worktreeId: wtId,
-        name,
-        branch: branchName,
-        agents: agents.map((a) => ({
+        worktreeId: result.worktreeId,
+        name: result.name,
+        branch: result.branch,
+        agents: result.agents.map((a) => ({
           id: a.id,
           tmuxTarget: a.tmuxTarget,
-          ...(a.sessionId ? { sessionId: a.sessionId } : {}),
+          sessionId: a.sessionId,
         })),
       };
 

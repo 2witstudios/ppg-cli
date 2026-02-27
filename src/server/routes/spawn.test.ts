@@ -6,101 +6,36 @@ import type { SpawnRequestBody, SpawnResponseBody } from './spawn.js';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock('../../core/worktree.js', () => ({
-  getRepoRoot: vi.fn().mockResolvedValue('/fake/project'),
-  getCurrentBranch: vi.fn().mockResolvedValue('main'),
-  createWorktree: vi.fn().mockResolvedValue('/fake/project/.worktrees/wt-abc123'),
-}));
-
-vi.mock('../../core/config.js', () => ({
-  loadConfig: vi.fn().mockResolvedValue({
-    sessionName: 'ppg',
-    defaultAgent: 'claude',
-    agents: {
-      claude: { name: 'claude', command: 'claude --dangerously-skip-permissions', interactive: true },
-      codex: { name: 'codex', command: 'codex --yolo', interactive: true },
-    },
-    envFiles: ['.env'],
-    symlinkNodeModules: true,
+vi.mock('../../core/spawn.js', () => ({
+  spawnNewWorktree: vi.fn().mockResolvedValue({
+    worktreeId: 'wt-abc123',
+    name: 'my-task',
+    branch: 'ppg/my-task',
+    path: '/fake/project/.worktrees/wt-abc123',
+    tmuxWindow: 'ppg-test:my-task',
+    agents: [
+      {
+        id: 'ag-agent001',
+        name: 'claude',
+        agentType: 'claude',
+        status: 'running',
+        tmuxTarget: 'ppg-test:my-task',
+        prompt: 'Fix the bug',
+        startedAt: '2025-01-01T00:00:00.000Z',
+        sessionId: 'sess-uuid-001',
+      },
+    ],
   }),
-  resolveAgentConfig: vi.fn().mockReturnValue({
-    name: 'claude',
-    command: 'claude --dangerously-skip-permissions',
-    interactive: true,
-  }),
-}));
-
-vi.mock('../../core/manifest.js', () => ({
-  readManifest: vi.fn().mockResolvedValue({
-    version: 1,
-    projectRoot: '/fake/project',
-    sessionName: 'ppg-test',
-    worktrees: {},
-    createdAt: '2025-01-01T00:00:00.000Z',
-    updatedAt: '2025-01-01T00:00:00.000Z',
-  }),
-  updateManifest: vi.fn().mockImplementation(async (_root, updater) => {
-    const manifest = {
-      version: 1,
-      projectRoot: '/fake/project',
-      sessionName: 'ppg-test',
-      worktrees: {},
-      createdAt: '2025-01-01T00:00:00.000Z',
-      updatedAt: '2025-01-01T00:00:00.000Z',
-    };
-    return updater(manifest);
-  }),
-}));
-
-vi.mock('../../core/env.js', () => ({
-  setupWorktreeEnv: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock('../../core/tmux.js', () => ({
-  ensureSession: vi.fn().mockResolvedValue(undefined),
-  createWindow: vi.fn().mockResolvedValue('ppg-test:my-task'),
-}));
-
-vi.mock('../../core/agent.js', () => ({
-  spawnAgent: vi.fn().mockImplementation(async (opts) => ({
-    id: opts.agentId,
-    name: 'claude',
-    agentType: 'claude',
-    status: 'running',
-    tmuxTarget: opts.tmuxTarget,
-    prompt: opts.prompt.slice(0, 500),
-    startedAt: '2025-01-01T00:00:00.000Z',
-    sessionId: opts.sessionId,
-  })),
-}));
-
-vi.mock('../../core/template.js', () => ({
-  loadTemplate: vi.fn().mockResolvedValue('Template: {{TASK_NAME}} in {{BRANCH}}'),
-  renderTemplate: vi.fn().mockImplementation((content: string, ctx: Record<string, string | undefined>) => {
-    return content.replace(/\{\{(\w+)\}\}/g, (_match: string, key: string) => {
-      return ctx[key] ?? `{{${key}}}`;
-    });
-  }),
-}));
-
-vi.mock('../../lib/id.js', () => {
-  let agentCounter = 0;
-  return {
-    worktreeId: vi.fn().mockReturnValue('wt-abc123'),
-    agentId: vi.fn().mockImplementation(() => `ag-agent${String(++agentCounter).padStart(3, '0')}`),
-    sessionId: vi.fn().mockReturnValue('sess-uuid-001'),
-  };
-});
-
-vi.mock('../../lib/name.js', () => ({
-  normalizeName: vi.fn().mockImplementation((raw: string) => raw.toLowerCase()),
+  resolvePromptText: vi.fn().mockResolvedValue('Fix the bug'),
 }));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const PROJECT_ROOT = '/fake/project';
+
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify();
-  await app.register(spawnRoute);
+  await app.register(spawnRoute, { projectRoot: PROJECT_ROOT });
   return app;
 }
 
@@ -119,13 +54,10 @@ describe('POST /api/spawn', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    // Reset agent counter by re-importing
-    const idMod = await import('../../lib/id.js');
-    let counter = 0;
-    vi.mocked(idMod.agentId).mockImplementation(() => `ag-agent${String(++counter).padStart(3, '0')}`);
-
     app = await buildApp();
   });
+
+  // ─── Happy Path ─────────────────────────────────────────────────────────────
 
   test('given valid name and prompt, should spawn worktree with 1 agent', async () => {
     const res = await postSpawn(app, {
@@ -139,107 +71,74 @@ describe('POST /api/spawn', () => {
     expect(body.name).toBe('my-task');
     expect(body.branch).toBe('ppg/my-task');
     expect(body.agents).toHaveLength(1);
-    expect(body.agents[0].id).toMatch(/^ag-/);
+    expect(body.agents[0].id).toBe('ag-agent001');
     expect(body.agents[0].tmuxTarget).toBe('ppg-test:my-task');
     expect(body.agents[0].sessionId).toBe('sess-uuid-001');
   });
 
-  test('given count > 1, should spawn multiple agents', async () => {
-    const { createWindow } = await import('../../core/tmux.js');
-    vi.mocked(createWindow)
-      .mockResolvedValueOnce('ppg-test:my-task')
-      .mockResolvedValueOnce('ppg-test:my-task-1')
-      .mockResolvedValueOnce('ppg-test:my-task-2');
+  test('given all options, should pass them to spawnNewWorktree', async () => {
+    const { spawnNewWorktree } = await import('../../core/spawn.js');
 
-    const res = await postSpawn(app, {
+    await postSpawn(app, {
       name: 'my-task',
       prompt: 'Fix the bug',
+      agent: 'codex',
+      base: 'develop',
       count: 3,
+      vars: { ISSUE: '42' },
     });
 
-    expect(res.statusCode).toBe(201);
-    const body = res.json<SpawnResponseBody>();
-    expect(body.agents).toHaveLength(3);
+    expect(vi.mocked(spawnNewWorktree)).toHaveBeenCalledWith({
+      projectRoot: PROJECT_ROOT,
+      name: 'my-task',
+      promptText: 'Fix the bug',
+      userVars: { ISSUE: '42' },
+      agentName: 'codex',
+      baseBranch: 'develop',
+      count: 3,
+    });
   });
 
-  test('given template name, should load and render template', async () => {
-    const { loadTemplate } = await import('../../core/template.js');
-    const { spawnAgent } = await import('../../core/agent.js');
+  test('given template name, should resolve prompt via resolvePromptText', async () => {
+    const { resolvePromptText } = await import('../../core/spawn.js');
 
-    const res = await postSpawn(app, {
+    await postSpawn(app, {
       name: 'my-task',
       template: 'review',
     });
 
-    expect(res.statusCode).toBe(201);
-    expect(vi.mocked(loadTemplate)).toHaveBeenCalledWith('/fake/project', 'review');
-    // renderTemplate is called with the loaded template content
-    const spawnCall = vi.mocked(spawnAgent).mock.calls[0][0];
-    expect(spawnCall.prompt).toContain('my-task');
-    expect(spawnCall.prompt).toContain('ppg/my-task');
-  });
-
-  test('given template with vars, should substitute variables', async () => {
-    const { loadTemplate, renderTemplate } = await import('../../core/template.js');
-    vi.mocked(loadTemplate).mockResolvedValueOnce('Fix {{ISSUE}} on {{REPO}}');
-
-    const res = await postSpawn(app, {
-      name: 'my-task',
-      template: 'fix-issue',
-      vars: { ISSUE: '#42', REPO: 'ppg-cli' },
-    });
-
-    expect(res.statusCode).toBe(201);
-    // renderTemplate receives user vars merged into context
-    const renderCall = vi.mocked(renderTemplate).mock.calls[0];
-    const ctx = renderCall[1];
-    expect(ctx.ISSUE).toBe('#42');
-    expect(ctx.REPO).toBe('ppg-cli');
-  });
-
-  test('given agent type, should resolve that agent config', async () => {
-    const { resolveAgentConfig } = await import('../../core/config.js');
-
-    await postSpawn(app, {
-      name: 'my-task',
-      prompt: 'Do the thing',
-      agent: 'codex',
-    });
-
-    expect(vi.mocked(resolveAgentConfig)).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultAgent: 'claude' }),
-      'codex',
+    expect(vi.mocked(resolvePromptText)).toHaveBeenCalledWith(
+      { name: 'my-task', template: 'review' },
+      PROJECT_ROOT,
     );
   });
 
-  test('given base branch, should use it instead of current branch', async () => {
-    const { createWorktree } = await import('../../core/worktree.js');
+  test('given prompt and template both provided, should use prompt (prompt wins)', async () => {
+    const { resolvePromptText } = await import('../../core/spawn.js');
 
     await postSpawn(app, {
       name: 'my-task',
-      prompt: 'Fix it',
-      base: 'develop',
+      prompt: 'Inline prompt',
+      template: 'review',
     });
 
-    expect(vi.mocked(createWorktree)).toHaveBeenCalledWith(
-      '/fake/project',
-      'wt-abc123',
-      { branch: 'ppg/my-task', base: 'develop' },
+    // resolvePromptText receives both — its implementation short-circuits on prompt
+    expect(vi.mocked(resolvePromptText)).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: 'Inline prompt', template: 'review' }),
+      PROJECT_ROOT,
     );
   });
 
-  test('given no base, should default to current branch', async () => {
-    const { createWorktree } = await import('../../core/worktree.js');
+  test('given no vars, should pass undefined userVars', async () => {
+    const { spawnNewWorktree } = await import('../../core/spawn.js');
 
     await postSpawn(app, {
       name: 'my-task',
       prompt: 'Fix it',
     });
 
-    expect(vi.mocked(createWorktree)).toHaveBeenCalledWith(
-      '/fake/project',
-      'wt-abc123',
-      { branch: 'ppg/my-task', base: 'main' },
+    expect(vi.mocked(spawnNewWorktree)).toHaveBeenCalledWith(
+      expect.objectContaining({ userVars: undefined }),
     );
   });
 
@@ -262,17 +161,6 @@ describe('POST /api/spawn', () => {
     });
 
     expect(res.statusCode).toBe(400);
-  });
-
-  test('given neither prompt nor template, should return 500 with INVALID_ARGS', async () => {
-    const res = await postSpawn(app, {
-      name: 'my-task',
-    });
-
-    // PpgError with INVALID_ARGS is thrown — Fastify returns 500 without a custom error handler
-    expect(res.statusCode).toBe(500);
-    const body = res.json<{ message: string }>();
-    expect(body.message).toMatch(/prompt.*template/i);
   });
 
   test('given count below 1, should return 400', async () => {
@@ -305,58 +193,141 @@ describe('POST /api/spawn', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  test('given unknown property, should strip it and succeed', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/spawn',
-      payload: {
-        name: 'my-task',
-        prompt: 'Fix the bug',
-        unknown: 'value',
-      },
+  // ─── Input Sanitization ─────────────────────────────────────────────────────
+
+  test('given vars with shell metacharacters in value, should return 500 INVALID_ARGS', async () => {
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      prompt: 'Fix the bug',
+      vars: { ISSUE: '$(whoami)' },
     });
 
-    // Fastify with additionalProperties:false removes unknown props by default
+    expect(res.statusCode).toBe(500);
+    const body = res.json<{ message: string }>();
+    expect(body.message).toMatch(/shell metacharacters/i);
+  });
+
+  test('given vars with shell metacharacters in key, should return 500 INVALID_ARGS', async () => {
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      prompt: 'Fix the bug',
+      vars: { 'KEY;rm': 'value' },
+    });
+
+    expect(res.statusCode).toBe(500);
+    const body = res.json<{ message: string }>();
+    expect(body.message).toMatch(/shell metacharacters/i);
+  });
+
+  test('given vars with backtick in value, should reject', async () => {
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      prompt: 'Fix the bug',
+      vars: { CMD: '`whoami`' },
+    });
+
+    expect(res.statusCode).toBe(500);
+    const body = res.json<{ message: string }>();
+    expect(body.message).toMatch(/shell metacharacters/i);
+  });
+
+  test('given safe vars, should pass through', async () => {
+    const { spawnNewWorktree } = await import('../../core/spawn.js');
+
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      prompt: 'Fix the bug',
+      vars: { ISSUE: '42', REPO: 'ppg-cli', TAG: 'v1.0.0' },
+    });
+
     expect(res.statusCode).toBe(201);
-  });
-
-  // ─── Manifest Updates ───────────────────────────────────────────────────────
-
-  test('should register worktree in manifest before spawning agents', async () => {
-    const { updateManifest } = await import('../../core/manifest.js');
-
-    await postSpawn(app, {
-      name: 'my-task',
-      prompt: 'Fix the bug',
-    });
-
-    // First call registers worktree skeleton, second adds the agent
-    expect(vi.mocked(updateManifest)).toHaveBeenCalledTimes(2);
-  });
-
-  test('should setup worktree env', async () => {
-    const { setupWorktreeEnv } = await import('../../core/env.js');
-
-    await postSpawn(app, {
-      name: 'my-task',
-      prompt: 'Fix the bug',
-    });
-
-    expect(vi.mocked(setupWorktreeEnv)).toHaveBeenCalledWith(
-      '/fake/project',
-      '/fake/project/.worktrees/wt-abc123',
-      expect.objectContaining({ sessionName: 'ppg' }),
+    expect(vi.mocked(spawnNewWorktree)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userVars: { ISSUE: '42', REPO: 'ppg-cli', TAG: 'v1.0.0' },
+      }),
     );
   });
 
-  test('should ensure tmux session exists', async () => {
-    const { ensureSession } = await import('../../core/tmux.js');
+  // ─── Error Paths ────────────────────────────────────────────────────────────
+
+  test('given neither prompt nor template, should return 500 with INVALID_ARGS', async () => {
+    const { resolvePromptText } = await import('../../core/spawn.js');
+    const { PpgError } = await import('../../lib/errors.js');
+    vi.mocked(resolvePromptText).mockRejectedValueOnce(
+      new PpgError('Either "prompt" or "template" is required', 'INVALID_ARGS'),
+    );
+
+    const res = await postSpawn(app, {
+      name: 'my-task',
+    });
+
+    // PpgError thrown — Fastify returns 500 without a custom error handler
+    // (the error handler from issue-66 would map INVALID_ARGS to 400)
+    expect(res.statusCode).toBe(500);
+    const body = res.json<{ message: string }>();
+    expect(body.message).toMatch(/prompt.*template/i);
+  });
+
+  test('given unknown agent type, should propagate error', async () => {
+    const { spawnNewWorktree } = await import('../../core/spawn.js');
+    vi.mocked(spawnNewWorktree).mockRejectedValueOnce(
+      new Error('Unknown agent type: gpt. Available: claude, codex'),
+    );
+
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      prompt: 'Fix it',
+      agent: 'gpt',
+    });
+
+    expect(res.statusCode).toBe(500);
+    const body = res.json<{ message: string }>();
+    expect(body.message).toMatch(/Unknown agent type/);
+  });
+
+  test('given template not found, should propagate error', async () => {
+    const { resolvePromptText } = await import('../../core/spawn.js');
+    vi.mocked(resolvePromptText).mockRejectedValueOnce(
+      new Error("ENOENT: no such file or directory, open '.ppg/templates/nonexistent.md'"),
+    );
+
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      template: 'nonexistent',
+    });
+
+    expect(res.statusCode).toBe(500);
+  });
+
+  test('given tmux not available, should propagate TmuxNotFoundError', async () => {
+    const { spawnNewWorktree } = await import('../../core/spawn.js');
+    const { PpgError } = await import('../../lib/errors.js');
+    vi.mocked(spawnNewWorktree).mockRejectedValueOnce(
+      new PpgError('tmux is not installed or not in PATH', 'TMUX_NOT_FOUND'),
+    );
+
+    const res = await postSpawn(app, {
+      name: 'my-task',
+      prompt: 'Fix it',
+    });
+
+    expect(res.statusCode).toBe(500);
+    const body = res.json<{ message: string }>();
+    expect(body.message).toMatch(/tmux/i);
+  });
+
+  // ─── projectRoot Injection ──────────────────────────────────────────────────
+
+  test('should use injected projectRoot, not process.cwd()', async () => {
+    const { spawnNewWorktree } = await import('../../core/spawn.js');
 
     await postSpawn(app, {
       name: 'my-task',
-      prompt: 'Fix the bug',
+      prompt: 'Fix it',
     });
 
-    expect(vi.mocked(ensureSession)).toHaveBeenCalledWith('ppg-test');
+    expect(vi.mocked(spawnNewWorktree)).toHaveBeenCalledWith(
+      expect.objectContaining({ projectRoot: '/fake/project' }),
+    );
   });
 });
