@@ -45,16 +45,18 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "commander": "^14.0.0",
     "cron-parser": "^5.5.0",
     "execa": "^9.5.2",
+    "fastify": "^5.7.4",
     "nanoid": "^5.1.5",
     "proper-lockfile": "^4.1.2",
     "write-file-atomic": "^7.0.0",
     "yaml": "^2.7.1"
   },
   "devDependencies": {
-    "@types/node": "^22.13.4",
+    "@types/node": "^22.19.13",
     "@types/proper-lockfile": "^4.1.4",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",
