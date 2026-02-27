@@ -36,10 +36,12 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
     return;
   }
 
+  const cleanupEnabled = options.cleanup !== false;
+
   // Build self-protection context for cleanup
-  const selfPaneId = getCurrentPaneId();
+  const selfPaneId = cleanupEnabled ? getCurrentPaneId() : null;
   let paneMap;
-  if (selfPaneId) {
+  if (cleanupEnabled && selfPaneId) {
     paneMap = await listSessionPanes(manifest.sessionName);
   }
 
@@ -47,9 +49,9 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
   const result = await mergeWorktree(projectRoot, wt, {
     strategy: options.strategy,
-    cleanup: options.cleanup !== false,
+    cleanup: cleanupEnabled,
     force: options.force,
-    cleanupOptions: { selfPaneId, paneMap },
+    cleanupOptions: cleanupEnabled ? { selfPaneId, paneMap } : undefined,
   });
 
   success(`Merged ${wt.branch} into ${wt.baseBranch}`);
