@@ -37,7 +37,7 @@ function makeReply() {
   };
 }
 
-function makeRequest(overrides: Partial<{ headers: Record<string, string | undefined>; ip: string }> = {}): AuthenticatedRequest {
+function makeRequest(overrides: Partial<{ headers: Record<string, string | string[] | undefined>; ip: string }> = {}): AuthenticatedRequest {
   return {
     headers: {},
     ip: '127.0.0.1',
@@ -164,6 +164,18 @@ describe('createRateLimiter', () => {
     expect(limiter.check('stale-0')).toBe(true);
     expect(limiter.check('fresh')).toBe(true);
   });
+
+  test('evicts oldest entries when max size is exceeded without stale IPs', () => {
+    for (let i = 0; i <= 10_000; i++) {
+      const ip = `ip-${i}`;
+      for (let j = 0; j < 5; j++) limiter.record(ip);
+    }
+
+    // Oldest entry should be evicted once capacity is exceeded.
+    expect(limiter.check('ip-0')).toBe(true);
+    expect(limiter.check('ip-10')).toBe(false);
+    expect(limiter.check('ip-10000')).toBe(false);
+  });
 });
 
 // --- Auth Store ---
@@ -249,6 +261,16 @@ describe('createAuthStore', () => {
       expect(after[0].lastUsedAt).not.toBeNull();
     });
 
+    test('returns defensive copy of token entry', async () => {
+      const token = await store.addToken('iphone');
+      const entry = await store.validateToken(token);
+      expect(entry).not.toBeNull();
+      entry!.label = 'tampered';
+
+      const tokens = await store.listTokens();
+      expect(tokens[0].label).toBe('iphone');
+    });
+
     test('uses timing-safe comparison', async () => {
       const spy = vi.spyOn(crypto, 'timingSafeEqual');
       const token = await store.addToken('iphone');
@@ -315,6 +337,15 @@ describe('createAuthStore', () => {
       const tokens = await store.listTokens();
       expect(tokens.map((t) => t.label)).toEqual(['a', 'b']);
     });
+
+    test('returns defensive copies', async () => {
+      await store.addToken('a');
+      const tokens = await store.listTokens();
+      tokens[0].label = 'tampered';
+
+      const fresh = await store.listTokens();
+      expect(fresh[0].label).toBe('a');
+    });
   });
 
   describe('persistence', () => {
@@ -335,6 +366,16 @@ describe('createAuthStore', () => {
     test('throws AuthCorruptError on corrupt auth.json', async () => {
       await store.addToken('iphone');
       await fs.writeFile(authPath(tmpDir), '{{{invalid json');
+      const store2 = await createAuthStore(tmpDir);
+      await expect(store2.listTokens()).rejects.toThrow('Auth data is corrupt');
+    });
+
+    test('throws AuthCorruptError on invalid auth.json structure', async () => {
+      await fs.mkdir(path.dirname(authPath(tmpDir)), { recursive: true });
+      await fs.writeFile(
+        authPath(tmpDir),
+        JSON.stringify({ tokens: [{ label: 'incomplete' }] }),
+      );
       const store2 = await createAuthStore(tmpDir);
       await expect(store2.listTokens()).rejects.toThrow('Auth data is corrupt');
     });
@@ -477,5 +518,27 @@ describe('createAuthHook', () => {
       reply,
     );
     expect(status()).toBeNull();
+  });
+
+  test('returns 503 when token validation throws', async () => {
+    const brokenStore: AuthStore = {
+      addToken: async () => 'tk_unused',
+      validateToken: async () => {
+        throw new Error('disk error');
+      },
+      revokeToken: async () => false,
+      listTokens: async () => [],
+    };
+    const brokenHook = createAuthHook({
+      store: brokenStore,
+      rateLimiter: createRateLimiter(),
+    });
+    const { reply, status, body } = makeReply();
+    await brokenHook(
+      makeRequest({ headers: { authorization: 'Bearer tk_any' } }),
+      reply,
+    );
+    expect(status()).toBe(503);
+    expect(body()).toEqual({ error: 'Authentication unavailable' });
   });
 });

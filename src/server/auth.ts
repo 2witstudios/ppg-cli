@@ -17,6 +17,8 @@ export interface AuthData {
   tokens: TokenEntry[];
 }
 
+type UnknownRecord = Record<string, unknown>;
+
 interface RateLimitEntry {
   failures: number;
   windowStart: number;
@@ -54,11 +56,18 @@ export function createRateLimiter(
 
   function prune(): void {
     if (entries.size <= RATE_LIMIT_MAX_ENTRIES) return;
+
     const currentTime = now();
-    for (const [ip, entry] of entries) {
+    for (const [ip, entry] of entries.entries()) {
       if (currentTime - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
         entries.delete(ip);
       }
+    }
+
+    while (entries.size > RATE_LIMIT_MAX_ENTRIES) {
+      const oldestIp = entries.keys().next().value;
+      if (oldestIp === undefined) break;
+      entries.delete(oldestIp);
     }
   }
 
@@ -107,12 +116,34 @@ export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
   const filePath = authPath(projectRoot);
   let cache: AuthData | null = null;
 
+  function isTokenEntry(value: unknown): value is TokenEntry {
+    if (!value || typeof value !== 'object') return false;
+
+    const record = value as UnknownRecord;
+    return (
+      typeof record.label === 'string' &&
+      typeof record.hash === 'string' &&
+      typeof record.createdAt === 'string' &&
+      (record.lastUsedAt === null || typeof record.lastUsedAt === 'string')
+    );
+  }
+
+  function isAuthData(value: unknown): value is AuthData {
+    if (!value || typeof value !== 'object') return false;
+    const record = value as UnknownRecord;
+    return Array.isArray(record.tokens) && record.tokens.every(isTokenEntry);
+  }
+
+  function cloneTokenEntry(entry: TokenEntry): TokenEntry {
+    return { ...entry };
+  }
+
   async function readData(): Promise<AuthData> {
     if (cache) return cache;
+
+    let raw: string;
     try {
-      const raw = await fs.readFile(filePath, 'utf-8');
-      cache = JSON.parse(raw) as AuthData;
-      return cache;
+      raw = await fs.readFile(filePath, 'utf-8');
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         cache = { tokens: [] };
@@ -120,6 +151,20 @@ export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
       }
       throw new AuthCorruptError(filePath);
     }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new AuthCorruptError(filePath);
+    }
+
+    if (!isAuthData(parsed)) {
+      throw new AuthCorruptError(filePath);
+    }
+
+    cache = { tokens: parsed.tokens.map(cloneTokenEntry) };
+    return cache;
   }
 
   async function writeData(data: AuthData): Promise<void> {
@@ -153,6 +198,8 @@ export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
     },
 
     async validateToken(token: string): Promise<TokenEntry | null> {
+      if (!token) return null;
+
       const data = await readData();
       const incomingBuf = Buffer.from(hashToken(token), 'hex');
 
@@ -161,7 +208,7 @@ export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
         if (incomingBuf.length === storedBuf.length && crypto.timingSafeEqual(incomingBuf, storedBuf)) {
           entry.lastUsedAt = new Date().toISOString();
           await writeData(data);
-          return entry;
+          return cloneTokenEntry(entry);
         }
       }
 
@@ -179,7 +226,7 @@ export async function createAuthStore(projectRoot: string): Promise<AuthStore> {
 
     async listTokens(): Promise<TokenEntry[]> {
       const data = await readData();
-      return data.tokens;
+      return data.tokens.map(cloneTokenEntry);
     },
   };
 }
@@ -192,7 +239,7 @@ export interface AuthHookDeps {
 }
 
 export interface AuthenticatedRequest {
-  headers: Record<string, string | undefined>;
+  headers: Record<string, string | string[] | undefined>;
   ip: string;
   tokenEntry?: TokenEntry;
 }
@@ -212,14 +259,20 @@ export function createAuthHook(deps: AuthHookDeps) {
     }
 
     const authHeader = request.headers['authorization'];
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
       rateLimiter.record(ip);
       reply.code(401).send({ error: 'Missing or malformed Authorization header' });
       return;
     }
 
-    const token = authHeader.slice(7);
-    const entry = await store.validateToken(token);
+    const token = authHeader.slice(7).trim();
+    let entry: TokenEntry | null = null;
+    try {
+      entry = await store.validateToken(token);
+    } catch {
+      reply.code(503).send({ error: 'Authentication unavailable' });
+      return;
+    }
 
     if (!entry) {
       rateLimiter.record(ip);
