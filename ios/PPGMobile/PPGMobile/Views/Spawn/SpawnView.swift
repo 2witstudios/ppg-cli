@@ -15,10 +15,15 @@ struct SpawnView: View {
     @State private var isSpawning = false
     @State private var errorMessage: String?
     @State private var spawnedWorktree: WorktreeEntry?
-    @State private var showResult = false
+
+    private static let namePattern = /^[a-zA-Z0-9][a-zA-Z0-9\-]*$/
+
+    private var sanitizedName: String {
+        name.trimmingCharacters(in: .whitespaces)
+    }
 
     private var isFormValid: Bool {
-        let hasName = !name.trimmingCharacters(in: .whitespaces).isEmpty
+        let hasName = !sanitizedName.isEmpty && sanitizedName.wholeMatch(of: Self.namePattern) != nil
         let hasPrompt = !prompt.trimmingCharacters(in: .whitespaces).isEmpty
         let hasTemplate = selectedTemplate != nil
         return hasName && (hasPrompt || hasTemplate)
@@ -49,16 +54,16 @@ struct SpawnView: View {
                 baseBranchSection
                 errorSection
             }
+            .scrollDismissesKeyboard(.interactively)
+            .disabled(isSpawning)
             .navigationTitle("Spawn")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     spawnButton
                 }
             }
-            .navigationDestination(isPresented: $showResult) {
-                if let worktree = spawnedWorktree {
-                    WorktreeDetailView(worktree: worktree)
-                }
+            .navigationDestination(item: $spawnedWorktree) { worktree in
+                WorktreeDetailView(worktree: worktree)
             }
         }
     }
@@ -73,7 +78,12 @@ struct SpawnView: View {
         } header: {
             Text("Name")
         } footer: {
-            Text("Required. Used as the branch suffix (ppg/<name>)")
+            if !sanitizedName.isEmpty && sanitizedName.wholeMatch(of: Self.namePattern) == nil {
+                Text("Only letters, numbers, and hyphens allowed")
+                    .foregroundStyle(.red)
+            } else {
+                Text("Required. Letters, numbers, and hyphens (ppg/<name>)")
+            }
         }
     }
 
@@ -176,17 +186,13 @@ struct SpawnView: View {
         isSpawning = true
         errorMessage = nil
 
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespaces)
-        let promptText = trimmedPrompt.isEmpty
-            ? (selectedTemplate ?? "")
-            : trimmedPrompt
 
         do {
             let response = try await appState.client.spawn(
-                name: trimmedName,
+                name: sanitizedName,
                 agent: selectedVariant.rawValue,
-                prompt: promptText,
+                prompt: trimmedPrompt,
                 template: selectedTemplate,
                 base: baseBranch.isEmpty ? nil : baseBranch,
                 count: count
@@ -194,13 +200,10 @@ struct SpawnView: View {
 
             await appState.manifestStore.refresh()
 
-            if let newWorktree = appState.manifestStore.manifest?.worktrees[response.worktree.id] {
-                spawnedWorktree = newWorktree
-                clearForm()
-                showResult = true
-            } else {
-                clearForm()
-            }
+            let newWorktree = appState.manifestStore.manifest?.worktrees[response.worktree.id]
+            clearForm()
+            // Set after clearing so navigation triggers with the worktree
+            spawnedWorktree = newWorktree
         } catch {
             errorMessage = error.localizedDescription
         }
