@@ -1,27 +1,28 @@
 import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { requireManifest, findAgent, updateManifest } from '../../core/manifest.js';
-import { killAgent } from '../../core/agent.js';
+import { killAgent, checkAgentStatus, restartAgent } from '../../core/agent.js';
 import { loadConfig, resolveAgentConfig } from '../../core/config.js';
-import { spawnAgent } from '../../core/agent.js';
 import * as tmux from '../../core/tmux.js';
 import { PpgError, AgentNotFoundError } from '../../lib/errors.js';
-import { agentId as genAgentId, sessionId as genSessionId } from '../../lib/id.js';
 import { agentPromptFile } from '../../lib/paths.js';
-import { renderTemplate, type TemplateContext } from '../../core/template.js';
 import fs from 'node:fs/promises';
 
 export interface AgentRoutesOptions extends FastifyPluginOptions {
   projectRoot: string;
 }
 
+const MAX_LINES = 10_000;
+
 function mapErrorToStatus(err: unknown): number {
   if (err instanceof PpgError) {
     switch (err.code) {
       case 'AGENT_NOT_FOUND': return 404;
+      case 'PANE_NOT_FOUND': return 410;
       case 'NOT_INITIALIZED': return 503;
       case 'MANIFEST_LOCK': return 409;
       case 'TMUX_NOT_FOUND': return 503;
       case 'INVALID_ARGS': return 400;
+      case 'PROMPT_NOT_FOUND': return 400;
       default: return 500;
     }
   }
@@ -60,7 +61,9 @@ export async function agentRoutes(
   }, async (request, reply) => {
     try {
       const { id } = request.params;
-      const lines = request.query.lines ? parseInt(request.query.lines, 10) : 200;
+      const lines = request.query.lines
+        ? Math.min(parseInt(request.query.lines, 10), MAX_LINES)
+        : 200;
 
       if (isNaN(lines) || lines < 1) {
         return reply.code(400).send({ error: 'lines must be a positive integer', code: 'INVALID_ARGS' });
@@ -71,7 +74,16 @@ export async function agentRoutes(
       if (!found) throw new AgentNotFoundError(id);
 
       const { agent } = found;
-      const content = await tmux.capturePane(agent.tmuxTarget, lines);
+
+      let content: string;
+      try {
+        content = await tmux.capturePane(agent.tmuxTarget, lines);
+      } catch {
+        throw new PpgError(
+          `Could not capture pane for agent ${id}. Pane may no longer exist.`,
+          'PANE_NOT_FOUND',
+        );
+      }
 
       return {
         agentId: agent.id,
@@ -164,11 +176,14 @@ export async function agentRoutes(
 
       const { agent } = found;
 
-      if (agent.status !== 'running') {
+      // Refresh live status from tmux (manifest may be stale in long-lived server)
+      const { status: liveStatus } = await checkAgentStatus(agent, projectRoot);
+
+      if (liveStatus !== 'running') {
         return {
           success: true,
           agentId: agent.id,
-          message: `Agent already ${agent.status}`,
+          message: `Agent already ${liveStatus}`,
         };
       }
 
@@ -225,11 +240,6 @@ export async function agentRoutes(
 
       const { worktree: wt, agent: oldAgent } = found;
 
-      // Kill old agent if still running
-      if (oldAgent.status === 'running') {
-        await killAgent(oldAgent);
-      }
-
       // Read original prompt or use override
       let promptText: string;
       if (promptOverride) {
@@ -248,57 +258,27 @@ export async function agentRoutes(
 
       const agentConfig = resolveAgentConfig(config, agentType ?? oldAgent.agentType);
 
-      await tmux.ensureSession(manifest.sessionName);
-      const newAgentId = genAgentId();
-      const windowTarget = await tmux.createWindow(manifest.sessionName, `${wt.name}-restart`, wt.path);
-
-      // Render template vars
-      const ctx: TemplateContext = {
-        WORKTREE_PATH: wt.path,
-        BRANCH: wt.branch,
-        AGENT_ID: newAgentId,
-        PROJECT_ROOT: projectRoot,
-        TASK_NAME: wt.name,
-        PROMPT: promptText,
-      };
-      const renderedPrompt = renderTemplate(promptText, ctx);
-
-      const newSessionId = genSessionId();
-      const agentEntry = await spawnAgent({
-        agentId: newAgentId,
-        agentConfig,
-        prompt: renderedPrompt,
-        worktreePath: wt.path,
-        tmuxTarget: windowTarget,
+      const result = await restartAgent({
         projectRoot,
-        branch: wt.branch,
-        sessionId: newSessionId,
-      });
-
-      // Update manifest: mark old agent as gone, add new agent
-      await updateManifest(projectRoot, (m) => {
-        const mWt = m.worktrees[wt.id];
-        if (mWt) {
-          const mOldAgent = mWt.agents[oldAgent.id];
-          if (mOldAgent && mOldAgent.status === 'running') {
-            mOldAgent.status = 'gone';
-          }
-          mWt.agents[newAgentId] = agentEntry;
-        }
-        return m;
+        agentId: oldAgent.id,
+        worktree: wt,
+        oldAgent,
+        sessionName: manifest.sessionName,
+        agentConfig,
+        promptText,
       });
 
       return {
         success: true,
-        oldAgentId: oldAgent.id,
+        oldAgentId: result.oldAgentId,
         newAgent: {
-          id: newAgentId,
-          tmuxTarget: windowTarget,
-          sessionId: newSessionId,
-          worktreeId: wt.id,
-          worktreeName: wt.name,
-          branch: wt.branch,
-          path: wt.path,
+          id: result.newAgentId,
+          tmuxTarget: result.tmuxTarget,
+          sessionId: result.sessionId,
+          worktreeId: result.worktreeId,
+          worktreeName: result.worktreeName,
+          branch: result.branch,
+          path: result.path,
         },
       };
     } catch (err) {

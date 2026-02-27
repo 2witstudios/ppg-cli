@@ -6,12 +6,6 @@ import { makeAgent, makeWorktree } from '../../test-fixtures.js';
 
 // ---- Mocks ----
 
-const mockAgent = makeAgent({ id: 'ag-test1234', tmuxTarget: 'ppg:1.0' });
-const mockWorktree = makeWorktree({
-  id: 'wt-abc123',
-  agents: { 'ag-test1234': mockAgent },
-});
-
 function makeManifest(overrides?: Partial<Manifest>): Manifest {
   return {
     version: 1,
@@ -32,7 +26,8 @@ vi.mock('../../core/manifest.js', () => ({
 
 vi.mock('../../core/agent.js', () => ({
   killAgent: vi.fn(),
-  spawnAgent: vi.fn(),
+  checkAgentStatus: vi.fn(),
+  restartAgent: vi.fn(),
 }));
 
 vi.mock('../../core/tmux.js', () => ({
@@ -40,22 +35,11 @@ vi.mock('../../core/tmux.js', () => ({
   sendKeys: vi.fn(),
   sendLiteral: vi.fn(),
   sendRawKeys: vi.fn(),
-  ensureSession: vi.fn(),
-  createWindow: vi.fn(),
 }));
 
 vi.mock('../../core/config.js', () => ({
   loadConfig: vi.fn(),
   resolveAgentConfig: vi.fn(),
-}));
-
-vi.mock('../../core/template.js', () => ({
-  renderTemplate: vi.fn((content: string) => content),
-}));
-
-vi.mock('../../lib/id.js', () => ({
-  agentId: vi.fn(() => 'ag-new12345'),
-  sessionId: vi.fn(() => 'session-uuid-123'),
 }));
 
 vi.mock('node:fs/promises', async () => {
@@ -70,7 +54,7 @@ vi.mock('node:fs/promises', async () => {
 });
 
 import { requireManifest, findAgent, updateManifest } from '../../core/manifest.js';
-import { killAgent, spawnAgent } from '../../core/agent.js';
+import { killAgent, checkAgentStatus, restartAgent } from '../../core/agent.js';
 import * as tmux from '../../core/tmux.js';
 import { loadConfig, resolveAgentConfig } from '../../core/config.js';
 import fs from 'node:fs/promises';
@@ -83,6 +67,16 @@ async function buildApp() {
   return app;
 }
 
+function setupAgentMocks(manifest?: Manifest) {
+  const m = manifest ?? makeManifest();
+  vi.mocked(requireManifest).mockResolvedValue(m);
+  vi.mocked(findAgent).mockReturnValue({
+    worktree: m.worktrees['wt-abc123'],
+    agent: m.worktrees['wt-abc123'].agents['ag-test1234'],
+  });
+  return m;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -91,12 +85,7 @@ beforeEach(() => {
 
 describe('GET /api/agents/:id/logs', () => {
   test('returns captured pane output with default 200 lines', async () => {
-    const manifest = makeManifest();
-    vi.mocked(requireManifest).mockResolvedValue(manifest);
-    vi.mocked(findAgent).mockReturnValue({
-      worktree: manifest.worktrees['wt-abc123'],
-      agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
-    });
+    setupAgentMocks();
     vi.mocked(tmux.capturePane).mockResolvedValue('line1\nline2\nline3');
 
     const app = await buildApp();
@@ -111,12 +100,7 @@ describe('GET /api/agents/:id/logs', () => {
   });
 
   test('respects custom lines parameter', async () => {
-    const manifest = makeManifest();
-    vi.mocked(requireManifest).mockResolvedValue(manifest);
-    vi.mocked(findAgent).mockReturnValue({
-      worktree: manifest.worktrees['wt-abc123'],
-      agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
-    });
+    setupAgentMocks();
     vi.mocked(tmux.capturePane).mockResolvedValue('output');
 
     const app = await buildApp();
@@ -125,6 +109,18 @@ describe('GET /api/agents/:id/logs', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().lines).toBe(50);
     expect(tmux.capturePane).toHaveBeenCalledWith('ppg:1.0', 50);
+  });
+
+  test('caps lines at 10000', async () => {
+    setupAgentMocks();
+    vi.mocked(tmux.capturePane).mockResolvedValue('output');
+
+    const app = await buildApp();
+    const res = await app.inject({ method: 'GET', url: '/api/agents/ag-test1234/logs?lines=999999' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().lines).toBe(10000);
+    expect(tmux.capturePane).toHaveBeenCalledWith('ppg:1.0', 10000);
   });
 
   test('returns 400 for invalid lines', async () => {
@@ -145,18 +141,24 @@ describe('GET /api/agents/:id/logs', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('AGENT_NOT_FOUND');
   });
+
+  test('returns 410 when pane no longer exists', async () => {
+    setupAgentMocks();
+    vi.mocked(tmux.capturePane).mockRejectedValue(new Error('pane not found'));
+
+    const app = await buildApp();
+    const res = await app.inject({ method: 'GET', url: '/api/agents/ag-test1234/logs' });
+
+    expect(res.statusCode).toBe(410);
+    expect(res.json().code).toBe('PANE_NOT_FOUND');
+  });
 });
 
 // ---------- POST /api/agents/:id/send ----------
 
 describe('POST /api/agents/:id/send', () => {
   test('sends text with Enter by default', async () => {
-    const manifest = makeManifest();
-    vi.mocked(requireManifest).mockResolvedValue(manifest);
-    vi.mocked(findAgent).mockReturnValue({
-      worktree: manifest.worktrees['wt-abc123'],
-      agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
-    });
+    setupAgentMocks();
 
     const app = await buildApp();
     const res = await app.inject({
@@ -172,12 +174,7 @@ describe('POST /api/agents/:id/send', () => {
   });
 
   test('sends literal text without Enter', async () => {
-    const manifest = makeManifest();
-    vi.mocked(requireManifest).mockResolvedValue(manifest);
-    vi.mocked(findAgent).mockReturnValue({
-      worktree: manifest.worktrees['wt-abc123'],
-      agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
-    });
+    setupAgentMocks();
 
     const app = await buildApp();
     const res = await app.inject({
@@ -191,12 +188,7 @@ describe('POST /api/agents/:id/send', () => {
   });
 
   test('sends raw tmux keys', async () => {
-    const manifest = makeManifest();
-    vi.mocked(requireManifest).mockResolvedValue(manifest);
-    vi.mocked(findAgent).mockReturnValue({
-      worktree: manifest.worktrees['wt-abc123'],
-      agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
-    });
+    setupAgentMocks();
 
     const app = await buildApp();
     const res = await app.inject({
@@ -261,6 +253,7 @@ describe('POST /api/agents/:id/kill', () => {
         worktree: manifest.worktrees['wt-abc123'],
         agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
       });
+    vi.mocked(checkAgentStatus).mockResolvedValue({ status: 'running' });
     vi.mocked(killAgent).mockResolvedValue(undefined);
     vi.mocked(updateManifest).mockImplementation(async (_root, updater) => {
       const m = makeManifest();
@@ -276,6 +269,7 @@ describe('POST /api/agents/:id/kill', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().success).toBe(true);
     expect(res.json().killed).toBe(true);
+    expect(checkAgentStatus).toHaveBeenCalled();
     expect(killAgent).toHaveBeenCalled();
     expect(updateManifest).toHaveBeenCalled();
   });
@@ -290,6 +284,7 @@ describe('POST /api/agents/:id/kill', () => {
       worktree: manifest.worktrees['wt-abc123'],
       agent: stoppedAgent,
     });
+    vi.mocked(checkAgentStatus).mockResolvedValue({ status: 'gone' });
 
     const app = await buildApp();
     const res = await app.inject({
@@ -299,6 +294,30 @@ describe('POST /api/agents/:id/kill', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().message).toMatch(/already gone/);
+    expect(killAgent).not.toHaveBeenCalled();
+  });
+
+  test('uses live tmux status instead of stale manifest status', async () => {
+    // Agent shows "running" in manifest but tmux says "idle"
+    const agent = makeAgent({ status: 'running' });
+    const manifest = makeManifest({
+      worktrees: { 'wt-abc123': makeWorktree({ agents: { 'ag-test1234': agent } }) },
+    });
+    vi.mocked(requireManifest).mockResolvedValue(manifest);
+    vi.mocked(findAgent).mockReturnValue({
+      worktree: manifest.worktrees['wt-abc123'],
+      agent,
+    });
+    vi.mocked(checkAgentStatus).mockResolvedValue({ status: 'idle' });
+
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/ag-test1234/kill',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().message).toMatch(/already idle/);
     expect(killAgent).not.toHaveBeenCalled();
   });
 
@@ -319,15 +338,13 @@ describe('POST /api/agents/:id/kill', () => {
 // ---------- POST /api/agents/:id/restart ----------
 
 describe('POST /api/agents/:id/restart', () => {
-  test('restarts a running agent with original prompt', async () => {
+  function setupRestartMocks() {
     const manifest = makeManifest();
     vi.mocked(requireManifest).mockResolvedValue(manifest);
     vi.mocked(findAgent).mockReturnValue({
       worktree: manifest.worktrees['wt-abc123'],
       agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
     });
-    vi.mocked(killAgent).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue('original prompt');
     vi.mocked(loadConfig).mockResolvedValue({
       sessionName: 'ppg',
       defaultAgent: 'claude',
@@ -340,16 +357,22 @@ describe('POST /api/agents/:id/restart', () => {
       command: 'claude',
       interactive: true,
     });
-    vi.mocked(tmux.ensureSession).mockResolvedValue(undefined);
-    vi.mocked(tmux.createWindow).mockResolvedValue('ppg:2');
-    vi.mocked(spawnAgent).mockResolvedValue(makeAgent({
-      id: 'ag-new12345',
+    vi.mocked(restartAgent).mockResolvedValue({
+      oldAgentId: 'ag-test1234',
+      newAgentId: 'ag-new12345',
       tmuxTarget: 'ppg:2',
-    }));
-    vi.mocked(updateManifest).mockImplementation(async (_root, updater) => {
-      const m = makeManifest();
-      return updater(m);
+      sessionId: 'session-uuid-123',
+      worktreeId: 'wt-abc123',
+      worktreeName: 'feature-auth',
+      branch: 'ppg/feature-auth',
+      path: '/tmp/project/.worktrees/wt-abc123',
     });
+    return manifest;
+  }
+
+  test('restarts a running agent with original prompt', async () => {
+    setupRestartMocks();
+    vi.mocked(fs.readFile).mockResolvedValue('original prompt');
 
     const app = await buildApp();
     const res = await app.inject({
@@ -363,18 +386,36 @@ describe('POST /api/agents/:id/restart', () => {
     expect(body.success).toBe(true);
     expect(body.oldAgentId).toBe('ag-test1234');
     expect(body.newAgent.id).toBe('ag-new12345');
-    expect(killAgent).toHaveBeenCalled();
-    expect(spawnAgent).toHaveBeenCalled();
+    expect(restartAgent).toHaveBeenCalled();
   });
 
   test('uses prompt override when provided', async () => {
-    const manifest = makeManifest();
+    setupRestartMocks();
+
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/ag-test1234/restart',
+      payload: { prompt: 'new task' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(fs.readFile).not.toHaveBeenCalled();
+    expect(restartAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ promptText: 'new task' }),
+    );
+  });
+
+  test('skips kill for non-running agent', async () => {
+    const idleAgent = makeAgent({ status: 'idle' });
+    const manifest = makeManifest({
+      worktrees: { 'wt-abc123': makeWorktree({ agents: { 'ag-test1234': idleAgent } }) },
+    });
     vi.mocked(requireManifest).mockResolvedValue(manifest);
     vi.mocked(findAgent).mockReturnValue({
       worktree: manifest.worktrees['wt-abc123'],
-      agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
+      agent: idleAgent,
     });
-    vi.mocked(killAgent).mockResolvedValue(undefined);
     vi.mocked(loadConfig).mockResolvedValue({
       sessionName: 'ppg',
       defaultAgent: 'claude',
@@ -387,28 +428,57 @@ describe('POST /api/agents/:id/restart', () => {
       command: 'claude',
       interactive: true,
     });
-    vi.mocked(tmux.ensureSession).mockResolvedValue(undefined);
-    vi.mocked(tmux.createWindow).mockResolvedValue('ppg:2');
-    vi.mocked(spawnAgent).mockResolvedValue(makeAgent({ id: 'ag-new12345', tmuxTarget: 'ppg:2' }));
-    vi.mocked(updateManifest).mockImplementation(async (_root, updater) => {
-      const m = makeManifest();
-      return updater(m);
+    vi.mocked(fs.readFile).mockResolvedValue('original prompt');
+    vi.mocked(restartAgent).mockResolvedValue({
+      oldAgentId: 'ag-test1234',
+      newAgentId: 'ag-new12345',
+      tmuxTarget: 'ppg:2',
+      sessionId: 'session-uuid-123',
+      worktreeId: 'wt-abc123',
+      worktreeName: 'feature-auth',
+      branch: 'ppg/feature-auth',
+      path: '/tmp/project/.worktrees/wt-abc123',
     });
 
     const app = await buildApp();
     const res = await app.inject({
       method: 'POST',
       url: '/api/agents/ag-test1234/restart',
-      payload: { prompt: 'new task' },
+      payload: {},
     });
 
     expect(res.statusCode).toBe(200);
-    // Should NOT read the old prompt file
-    expect(fs.readFile).not.toHaveBeenCalled();
-    // spawnAgent should receive the override prompt
-    expect(spawnAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: 'new task' }),
+    // restartAgent handles the kill-or-skip internally
+    expect(restartAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ oldAgent: expect.objectContaining({ status: 'idle' }) }),
     );
+  });
+
+  test('returns 400 when prompt file missing and no override', async () => {
+    const manifest = makeManifest();
+    vi.mocked(requireManifest).mockResolvedValue(manifest);
+    vi.mocked(findAgent).mockReturnValue({
+      worktree: manifest.worktrees['wt-abc123'],
+      agent: manifest.worktrees['wt-abc123'].agents['ag-test1234'],
+    });
+    vi.mocked(loadConfig).mockResolvedValue({
+      sessionName: 'ppg',
+      defaultAgent: 'claude',
+      agents: { claude: { name: 'claude', command: 'claude', interactive: true } },
+      envFiles: [],
+      symlinkNodeModules: true,
+    });
+    vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
+
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/ag-test1234/restart',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('PROMPT_NOT_FOUND');
   });
 
   test('returns 404 for unknown agent', async () => {

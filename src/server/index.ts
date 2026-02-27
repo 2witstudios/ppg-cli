@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { createRequire } from 'node:module';
@@ -68,10 +69,13 @@ export async function startServer(options: ServeOptions): Promise<void> {
   await app.register(cors, { origin: true });
 
   if (token) {
+    const expected = Buffer.from(`Bearer ${token}`);
     app.addHook('onRequest', async (request, reply) => {
       if (request.url === '/health') return;
-      const authHeader = request.headers.authorization;
-      if (authHeader !== `Bearer ${token}`) {
+      const authHeader = request.headers.authorization ?? '';
+      const supplied = Buffer.from(authHeader);
+      if (expected.length !== supplied.length ||
+          !crypto.timingSafeEqual(expected, supplied)) {
         reply.code(401).send({ error: 'Unauthorized' });
       }
     });
