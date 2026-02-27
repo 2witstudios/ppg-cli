@@ -1,0 +1,59 @@
+/* PPG Desktop — Custom CSS */
+
+/* Status colors */
+.status-running { color: #34d399; }
+.status-idle { color: #fbbf24; }
+.status-exited { color: #60a5fa; }
+.status-gone { color: #9ca3af; }
+.status-failed { color: #f87171; }
+
+/* Sidebar styling */
+.sidebar {
+    background-color: alpha(@window_bg_color, 0.95);
+}
+
+/* Card styling for stats */
+.card {
+    padding: 8px;
+    border-radius: 12px;
+}
+
+/* Monospace text */
+.monospace {
+    font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+}
+
+/* Terminal pane container */
+.terminal-pane {
+    background-color: #1e1e2e;
+    border-radius: 8px;
+    padding: 2px;
+}
+
+/* Command palette overlay */
+.command-palette {
+    background-color: alpha(@window_bg_color, 0.98);
+    border-radius: 12px;
+}
+
+/* Status badge pills */
+.status-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+}
+
+/* Heatmap container */
+.heatmap {
+    padding: 8px;
+}
+
+/* Commit list rows */
+.commit-row {
+    padding: 4px 8px;
+}
+
+/* Navigation sidebar selection */
+.navigation-sidebar row:selected {
+    border-radius: 8px;
+}
