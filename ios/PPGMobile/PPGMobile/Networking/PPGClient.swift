@@ -162,8 +162,9 @@ actor PPGClient {
         return try await post("/api/spawn", body: body)
     }
 
-    func sendToAgent(agentId: String, text: String, keys: Bool = false) async throws {
-        let body: [String: Any] = ["text": text, "keys": keys]
+    func sendToAgent(agentId: String, text: String, keys: Bool = false, enter: Bool = true) async throws {
+        var body: [String: Any] = ["text": text, "keys": keys]
+        if !enter { body["enter"] = false }
         let _: SuccessResponse = try await post("/api/agents/\(agentId)/send", body: body)
     }
 
@@ -188,9 +189,10 @@ actor PPGClient {
         let _: SuccessResponse = try await post("/api/worktrees/\(worktreeId)/kill", body: body)
     }
 
-    func createPR(worktreeId: String, title: String? = nil, draft: Bool = false) async throws -> PRResponse {
+    func createPR(worktreeId: String, title: String? = nil, body prBody: String? = nil, draft: Bool = false) async throws -> PRResponse {
         var body: [String: Any] = ["draft": draft]
         if let title { body["title"] = title }
+        if let prBody { body["body"] = prBody }
         return try await post("/api/worktrees/\(worktreeId)/pr", body: body)
     }
 
@@ -230,6 +232,8 @@ actor PPGClient {
             return try await session.data(for: request)
         } catch let urlError as URLError {
             throw PPGClientError.network(urlError)
+        } catch {
+            throw error
         }
     }
 
@@ -238,6 +242,8 @@ actor PPGClient {
             return try JSONDecoder().decode(T.self, from: data)
         } catch let decodingError as DecodingError {
             throw PPGClientError.decodingError(decodingError)
+        } catch {
+            throw error
         }
     }
 
@@ -280,8 +286,7 @@ private struct SuccessResponse: Decodable {
 }
 
 struct PRResponse: Codable {
-    let url: String?
-    let prUrl: String?
-    let title: String?
-    let draft: Bool?
+    let success: Bool
+    let worktreeId: String
+    let prUrl: String
 }
