@@ -14,6 +14,12 @@ import {
   promptFile,
   agentPromptsDir,
   agentPromptFile,
+  serveDir,
+  tlsDir,
+  tlsCaKeyPath,
+  tlsCaCertPath,
+  tlsServerKeyPath,
+  tlsServerCertPath,
   worktreeBaseDir,
   worktreePath,
   globalPpgDir,
@@ -79,6 +85,30 @@ describe('paths', () => {
     expect(agentPromptFile(ROOT, 'ag-abc12345')).toBe(
       path.join(ROOT, '.ppg', 'agent-prompts', 'ag-abc12345.md'),
     );
+  });
+
+  test('serveDir', () => {
+    expect(serveDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve'));
+  });
+
+  test('tlsDir', () => {
+    expect(tlsDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls'));
+  });
+
+  test('tlsCaKeyPath', () => {
+    expect(tlsCaKeyPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'ca-key.pem'));
+  });
+
+  test('tlsCaCertPath', () => {
+    expect(tlsCaCertPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'ca-cert.pem'));
+  });
+
+  test('tlsServerKeyPath', () => {
+    expect(tlsServerKeyPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'server-key.pem'));
+  });
+
+  test('tlsServerCertPath', () => {
+    expect(tlsServerCertPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'server-cert.pem'));
   });
 
   test('worktreeBaseDir', () => {
