@@ -61,11 +61,6 @@ vi.mock('../tmux.js', () => ({
   listSessionPanes: vi.fn(async () => new Map()),
 }));
 
-vi.mock('../../lib/errors.js', async () => {
-  const actual = await vi.importActual<typeof import('../../lib/errors.js')>('../../lib/errors.js');
-  return actual;
-});
-
 vi.mock('../../lib/env.js', () => ({
   execaEnv: { env: { PATH: '/usr/bin' } },
 }));
@@ -167,10 +162,8 @@ describe('performMerge', () => {
       worktreeRef: 'wt-abc123',
     });
 
-    // First call: refreshAllAgentStatuses (status stays active)
-    // Second call: set merging
-    // Third call: set merged
-    // Fourth call (inside cleanupWorktree): set cleaned
+    // Call order: refreshAllAgentStatuses (active) → set merging → set merged
+    // Note: cleanup's manifest update is mocked, so 'cleaned' is not tracked here
     expect(statusLog).toContain('merging');
     expect(statusLog).toContain('merged');
     expect(statusLog.indexOf('merging')).toBeLessThan(statusLog.indexOf('merged'));
@@ -198,21 +191,13 @@ describe('performMerge', () => {
   test('throws AGENTS_RUNNING when agents still running', async () => {
     latestManifest.worktrees['wt-abc123'].agents['ag-00000001'].status = 'running';
 
-    await expect(
-      performMerge({
-        projectRoot: '/project',
-        worktreeRef: 'wt-abc123',
-      }),
-    ).rejects.toThrow(PpgError);
+    const err = await performMerge({
+      projectRoot: '/project',
+      worktreeRef: 'wt-abc123',
+    }).catch((e) => e);
 
-    try {
-      await performMerge({
-        projectRoot: '/project',
-        worktreeRef: 'wt-abc123',
-      });
-    } catch (err) {
-      expect((err as PpgError).code).toBe('AGENTS_RUNNING');
-    }
+    expect(err).toBeInstanceOf(PpgError);
+    expect(err.code).toBe('AGENTS_RUNNING');
   });
 
   test('force bypasses running agent check', async () => {

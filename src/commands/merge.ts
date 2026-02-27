@@ -1,4 +1,4 @@
-import { performMerge, type MergeResult } from '../core/operations/merge.js';
+import { performMerge } from '../core/operations/merge.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { output, success, info, warn } from '../lib/output.js';
 
@@ -12,7 +12,6 @@ export interface MergeCommandOptions {
 
 export async function mergeCommand(worktreeId: string, options: MergeCommandOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
-  const strategy = options.strategy ?? 'squash';
 
   if (options.dryRun) {
     info('Dry run — no changes will be made');

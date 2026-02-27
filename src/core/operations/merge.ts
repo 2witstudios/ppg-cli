@@ -7,8 +7,6 @@ import { getCurrentPaneId } from '../self.js';
 import { listSessionPanes, type PaneInfo } from '../tmux.js';
 import { PpgError, WorktreeNotFoundError, MergeFailedError } from '../../lib/errors.js';
 import { execaEnv } from '../../lib/env.js';
-import type { WorktreeEntry, Manifest } from '../../types/manifest.js';
-import type { CleanupResult } from '../cleanup.js';
 
 export type MergeStrategy = 'squash' | 'no-ff';
 
