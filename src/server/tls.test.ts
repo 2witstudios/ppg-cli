@@ -56,7 +56,7 @@ describe('ensureTls', () => {
 
     expect(server.subject).toBe('CN=ppg-server');
     expect(server.issuer).toBe('CN=ppg-ca');
-    expect(server.checkIssued(ca)).toBe(true);
+    expect(server.verify(ca.publicKey)).toBe(true);
     expect(server.ca).toBe(false);
 
     const notAfter = new Date(server.validTo);
@@ -128,10 +128,56 @@ describe('ensureTls', () => {
     expect(server.subject).toBe('CN=ppg-server');
   });
 
+  test('regenerates server cert when signed by a different CA', () => {
+    const bundle1 = ensureTls(tmpDir);
+    const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ppg-tls-test-other-'));
+
+    try {
+      const otherBundle = ensureTls(otherDir);
+      fs.writeFileSync(tlsServerCertPath(tmpDir), otherBundle.serverCert, { mode: 0o600 });
+      fs.writeFileSync(tlsServerKeyPath(tmpDir), otherBundle.serverKey, { mode: 0o600 });
+
+      const bundle2 = ensureTls(tmpDir);
+      const ca = new crypto.X509Certificate(bundle1.caCert);
+      const server = new crypto.X509Certificate(bundle2.serverCert);
+
+      expect(bundle2.caFingerprint).toBe(bundle1.caFingerprint);
+      expect(server.verify(ca.publicKey)).toBe(true);
+      expect(bundle2.serverCert).not.toBe(otherBundle.serverCert);
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+  });
+
+  test('regenerates server cert when server key does not match cert', () => {
+    const bundle1 = ensureTls(tmpDir);
+    const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const wrongKey = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+    fs.writeFileSync(tlsServerKeyPath(tmpDir), wrongKey, { mode: 0o600 });
+
+    const bundle2 = ensureTls(tmpDir);
+    const server = new crypto.X509Certificate(bundle2.serverCert);
+
+    expect(bundle2.caFingerprint).toBe(bundle1.caFingerprint);
+    expect(bundle2.serverKey).not.toBe(wrongKey);
+    expect(server.checkPrivateKey(crypto.createPrivateKey(bundle2.serverKey))).toBe(true);
+  });
+
   test('regenerates everything when CA cert file is missing', () => {
     const bundle1 = ensureTls(tmpDir);
 
     fs.unlinkSync(tlsCaCertPath(tmpDir));
+
+    const bundle2 = ensureTls(tmpDir);
+
+    expect(bundle2.caFingerprint).not.toBe(bundle1.caFingerprint);
+  });
+
+  test('regenerates everything when CA key does not match CA cert', () => {
+    const bundle1 = ensureTls(tmpDir);
+    const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const wrongCaKey = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+    fs.writeFileSync(tlsCaKeyPath(tmpDir), wrongCaKey, { mode: 0o600 });
 
     const bundle2 = ensureTls(tmpDir);
 

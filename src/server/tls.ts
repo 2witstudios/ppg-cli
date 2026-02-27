@@ -374,10 +374,7 @@ function loadTlsBundle(projectRoot: string): TlsBundle | null {
     const x509 = new crypto.X509Certificate(caCert);
     const serverX509 = new crypto.X509Certificate(serverCert);
     const fingerprint = x509.fingerprint256;
-    const sanStr = serverX509.subjectAltName ?? '';
-    const sans = [...sanStr.matchAll(/IP Address:(\d+\.\d+\.\d+\.\d+)/g)].map(
-      (m) => m[1],
-    );
+    const sans = parseIpSans(serverX509.subjectAltName);
 
     return { caCert, caKey, serverCert, serverKey, caFingerprint: fingerprint, sans };
   } catch {
@@ -385,9 +382,15 @@ function loadTlsBundle(projectRoot: string): TlsBundle | null {
   }
 }
 
-function isCaValid(caCert: string, minDaysRemaining: number): boolean {
+function isCaValid(caCert: string, caKey: string, minDaysRemaining: number): boolean {
   try {
     const x509 = new crypto.X509Certificate(caCert);
+    if (x509.subject !== 'CN=ppg-ca' || x509.issuer !== 'CN=ppg-ca' || !x509.ca) {
+      return false;
+    }
+    if (!x509.verify(x509.publicKey)) return false;
+    if (!x509.checkPrivateKey(crypto.createPrivateKey(caKey))) return false;
+
     const notAfter = new Date(x509.validTo);
     const remaining = (notAfter.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     return remaining > minDaysRemaining;
@@ -398,19 +401,25 @@ function isCaValid(caCert: string, minDaysRemaining: number): boolean {
 
 function isServerCertValid(
   serverCert: string,
+  serverKey: string,
+  caCert: string,
   requiredIps: string[],
   minDaysRemaining: number,
 ): boolean {
   try {
-    const x509 = new crypto.X509Certificate(serverCert);
-    const notAfter = new Date(x509.validTo);
+    const caX509 = new crypto.X509Certificate(caCert);
+    const serverX509 = new crypto.X509Certificate(serverCert);
+    const notAfter = new Date(serverX509.validTo);
     const remaining = (notAfter.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     if (remaining <= minDaysRemaining) return false;
+    if (serverX509.subject !== 'CN=ppg-server' || serverX509.issuer !== caX509.subject) {
+      return false;
+    }
+    if (serverX509.ca) return false;
+    if (!serverX509.verify(caX509.publicKey)) return false;
+    if (!serverX509.checkPrivateKey(crypto.createPrivateKey(serverKey))) return false;
 
-    const sanStr = x509.subjectAltName ?? '';
-    const certIps = new Set(
-      [...sanStr.matchAll(/IP Address:(\d+\.\d+\.\d+\.\d+)/g)].map((m) => m[1]),
-    );
+    const certIps = new Set(parseIpSans(serverX509.subjectAltName));
 
     return requiredIps.every((ip) => certIps.has(ip));
   } catch {
@@ -420,6 +429,11 @@ function isServerCertValid(
 
 function writePemFile(filePath: string, content: string): void {
   fs.writeFileSync(filePath, content, { mode: 0o600 });
+}
+
+function parseIpSans(subjectAltName: string | undefined): string[] {
+  const sanStr = subjectAltName ?? '';
+  return [...sanStr.matchAll(/IP Address:(\d+\.\d+\.\d+\.\d+)/g)].map((m) => m[1]);
 }
 
 // ---------------------------------------------------------------------------
@@ -435,8 +449,14 @@ export function ensureTls(projectRoot: string): TlsBundle {
 
   if (existing) {
     // Check if everything is still valid
-    const caOk = isCaValid(existing.caCert, 30);
-    const serverOk = isServerCertValid(existing.serverCert, lanIps, 7);
+    const caOk = isCaValid(existing.caCert, existing.caKey, 30);
+    const serverOk = isServerCertValid(
+      existing.serverCert,
+      existing.serverKey,
+      existing.caCert,
+      lanIps,
+      7,
+    );
 
     if (caOk && serverOk) {
       return existing;
