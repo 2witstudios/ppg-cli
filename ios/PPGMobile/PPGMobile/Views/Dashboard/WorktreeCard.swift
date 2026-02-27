@@ -76,6 +76,7 @@ struct WorktreeCard: View {
     }
 }
 
+#if DEBUG
 #Preview {
     List {
         WorktreeCard(worktree: Worktree(
@@ -88,6 +89,7 @@ struct WorktreeCard: View {
                 Agent(id: "ag-1", name: "claude-1", agentType: "claude", status: .running, prompt: "Implement auth", startedAt: .now, completedAt: nil, exitCode: nil, error: nil),
                 Agent(id: "ag-2", name: "claude-2", agentType: "claude", status: .completed, prompt: "Write tests", startedAt: .now, completedAt: .now, exitCode: 0, error: nil),
             ],
+            diffStats: DiffStats(filesChanged: 8, insertions: 120, deletions: 15),
             createdAt: .now.addingTimeInterval(-3600),
             mergedAt: nil
         ))
@@ -101,9 +103,11 @@ struct WorktreeCard: View {
             agents: [
                 Agent(id: "ag-3", name: "codex-1", agentType: "codex", status: .completed, prompt: "Fix bug", startedAt: .now, completedAt: .now, exitCode: 0, error: nil),
             ],
+            diffStats: DiffStats(filesChanged: 2, insertions: 10, deletions: 3),
             createdAt: .now.addingTimeInterval(-86400),
             mergedAt: .now.addingTimeInterval(-3600)
         ))
     }
     .listStyle(.insetGrouped)
 }
+#endif

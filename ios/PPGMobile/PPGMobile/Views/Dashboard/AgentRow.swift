@@ -5,6 +5,8 @@ struct AgentRow: View {
     var onKill: (() -> Void)?
     var onRestart: (() -> Void)?
 
+    @State private var confirmingKill = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -50,6 +52,14 @@ struct AgentRow: View {
             }
         }
         .padding(.vertical, 4)
+        .confirmationDialog("Kill Agent", isPresented: $confirmingKill) {
+            Button("Kill", role: .destructive) {
+                onKill?()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Kill agent \"\(agent.name)\"? This cannot be undone.")
+        }
     }
 
     // MARK: - Status Label
@@ -72,7 +82,7 @@ struct AgentRow: View {
         HStack(spacing: 12) {
             if agent.status.isActive {
                 Button {
-                    onKill?()
+                    confirmingKill = true
                 } label: {
                     Image(systemName: "stop.fill")
                         .font(.caption)
@@ -95,6 +105,7 @@ struct AgentRow: View {
     }
 }
 
+#if DEBUG
 #Preview {
     List {
         AgentRow(
@@ -123,3 +134,4 @@ struct AgentRow: View {
     }
     .listStyle(.insetGrouped)
 }
+#endif

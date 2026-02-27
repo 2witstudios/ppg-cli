@@ -1,42 +1,57 @@
 import SwiftUI
 
 struct WorktreeDetailView: View {
-    let worktree: Worktree
+    let worktreeId: String
     @Bindable var store: DashboardStore
 
     @State private var confirmingMerge = false
     @State private var confirmingKill = false
 
+    private var worktree: Worktree? {
+        store.worktree(by: worktreeId)
+    }
+
     var body: some View {
-        List {
-            infoSection
-            agentsSection
-            actionsSection
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle(worktree.name)
-        .navigationBarTitleDisplayMode(.large)
-        .confirmationDialog("Merge Worktree", isPresented: $confirmingMerge) {
-            Button("Squash Merge") {
-                Task { await store.mergeWorktree(worktree.id) }
+        Group {
+            if let worktree {
+                List {
+                    infoSection(worktree)
+                    diffStatsSection(worktree)
+                    agentsSection(worktree)
+                    actionsSection(worktree)
+                }
+                .listStyle(.insetGrouped)
+                .navigationTitle(worktree.name)
+                .navigationBarTitleDisplayMode(.large)
+                .confirmationDialog("Merge Worktree", isPresented: $confirmingMerge) {
+                    Button("Squash Merge") {
+                        Task { await store.mergeWorktree(worktreeId) }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Merge \"\(worktree.name)\" back to the base branch?")
+                }
+                .confirmationDialog("Kill Worktree", isPresented: $confirmingKill) {
+                    Button("Kill All Agents", role: .destructive) {
+                        Task { await store.killWorktree(worktreeId) }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Kill all agents in \"\(worktree.name)\"? This cannot be undone.")
+                }
+            } else {
+                ContentUnavailableView(
+                    "Worktree Not Found",
+                    systemImage: "questionmark.folder",
+                    description: Text("This worktree may have been removed.")
+                )
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Merge \"\(worktree.name)\" back to the base branch?")
-        }
-        .confirmationDialog("Kill Worktree", isPresented: $confirmingKill) {
-            Button("Kill All Agents", role: .destructive) {
-                Task { await store.killWorktree(worktree.id) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Kill all agents in \"\(worktree.name)\"? This cannot be undone.")
         }
     }
 
     // MARK: - Info Section
 
-    private var infoSection: some View {
+    private func infoSection(_ worktree: Worktree) -> some View {
         Section {
             LabeledContent("Status") {
                 HStack(spacing: 4) {
@@ -72,9 +87,34 @@ struct WorktreeDetailView: View {
         }
     }
 
+    // MARK: - Diff Stats Section
+
+    @ViewBuilder
+    private func diffStatsSection(_ worktree: Worktree) -> some View {
+        if let stats = worktree.diffStats {
+            Section {
+                LabeledContent("Files Changed") {
+                    Text("\(stats.filesChanged)")
+                }
+
+                LabeledContent("Insertions") {
+                    Text("+\(stats.insertions)")
+                        .foregroundStyle(.green)
+                }
+
+                LabeledContent("Deletions") {
+                    Text("-\(stats.deletions)")
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Text("Changes")
+            }
+        }
+    }
+
     // MARK: - Agents Section
 
-    private var agentsSection: some View {
+    private func agentsSection(_ worktree: Worktree) -> some View {
         Section {
             if worktree.agents.isEmpty {
                 Text("No agents")
@@ -84,10 +124,10 @@ struct WorktreeDetailView: View {
                     AgentRow(
                         agent: agent,
                         onKill: {
-                            Task { await store.killAgent(agent.id, in: worktree.id) }
+                            Task { await store.killAgent(agent.id, in: worktreeId) }
                         },
                         onRestart: {
-                            Task { await store.restartAgent(agent.id, in: worktree.id) }
+                            Task { await store.restartAgent(agent.id, in: worktreeId) }
                         }
                     )
                 }
@@ -96,7 +136,7 @@ struct WorktreeDetailView: View {
             HStack {
                 Text("Agents")
                 Spacer()
-                Text(agentSummary)
+                Text(agentSummary(worktree))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -105,7 +145,7 @@ struct WorktreeDetailView: View {
 
     // MARK: - Actions Section
 
-    private var actionsSection: some View {
+    private func actionsSection(_ worktree: Worktree) -> some View {
         Section {
             if worktree.status == .running {
                 Button {
@@ -122,7 +162,8 @@ struct WorktreeDetailView: View {
             }
 
             Button {
-                // PR creation — will be wired to store action
+                // TODO: Wire to store.createPullRequest(for:)
+                Task { await store.createPullRequest(for: worktreeId) }
             } label: {
                 Label("Create Pull Request", systemImage: "arrow.triangle.pull")
             }
@@ -134,7 +175,7 @@ struct WorktreeDetailView: View {
 
     // MARK: - Helpers
 
-    private var agentSummary: String {
+    private func agentSummary(_ worktree: Worktree) -> String {
         let active = worktree.agents.filter { $0.status.isActive }.count
         let total = worktree.agents.count
         if active > 0 {
@@ -144,24 +185,13 @@ struct WorktreeDetailView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     NavigationStack {
         WorktreeDetailView(
-            worktree: Worktree(
-                id: "wt-abc123",
-                name: "auth-feature",
-                branch: "ppg/auth-feature",
-                path: ".worktrees/wt-abc123",
-                status: .running,
-                agents: [
-                    Agent(id: "ag-11111111", name: "claude-1", agentType: "claude", status: .running, prompt: "Implement OAuth2 authentication flow with JWT tokens", startedAt: .now.addingTimeInterval(-300), completedAt: nil, exitCode: nil, error: nil),
-                    Agent(id: "ag-22222222", name: "claude-2", agentType: "claude", status: .completed, prompt: "Write integration tests for auth", startedAt: .now.addingTimeInterval(-600), completedAt: .now.addingTimeInterval(-120), exitCode: 0, error: nil),
-                    Agent(id: "ag-33333333", name: "codex-1", agentType: "codex", status: .failed, prompt: "Set up auth middleware", startedAt: .now.addingTimeInterval(-500), completedAt: .now.addingTimeInterval(-200), exitCode: 1, error: "Process exited with code 1"),
-                ],
-                createdAt: .now.addingTimeInterval(-3600),
-                mergedAt: nil
-            ),
+            worktreeId: "wt-abc123",
             store: .preview
         )
     }
 }
+#endif
