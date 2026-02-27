@@ -49,14 +49,14 @@ impl HomeDashboard {
         stats_row.set_homogeneous(true);
 
         let (running_card, stats_running) = create_stat_card("Running", "0", "status-running");
-        let (idle_card, stats_completed) = create_stat_card("Idle", "0", "status-idle");
-        let (exited_card, stats_failed) = create_stat_card("Exited", "0", "status-exited");
-        let (total_card, stats_total) = create_stat_card("Total", "0", "dim-label");
+        let (completed_card, stats_completed) = create_stat_card("Completed", "0", "status-exited");
+        let (failed_card, stats_failed) = create_stat_card("Failed", "0", "status-failed");
+        let (killed_card, stats_total) = create_stat_card("Killed", "0", "status-gone");
 
         stats_row.append(&running_card);
-        stats_row.append(&idle_card);
-        stats_row.append(&exited_card);
-        stats_row.append(&total_card);
+        stats_row.append(&completed_card);
+        stats_row.append(&failed_card);
+        stats_row.append(&killed_card);
         container.append(&stats_row);
 
         // Worktree count
@@ -126,19 +126,27 @@ impl HomeDashboard {
 
     /// Update dashboard stats from a new manifest.
     pub fn update_manifest(&self, manifest: &Manifest) {
-        let running = manifest.count_agents_by_status(AgentStatus::Running);
-        let idle = manifest.count_agents_by_status(AgentStatus::Idle);
-        let exited = manifest.count_agents_by_status(AgentStatus::Exited);
-        let total = manifest
+        let all_agents: Vec<_> = manifest
             .worktrees
             .values()
-            .map(|wt| wt.agents.len())
-            .sum::<usize>();
+            .flat_map(|wt| wt.agents.values())
+            .collect();
+
+        let running = all_agents.iter().filter(|a| a.status == AgentStatus::Running).count();
+        let completed = all_agents
+            .iter()
+            .filter(|a| a.status == AgentStatus::Exited && a.exit_code == Some(0))
+            .count();
+        let failed = all_agents
+            .iter()
+            .filter(|a| a.status == AgentStatus::Exited && a.exit_code != Some(0))
+            .count();
+        let killed = all_agents.iter().filter(|a| a.status == AgentStatus::Gone).count();
 
         self.stats_running.set_text(&running.to_string());
-        self.stats_completed.set_text(&idle.to_string());
-        self.stats_failed.set_text(&exited.to_string());
-        self.stats_total.set_text(&total.to_string());
+        self.stats_completed.set_text(&completed.to_string());
+        self.stats_failed.set_text(&failed.to_string());
+        self.stats_total.set_text(&killed.to_string());
 
         self.worktree_count
             .set_text(&format!("{} worktrees", manifest.worktrees.len()));
@@ -146,8 +154,60 @@ impl HomeDashboard {
         self.project_label
             .set_text(&format!("Project: {}", manifest.project_root));
 
-        // Fetch git log data for heatmap (async)
+        // Fetch git log data for heatmap and recent commits (async)
         self.fetch_heatmap_data(&manifest.project_root);
+        self.fetch_recent_commits(&manifest.project_root);
+    }
+
+    fn fetch_recent_commits(&self, project_root: &str) {
+        let root = project_root.to_string();
+        let commits_list = self.commits_list.clone();
+
+        std::thread::spawn(move || {
+            let output = std::process::Command::new("git")
+                .args([
+                    "log",
+                    "--format=%h|%s|%ar",
+                    "-n",
+                    "10",
+                ])
+                .current_dir(&root)
+                .output();
+
+            if let Ok(output) = output {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let commits: Vec<(String, String, String)> = stdout
+                    .lines()
+                    .filter_map(|line| {
+                        let parts: Vec<&str> = line.splitn(3, '|').collect();
+                        if parts.len() == 3 {
+                            Some((
+                                parts[0].to_string(),
+                                parts[1].to_string(),
+                                parts[2].to_string(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                glib::idle_add_once(move || {
+                    // Clear existing rows
+                    while let Some(row) = commits_list.row_at_index(0) {
+                        commits_list.remove(&row);
+                    }
+
+                    if commits.is_empty() {
+                        commits_list.append(&create_commit_row("—", "No commits found", ""));
+                    } else {
+                        for (hash, message, time) in &commits {
+                            commits_list.append(&create_commit_row(hash, message, time));
+                        }
+                    }
+                });
+            }
+        });
     }
 
     fn fetch_heatmap_data(&self, project_root: &str) {

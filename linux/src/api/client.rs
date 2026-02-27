@@ -229,6 +229,12 @@ impl PpgClient {
         self.post_no_body(&format!("/api/worktrees/{}/kill", worktree_id)).await
     }
 
+    // -- Reset --
+
+    pub async fn reset(&self) -> Result<serde_json::Value> {
+        self.post_no_body("/api/reset").await
+    }
+
     // -- Config --
 
     pub async fn config(&self) -> Result<serde_json::Value> {
