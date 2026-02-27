@@ -103,6 +103,18 @@ export function tlsServerCertPath(projectRoot: string): string {
   return path.join(tlsDir(projectRoot), 'server-cert.pem');
 }
 
+export function servePidPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve.pid');
+}
+
+export function serveLogPath(projectRoot: string): string {
+  return path.join(logsDir(projectRoot), 'serve.log');
+}
+
+export function serveJsonPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve.json');
+}
+
 export function worktreeBaseDir(projectRoot: string): string {
   return path.join(projectRoot, '.worktrees');
 }
@@ -113,14 +125,6 @@ export function worktreePath(projectRoot: string, id: string): string {
 
 export function serveStatePath(projectRoot: string): string {
   return path.join(ppgDir(projectRoot), 'serve.json');
-}
-
-export function servePidPath(projectRoot: string): string {
-  return path.join(ppgDir(projectRoot), 'serve.pid');
-}
-
-export function serveDir(projectRoot: string): string {
-  return path.join(ppgDir(projectRoot), 'serve');
 }
 
 export function authPath(projectRoot: string): string {

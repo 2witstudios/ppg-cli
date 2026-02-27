@@ -282,16 +282,48 @@ program
     await installDashboardCommand(options);
   });
 
-program
-  .command('serve')
-  .description('Start the ppg API server')
-  .option('-p, --port <number>', 'Port to listen on', parsePort, 3100)
-  .option('-H, --host <address>', 'Host to bind to', '127.0.0.1')
+const serveCmd = program.command('serve').description('Manage the ppg API server');
+
+serveCmd
+  .command('start')
+  .description('Start the serve daemon in a tmux window')
+  .option('-p, --port <port>', 'Port to listen on', parsePort, 3100)
+  .option('-H, --host <host>', 'Host to bind to', '127.0.0.1')
   .option('--token <secret>', 'Bearer token for authentication')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
-    const { serveCommand } = await import('./commands/serve.js');
-    await serveCommand(options);
+    const { serveStartCommand } = await import('./commands/serve.js');
+    await serveStartCommand(options);
+  });
+
+serveCmd
+  .command('stop')
+  .description('Stop the serve daemon')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { serveStopCommand } = await import('./commands/serve.js');
+    await serveStopCommand(options);
+  });
+
+serveCmd
+  .command('status')
+  .description('Show serve daemon status and recent log')
+  .option('-l, --lines <n>', 'Number of recent log lines to show', (v: string) => Number(v), 20)
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { serveStatusCommand } = await import('./commands/serve.js');
+    await serveStatusCommand(options);
+  });
+
+serveCmd
+  .command('_daemon', { hidden: true })
+  .description('Internal: run the serve daemon (called by ppg serve start)')
+  .option('-p, --port <port>', 'Port to listen on', parsePort, 3100)
+  .option('-H, --host <host>', 'Host to bind to', '127.0.0.1')
+  .option('--token <secret>', 'Bearer token for authentication')
+  .action(async (options) => {
+    const { serveDaemonCommand } = await import('./commands/serve.js');
+    await serveDaemonCommand(options);
   });
 
 const cronCmd = program.command('cron').description('Manage scheduled runs');

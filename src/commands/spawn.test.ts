@@ -82,7 +82,7 @@ const mockedSplitPane = vi.mocked(tmux.splitPane);
 
 function createManifest(tmuxWindow = ''): Manifest {
   return {
-    version: 1 as const,
+    version: 1,
     projectRoot: '/tmp/repo',
     sessionName: 'ppg-test',
     worktrees: {
@@ -92,7 +92,7 @@ function createManifest(tmuxWindow = ''): Manifest {
         path: '/tmp/repo/.ppg/worktrees/wt1',
         branch: 'ppg/feature',
         baseBranch: 'main',
-        status: 'active' as const,
+        status: 'active',
         tmuxWindow,
         agents: {},
         createdAt: '2026-02-27T00:00:00.000Z',
