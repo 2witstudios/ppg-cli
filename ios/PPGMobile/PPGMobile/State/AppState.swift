@@ -7,14 +7,41 @@ private enum DefaultsKey {
     static let lastConnectionId = "ppg_last_connection_id"
 }
 
+/// Codable projection of ServerConnection without the token.
+/// Tokens are stored separately in Keychain via TokenStorage.
+private struct PersistedConnection: Codable {
+    let id: UUID
+    var host: String
+    var port: Int
+    var caCertificate: String?
+
+    init(from connection: ServerConnection) {
+        self.id = connection.id
+        self.host = connection.host
+        self.port = connection.port
+        self.caCertificate = connection.caCertificate
+    }
+
+    func toServerConnection(token: String) -> ServerConnection {
+        ServerConnection(
+            id: id,
+            host: host,
+            port: port,
+            caCertificate: caCertificate,
+            token: token
+        )
+    }
+}
+
 // MARK: - AppState
 
 /// Root application state managing server connections and the REST/WS lifecycle.
 ///
 /// `AppState` is the single entry point for connection management. It persists
-/// connections to `UserDefaults`, auto-connects to the last-used server on
-/// launch, and coordinates `PPGClient` (REST) and `WebSocketManager` (WS)
-/// through `ManifestStore`.
+/// connection metadata to `UserDefaults` and tokens to Keychain via `TokenStorage`.
+/// Auto-connects to the last-used server on launch and coordinates `PPGClient`
+/// (REST) and `WebSocketManager` (WS) through `ManifestStore`.
+@MainActor
 @Observable
 final class AppState {
 
@@ -29,7 +56,7 @@ final class AppState {
     /// Whether a connection attempt is in progress.
     private(set) var isConnecting = false
 
-    /// User-facing error message, cleared on next successful action.
+    /// User-facing error message, cleared on next connect attempt.
     private(set) var errorMessage: String?
 
     // MARK: - WebSocket State
@@ -54,7 +81,6 @@ final class AppState {
 
     /// Connects to the last-used server if one exists.
     /// Call this from the app's `.task` modifier on launch.
-    @MainActor
     func autoConnect() async {
         guard let lastId = UserDefaults.standard.string(forKey: DefaultsKey.lastConnectionId),
               let uuid = UUID(uuidString: lastId),
@@ -68,8 +94,9 @@ final class AppState {
 
     /// Connects to the given server: configures REST client, tests reachability,
     /// starts WebSocket, and fetches the initial manifest.
-    @MainActor
     func connect(to connection: ServerConnection) async {
+        guard !isConnecting else { return }
+
         // Disconnect current connection first
         if activeConnection != nil {
             disconnect()
@@ -91,33 +118,32 @@ final class AppState {
         activeConnection = connection
         UserDefaults.standard.set(connection.id.uuidString, forKey: DefaultsKey.lastConnectionId)
 
-        // Start WebSocket
         startWebSocket(for: connection)
-
-        // Fetch initial manifest
         await manifestStore.refresh()
 
         isConnecting = false
     }
 
     /// Disconnects from the current server, tearing down WS and clearing state.
-    @MainActor
     func disconnect() {
         stopWebSocket()
         activeConnection = nil
         manifestStore.clear()
         webSocketState = .disconnected
-        errorMessage = nil
     }
 
     // MARK: - Connection CRUD
 
     /// Adds a new connection, persists it, and optionally connects to it.
-    @MainActor
     func addConnection(_ connection: ServerConnection, connectImmediately: Bool = true) async {
-        // Avoid duplicates by host+port
-        if let existing = connections.firstIndex(where: { $0.host == connection.host && $0.port == connection.port }) {
-            connections[existing] = connection
+        // Clean up orphaned Keychain token if replacing a duplicate
+        if let existing = connections.first(where: { $0.host == connection.host && $0.port == connection.port }),
+           existing.id != connection.id {
+            try? TokenStorage.delete(for: existing.id)
+        }
+
+        if let index = connections.firstIndex(where: { $0.host == connection.host && $0.port == connection.port }) {
+            connections[index] = connection
         } else {
             connections.append(connection)
         }
@@ -129,15 +155,14 @@ final class AppState {
     }
 
     /// Removes a saved connection. Disconnects first if it's the active one.
-    @MainActor
     func removeConnection(_ connection: ServerConnection) {
         if activeConnection?.id == connection.id {
             disconnect()
         }
         connections.removeAll { $0.id == connection.id }
+        try? TokenStorage.delete(for: connection.id)
         saveConnections()
 
-        // Clear last-used if it was this connection
         if let lastId = UserDefaults.standard.string(forKey: DefaultsKey.lastConnectionId),
            lastId == connection.id.uuidString {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.lastConnectionId)
@@ -145,24 +170,19 @@ final class AppState {
     }
 
     /// Updates an existing connection's properties and re-persists.
-    @MainActor
-    func updateConnection(_ connection: ServerConnection) {
+    func updateConnection(_ connection: ServerConnection) async {
         guard let index = connections.firstIndex(where: { $0.id == connection.id }) else { return }
         connections[index] = connection
         saveConnections()
 
-        // If this is the active connection, reconnect with new settings
         if activeConnection?.id == connection.id {
-            Task {
-                await connect(to: connection)
-            }
+            await connect(to: connection)
         }
     }
 
     // MARK: - Error Handling
 
     /// Clears the current error message.
-    @MainActor
     func clearError() {
         errorMessage = nil
     }
@@ -192,7 +212,6 @@ final class AppState {
         webSocket = nil
     }
 
-    @MainActor
     private func handleWebSocketEvent(_ event: WebSocketEvent) {
         switch event {
         case .manifestUpdated(let manifest):
@@ -214,18 +233,28 @@ final class AppState {
         }
     }
 
-    // MARK: - Persistence (UserDefaults)
+    // MARK: - Persistence
 
     private func loadConnections() {
         guard let data = UserDefaults.standard.data(forKey: DefaultsKey.savedConnections),
-              let decoded = try? JSONDecoder().decode([ServerConnection].self, from: data) else {
+              let persisted = try? JSONDecoder().decode([PersistedConnection].self, from: data) else {
             return
         }
-        connections = decoded
+        connections = persisted.compactMap { entry in
+            guard let token = try? TokenStorage.load(for: entry.id) else { return nil }
+            return entry.toServerConnection(token: token)
+        }
     }
 
     private func saveConnections() {
-        guard let data = try? JSONEncoder().encode(connections) else { return }
+        // Persist metadata to UserDefaults (no tokens)
+        let persisted = connections.map { PersistedConnection(from: $0) }
+        guard let data = try? JSONEncoder().encode(persisted) else { return }
         UserDefaults.standard.set(data, forKey: DefaultsKey.savedConnections)
+
+        // Persist tokens to Keychain
+        for connection in connections {
+            try? TokenStorage.save(token: connection.token, for: connection.id)
+        }
     }
 }

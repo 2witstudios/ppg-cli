@@ -7,6 +7,7 @@ import Foundation
 /// `ManifestStore` owns the manifest data and provides read access to views.
 /// It is updated either by a full REST fetch or by individual WebSocket events
 /// (agent/worktree status changes) to keep the UI responsive without polling.
+@MainActor
 @Observable
 final class ManifestStore {
 
@@ -37,7 +38,6 @@ final class ManifestStore {
     // MARK: - Full Refresh
 
     /// Fetches the full manifest from the REST API and replaces the cache.
-    @MainActor
     func refresh() async {
         isLoading = true
         error = nil
@@ -56,7 +56,6 @@ final class ManifestStore {
     // MARK: - Incremental Updates
 
     /// Applies a full manifest snapshot received from WebSocket.
-    @MainActor
     func applyManifest(_ updated: Manifest) {
         manifest = updated
         lastRefreshed = Date()
@@ -64,7 +63,6 @@ final class ManifestStore {
     }
 
     /// Updates a single agent's status in the cached manifest.
-    @MainActor
     func updateAgentStatus(agentId: String, status: AgentStatus) {
         guard var m = manifest else { return }
         for (wtId, var worktree) in m.worktrees {
@@ -79,7 +77,6 @@ final class ManifestStore {
     }
 
     /// Updates a single worktree's status in the cached manifest.
-    @MainActor
     func updateWorktreeStatus(worktreeId: String, status: WorktreeStatus) {
         guard var m = manifest,
               var worktree = m.worktrees[worktreeId] else { return }
@@ -91,7 +88,6 @@ final class ManifestStore {
     // MARK: - Clear
 
     /// Resets the store to its initial empty state.
-    @MainActor
     func clear() {
         manifest = nil
         isLoading = false
