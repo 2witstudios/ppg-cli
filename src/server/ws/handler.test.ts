@@ -1,6 +1,6 @@
 import { describe, test, expect, afterEach } from 'vitest';
 import http from 'node:http';
-import { WebSocket } from 'ws';
+import { WebSocket, type RawData } from 'ws';
 import { createWsHandler, type WsHandler } from './handler.js';
 import { parseCommand, serializeEvent, type ServerEvent } from './events.js';
 
@@ -40,8 +40,14 @@ function connectWs(port: number, token: string): Promise<WebSocket> {
 
 function waitForMessage(ws: WebSocket): Promise<ServerEvent> {
   return new Promise((resolve) => {
-    ws.once('message', (data: Buffer | string) => {
-      const str = typeof data === 'string' ? data : data.toString('utf-8');
+    ws.once('message', (data: RawData) => {
+      const str = (() => {
+        if (typeof data === 'string') return data;
+        if (Buffer.isBuffer(data)) return data.toString('utf-8');
+        if (data instanceof ArrayBuffer) return Buffer.from(data).toString('utf-8');
+        if (Array.isArray(data)) return Buffer.concat(data).toString('utf-8');
+        return '';
+      })();
       resolve(JSON.parse(str) as ServerEvent);
     });
   });

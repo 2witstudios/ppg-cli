@@ -1,6 +1,7 @@
 import { URL } from 'node:url';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
+import type { RawData } from 'ws';
 import type { Duplex } from 'node:stream';
 import {
   parseCommand,
@@ -42,17 +43,46 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
   const clients = new Set<ClientState>();
 
+  function sendData(ws: WebSocket, data: string): boolean {
+    if (ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      ws.send(data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function decodeRawData(raw: RawData): string {
+    if (typeof raw === 'string') return raw;
+    if (Buffer.isBuffer(raw)) return raw.toString('utf-8');
+    if (raw instanceof ArrayBuffer) return Buffer.from(raw).toString('utf-8');
+    if (Array.isArray(raw)) return Buffer.concat(raw).toString('utf-8');
+    return '';
+  }
+
+  function rejectUpgrade(socket: Duplex, statusLine: string): void {
+    if (socket.destroyed) return;
+    try {
+      socket.write(`${statusLine}\r\nConnection: close\r\n\r\n`);
+    } catch {
+      // ignore write errors on broken sockets
+    } finally {
+      socket.destroy();
+    }
+  }
+
   function sendEvent(client: ClientState, event: ServerEvent): void {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(serializeEvent(event));
+    if (!sendData(client.ws, serializeEvent(event))) {
+      clients.delete(client);
     }
   }
 
   function broadcast(event: ServerEvent): void {
     const data = serializeEvent(event);
     for (const client of clients) {
-      if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(data);
+      if (!sendData(client.ws, data)) {
+        clients.delete(client);
       }
     }
   }
@@ -94,35 +124,44 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
   }
 
   function onUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+    let url: URL;
+    try {
+      // The path/query in request.url is all we need; avoid trusting Host header.
+      url = new URL(request.url ?? '/', 'http://localhost');
+    } catch {
+      rejectUpgrade(socket, 'HTTP/1.1 400 Bad Request');
+      return;
+    }
 
     if (url.pathname !== '/ws') {
-      socket.destroy();
+      rejectUpgrade(socket, 'HTTP/1.1 404 Not Found');
       return;
     }
 
     const token = url.searchParams.get('token');
     if (!token) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
+      rejectUpgrade(socket, 'HTTP/1.1 401 Unauthorized');
       return;
     }
 
     Promise.resolve(validateToken(token))
       .then((valid) => {
+        if (socket.destroyed) return;
         if (!valid) {
-          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-          socket.destroy();
+          rejectUpgrade(socket, 'HTTP/1.1 401 Unauthorized');
           return;
         }
 
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit('connection', ws, request);
-        });
+        try {
+          wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+          });
+        } catch {
+          rejectUpgrade(socket, 'HTTP/1.1 500 Internal Server Error');
+        }
       })
       .catch(() => {
-        socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
-        socket.destroy();
+        rejectUpgrade(socket, 'HTTP/1.1 500 Internal Server Error');
       });
   }
 
@@ -135,8 +174,8 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
     };
     clients.add(client);
 
-    ws.on('message', (raw: Buffer | string) => {
-      const data = typeof raw === 'string' ? raw : raw.toString('utf-8');
+    ws.on('message', (raw: RawData) => {
+      const data = decodeRawData(raw);
       const command = parseCommand(data);
 
       if (!command) {
