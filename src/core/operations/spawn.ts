@@ -13,7 +13,7 @@ import { PpgError, NotInitializedError, WorktreeNotFoundError } from '../../lib/
 import { normalizeName } from '../../lib/name.js';
 import { parseVars } from '../../lib/vars.js';
 import type { WorktreeEntry, AgentEntry } from '../../types/manifest.js';
-import type { AgentConfig } from '../../types/config.js';
+import type { Config, AgentConfig } from '../../types/config.js';
 
 export interface PerformSpawnOptions {
   name?: string;
@@ -220,7 +220,7 @@ function toSpawnResult(
 
 async function spawnNewWorktree(
   projectRoot: string,
-  config: import('../../types/config.js').Config,
+  config: Config,
   agentConfig: AgentConfig,
   promptText: string,
   count: number,
@@ -306,7 +306,7 @@ async function spawnNewWorktree(
 
 async function spawnOnExistingBranch(
   projectRoot: string,
-  config: import('../../types/config.js').Config,
+  config: Config,
   agentConfig: AgentConfig,
   branch: string,
   promptText: string,

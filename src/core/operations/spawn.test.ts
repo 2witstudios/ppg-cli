@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import type { Manifest } from '../../types/manifest.js';
+import type { Manifest, WorktreeEntry } from '../../types/manifest.js';
 import type { Config } from '../../types/config.js';
 
 // --- Mocks ---
@@ -80,6 +80,7 @@ import { loadConfig, resolveAgentConfig } from '../config.js';
 import { readManifest, updateManifest, resolveWorktree } from '../manifest.js';
 import { getRepoRoot, getCurrentBranch, createWorktree, adoptWorktree } from '../worktree.js';
 import { setupWorktreeEnv } from '../env.js';
+import { loadTemplate } from '../template.js';
 import { spawnAgent } from '../agent.js';
 import * as tmux from '../tmux.js';
 import { openTerminalWindow } from '../terminal.js';
@@ -87,24 +88,17 @@ import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSes
 import { performSpawn } from './spawn.js';
 
 const mockedFs = vi.mocked(fs);
-const mockedGetRepoRoot = vi.mocked(getRepoRoot);
 const mockedLoadConfig = vi.mocked(loadConfig);
 const mockedResolveAgentConfig = vi.mocked(resolveAgentConfig);
 const mockedReadManifest = vi.mocked(readManifest);
 const mockedUpdateManifest = vi.mocked(updateManifest);
 const mockedResolveWorktree = vi.mocked(resolveWorktree);
-const mockedGetCurrentBranch = vi.mocked(getCurrentBranch);
 const mockedCreateWorktree = vi.mocked(createWorktree);
-const mockedAdoptWorktree = vi.mocked(adoptWorktree);
-const mockedSetupWorktreeEnv = vi.mocked(setupWorktreeEnv);
 const mockedSpawnAgent = vi.mocked(spawnAgent);
 const mockedEnsureSession = vi.mocked(tmux.ensureSession);
 const mockedCreateWindow = vi.mocked(tmux.createWindow);
 const mockedSplitPane = vi.mocked(tmux.splitPane);
-const mockedOpenTerminalWindow = vi.mocked(openTerminalWindow);
-const mockedGenWorktreeId = vi.mocked(genWorktreeId);
-const mockedGenAgentId = vi.mocked(genAgentId);
-const mockedGenSessionId = vi.mocked(genSessionId);
+const mockedLoadTemplate = vi.mocked(loadTemplate);
 
 const PROJECT_ROOT = '/tmp/project';
 const SESSION_NAME = 'ppg-test';
@@ -130,25 +124,28 @@ const DEFAULT_MANIFEST: Manifest = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+function makeManifestState(): Manifest {
+  return structuredClone(DEFAULT_MANIFEST);
+}
+
 function setupDefaultMocks() {
-  mockedGetRepoRoot.mockResolvedValue(PROJECT_ROOT);
+  vi.mocked(getRepoRoot).mockResolvedValue(PROJECT_ROOT);
   mockedLoadConfig.mockResolvedValue(DEFAULT_CONFIG);
   mockedResolveAgentConfig.mockReturnValue(AGENT_CONFIG);
   mockedFs.access.mockResolvedValue(undefined);
-  mockedReadManifest.mockResolvedValue({ ...DEFAULT_MANIFEST });
+  mockedReadManifest.mockResolvedValue(makeManifestState());
   mockedUpdateManifest.mockImplementation(async (_root, updater) => {
-    const m = { ...DEFAULT_MANIFEST, worktrees: { ...DEFAULT_MANIFEST.worktrees } };
-    return updater(m);
+    return updater(makeManifestState());
   });
-  mockedGetCurrentBranch.mockResolvedValue('main');
-  mockedGenWorktreeId.mockReturnValue('wt-abc123');
-  mockedGenAgentId.mockReturnValue('ag-test0001');
-  mockedGenSessionId.mockReturnValue('session-uuid-1');
+  vi.mocked(getCurrentBranch).mockResolvedValue('main');
+  vi.mocked(genWorktreeId).mockReturnValue('wt-abc123');
+  vi.mocked(genAgentId).mockReturnValue('ag-test0001');
+  vi.mocked(genSessionId).mockReturnValue('session-uuid-1');
   mockedCreateWorktree.mockResolvedValue(`${PROJECT_ROOT}/.worktrees/wt-abc123`);
-  mockedAdoptWorktree.mockResolvedValue(`${PROJECT_ROOT}/.worktrees/wt-abc123`);
+  vi.mocked(adoptWorktree).mockResolvedValue(`${PROJECT_ROOT}/.worktrees/wt-abc123`);
   mockedEnsureSession.mockResolvedValue(undefined);
   mockedCreateWindow.mockResolvedValue(`${SESSION_NAME}:1`);
-  mockedSetupWorktreeEnv.mockResolvedValue(undefined);
+  vi.mocked(setupWorktreeEnv).mockResolvedValue(undefined);
   mockedSpawnAgent.mockResolvedValue({
     id: 'ag-test0001',
     name: 'claude',
@@ -171,13 +168,11 @@ describe('performSpawn', () => {
     test('given prompt option, should create worktree, setup env, create tmux, spawn agent, return result', async () => {
       const result = await performSpawn({ prompt: 'Do the task', name: 'feature-x' });
 
-      expect(mockedGetRepoRoot).toHaveBeenCalled();
-      expect(mockedLoadConfig).toHaveBeenCalledWith(PROJECT_ROOT);
       expect(mockedCreateWorktree).toHaveBeenCalledWith(PROJECT_ROOT, 'wt-abc123', {
         branch: 'ppg/feature-x',
         base: 'main',
       });
-      expect(mockedSetupWorktreeEnv).toHaveBeenCalledWith(
+      expect(vi.mocked(setupWorktreeEnv)).toHaveBeenCalledWith(
         PROJECT_ROOT,
         `${PROJECT_ROOT}/.worktrees/wt-abc123`,
         DEFAULT_CONFIG,
@@ -193,7 +188,6 @@ describe('performSpawn', () => {
         agentConfig: AGENT_CONFIG,
         projectRoot: PROJECT_ROOT,
       }));
-      expect(mockedUpdateManifest).toHaveBeenCalled();
 
       expect(result).toEqual({
         worktree: {
@@ -227,15 +221,15 @@ describe('performSpawn', () => {
         branch: 'ppg/wt-abc123',
         base: 'develop',
       });
-      expect(mockedGetCurrentBranch).not.toHaveBeenCalled();
+      expect(vi.mocked(getCurrentBranch)).not.toHaveBeenCalled();
     });
 
     test('given --open, should call openTerminalWindow', async () => {
-      mockedOpenTerminalWindow.mockResolvedValue(undefined);
+      vi.mocked(openTerminalWindow).mockResolvedValue(undefined);
 
       await performSpawn({ prompt: 'Do the task', open: true });
 
-      expect(mockedOpenTerminalWindow).toHaveBeenCalledWith(
+      expect(vi.mocked(openTerminalWindow)).toHaveBeenCalledWith(
         SESSION_NAME,
         `${SESSION_NAME}:1`,
         'wt-abc123',
@@ -244,7 +238,7 @@ describe('performSpawn', () => {
 
     test('given count=2 with --split, should split pane for second agent', async () => {
       let agentCallCount = 0;
-      mockedGenAgentId.mockImplementation(() => {
+      vi.mocked(genAgentId).mockImplementation(() => {
         agentCallCount++;
         return `ag-test000${agentCallCount}`;
       });
@@ -266,13 +260,36 @@ describe('performSpawn', () => {
       expect(mockedSplitPane).toHaveBeenCalledWith(`${SESSION_NAME}:1`, 'horizontal', expect.any(String));
       expect(result.agents).toHaveLength(2);
     });
+
+    test('given new worktree, should register skeleton in manifest before spawning agents', async () => {
+      // Capture the updater functions to inspect what each one does in isolation
+      const updaters: Array<(m: Manifest) => Manifest | Promise<Manifest>> = [];
+      mockedUpdateManifest.mockImplementation(async (_root, updater) => {
+        updaters.push(updater);
+        const m = makeManifestState();
+        return updater(m);
+      });
+
+      await performSpawn({ prompt: 'Do the task', name: 'feature-x' });
+
+      // First updater should register the skeleton worktree (no agents yet)
+      const skeletonResult = await updaters[0](makeManifestState());
+      expect(skeletonResult.worktrees['wt-abc123']).toBeDefined();
+      expect(Object.keys(skeletonResult.worktrees['wt-abc123'].agents)).toHaveLength(0);
+
+      // Second updater should add agent to an existing worktree entry
+      const withWorktree = makeManifestState();
+      withWorktree.worktrees['wt-abc123'] = structuredClone(skeletonResult.worktrees['wt-abc123']);
+      const agentResult = await updaters[1](withWorktree);
+      expect(agentResult.worktrees['wt-abc123'].agents['ag-test0001']).toBeDefined();
+    });
   });
 
   describe('existing branch (--branch)', () => {
     test('given --branch, should adopt worktree from existing branch', async () => {
       const result = await performSpawn({ prompt: 'Do the task', branch: 'ppg/fix-bug' });
 
-      expect(mockedAdoptWorktree).toHaveBeenCalledWith(PROJECT_ROOT, 'wt-abc123', 'ppg/fix-bug');
+      expect(vi.mocked(adoptWorktree)).toHaveBeenCalledWith(PROJECT_ROOT, 'wt-abc123', 'ppg/fix-bug');
       expect(mockedCreateWorktree).not.toHaveBeenCalled();
       expect(result.worktree.branch).toBe('ppg/fix-bug');
     });
@@ -280,20 +297,19 @@ describe('performSpawn', () => {
 
   describe('existing worktree (--worktree)', () => {
     test('given --worktree, should add agent to existing worktree', async () => {
-      const existingWt = {
+      const existingWt: WorktreeEntry = {
         id: 'wt-exist1',
         name: 'existing',
         path: `${PROJECT_ROOT}/.worktrees/wt-exist1`,
         branch: 'ppg/existing',
         baseBranch: 'main',
-        status: 'active' as const,
+        status: 'active',
         tmuxWindow: `${SESSION_NAME}:2`,
         agents: {},
         createdAt: '2026-01-01T00:00:00.000Z',
       };
       mockedResolveWorktree.mockReturnValue(existingWt);
 
-      // For existing worktree, the new agent window is created (not reused)
       mockedCreateWindow.mockResolvedValue(`${SESSION_NAME}:3`);
       mockedSpawnAgent.mockResolvedValue({
         id: 'ag-test0001', name: 'claude', agentType: 'claude', status: 'running',
@@ -304,25 +320,35 @@ describe('performSpawn', () => {
       const result = await performSpawn({ prompt: 'Do the task', worktree: 'wt-exist1' });
 
       expect(mockedCreateWorktree).not.toHaveBeenCalled();
-      expect(mockedAdoptWorktree).not.toHaveBeenCalled();
+      expect(vi.mocked(adoptWorktree)).not.toHaveBeenCalled();
       expect(result.worktree.id).toBe('wt-exist1');
       expect(result.agents).toHaveLength(1);
     });
 
-    test('given --worktree with no tmux window, should lazily create one', async () => {
-      const existingWt = {
+    test('given --worktree with no tmux window, should lazily create one and persist before spawning', async () => {
+      const existingWt: WorktreeEntry = {
         id: 'wt-exist1',
         name: 'existing',
         path: `${PROJECT_ROOT}/.worktrees/wt-exist1`,
         branch: 'ppg/existing',
         baseBranch: 'main',
-        status: 'active' as const,
-        tmuxWindow: '', // no window
+        status: 'active',
+        tmuxWindow: '',
         agents: {},
         createdAt: '2026-01-01T00:00:00.000Z',
       };
       mockedResolveWorktree.mockReturnValue(existingWt);
       mockedCreateWindow.mockResolvedValue(`${SESSION_NAME}:5`);
+
+      // Capture updater functions to verify ordering
+      const updaters: Array<(m: Manifest) => Manifest | Promise<Manifest>> = [];
+      mockedUpdateManifest.mockImplementation(async (_root, updater) => {
+        updaters.push(updater);
+        const m = makeManifestState();
+        m.worktrees['wt-exist1'] = structuredClone(existingWt);
+        return updater(m);
+      });
+
       mockedSpawnAgent.mockResolvedValue({
         id: 'ag-test0001', name: 'claude', agentType: 'claude', status: 'running',
         tmuxTarget: `${SESSION_NAME}:5`, prompt: 'Do the task', startedAt: '2026-01-01T00:00:00.000Z',
@@ -334,6 +360,47 @@ describe('performSpawn', () => {
       expect(mockedEnsureSession).toHaveBeenCalledWith(SESSION_NAME);
       expect(mockedCreateWindow).toHaveBeenCalledWith(SESSION_NAME, 'existing', existingWt.path);
       expect(result.worktree.tmuxWindow).toBe(`${SESSION_NAME}:5`);
+
+      // First updater should persist the tmux window (before agent spawn)
+      const windowInput = makeManifestState();
+      windowInput.worktrees['wt-exist1'] = structuredClone(existingWt);
+      const windowResult = await updaters[0](windowInput);
+      expect(windowResult.worktrees['wt-exist1'].tmuxWindow).toBe(`${SESSION_NAME}:5`);
+      expect(Object.keys(windowResult.worktrees['wt-exist1'].agents)).toHaveLength(0);
+    });
+
+    test('given spawn failure on existing worktree with lazy window, should persist tmux window but no agents', async () => {
+      const existingWt: WorktreeEntry = {
+        id: 'wt-exist1',
+        name: 'existing',
+        path: `${PROJECT_ROOT}/.worktrees/wt-exist1`,
+        branch: 'ppg/existing',
+        baseBranch: 'main',
+        status: 'active',
+        tmuxWindow: '',
+        agents: {},
+        createdAt: '2026-01-01T00:00:00.000Z',
+      };
+      mockedResolveWorktree.mockReturnValue(existingWt);
+      mockedCreateWindow.mockResolvedValue(`${SESSION_NAME}:7`);
+
+      let persistedTmuxWindow = '';
+      mockedUpdateManifest.mockImplementation(async (_root, updater) => {
+        const m = makeManifestState();
+        m.worktrees['wt-exist1'] = structuredClone(existingWt);
+        const result = await updater(m);
+        persistedTmuxWindow = result.worktrees['wt-exist1']?.tmuxWindow ?? '';
+        return result;
+      });
+
+      mockedSpawnAgent.mockRejectedValueOnce(new Error('spawn failed'));
+
+      await expect(performSpawn({ prompt: 'Do work', worktree: 'wt-exist1' }))
+        .rejects.toThrow('spawn failed');
+
+      // tmux window should have been persisted before the spawn failure
+      expect(persistedTmuxWindow).toBe(`${SESSION_NAME}:7`);
+      expect(mockedUpdateManifest).toHaveBeenCalledTimes(1);
     });
 
     test('given unknown worktree ref, should throw WorktreeNotFoundError', async () => {
@@ -344,7 +411,7 @@ describe('performSpawn', () => {
     });
   });
 
-  describe('validation', () => {
+  describe('prompt resolution', () => {
     test('given --branch and --worktree, should throw INVALID_ARGS', async () => {
       await expect(performSpawn({ prompt: 'Do the task', branch: 'foo', worktree: 'bar' }))
         .rejects.toThrow('--branch and --worktree are mutually exclusive');
@@ -367,22 +434,13 @@ describe('performSpawn', () => {
 
       expect(mockedFs.readFile).toHaveBeenCalledWith('/tmp/prompt.md', 'utf-8');
     });
-  });
 
-  describe('result shape', () => {
-    test('should return SpawnResult with worktree and agents', async () => {
-      const result = await performSpawn({ prompt: 'Task' });
+    test('given --template, should load template by name', async () => {
+      mockedLoadTemplate.mockResolvedValue('Template content with {{BRANCH}}');
 
-      expect(result).toHaveProperty('worktree');
-      expect(result).toHaveProperty('agents');
-      expect(result.worktree).toHaveProperty('id');
-      expect(result.worktree).toHaveProperty('name');
-      expect(result.worktree).toHaveProperty('branch');
-      expect(result.worktree).toHaveProperty('path');
-      expect(result.worktree).toHaveProperty('tmuxWindow');
-      expect(result.agents[0]).toHaveProperty('id');
-      expect(result.agents[0]).toHaveProperty('tmuxTarget');
-      expect(result.agents[0]).toHaveProperty('sessionId');
+      await performSpawn({ template: 'my-template' });
+
+      expect(mockedLoadTemplate).toHaveBeenCalledWith(PROJECT_ROOT, 'my-template');
     });
   });
 });

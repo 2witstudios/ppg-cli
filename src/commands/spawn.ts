@@ -10,11 +10,11 @@ export async function spawnCommand(options: SpawnOptions): Promise<void> {
 
   const result = await performSpawn(spawnOpts);
 
-  emitSpawnResult(result, json);
+  emitSpawnResult(result, options);
 }
 
-function emitSpawnResult(result: SpawnResult, json: boolean | undefined): void {
-  if (json) {
+function emitSpawnResult(result: SpawnResult, options: SpawnOptions): void {
+  if (options.json) {
     output({
       success: true,
       worktree: result.worktree,
@@ -24,9 +24,21 @@ function emitSpawnResult(result: SpawnResult, json: boolean | undefined): void {
   }
 
   const agentCount = result.agents.length;
-  success(`Spawned worktree ${result.worktree.id} with ${agentCount} agent(s)`);
+
+  if (options.worktree) {
+    success(`Added ${agentCount} agent(s) to worktree ${result.worktree.id}`);
+  } else if (options.branch) {
+    success(`Spawned worktree ${result.worktree.id} from branch ${options.branch} with ${agentCount} agent(s)`);
+  } else {
+    success(`Spawned worktree ${result.worktree.id} with ${agentCount} agent(s)`);
+  }
+
   for (const a of result.agents) {
     info(`  Agent ${a.id} → ${a.tmuxTarget}`);
   }
-  info(`Attach: ppg attach ${result.worktree.id}`);
+
+  // Only show attach hint for newly created worktrees, not when adding to existing
+  if (!options.worktree) {
+    info(`Attach: ppg attach ${result.worktree.id}`);
+  }
 }
