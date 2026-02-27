@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var showQRScanner = false
     @State private var deleteTarget: ServerConnection?
     @State private var testResult: TestResult?
+    @State private var showQRError = false
 
     private enum TestResult: Equatable {
         case testing
@@ -45,6 +46,11 @@ struct SettingsView: View {
                 }
             } message: { server in
                 Text("Remove \(server.name) (\(server.host):\(server.port))? This cannot be undone.")
+            }
+            .alert("Invalid QR Code", isPresented: $showQRError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The scanned code is not a valid ppg server. Expected format: ppg://host:port/token")
             }
         }
     }
@@ -140,7 +146,7 @@ struct SettingsView: View {
             LabeledContent("PPG Mobile", value: appVersion)
             LabeledContent("Server Protocol", value: "v1")
 
-            Link(destination: URL(string: "https://github.com/jongravois/ppg-cli")!) {
+            Link(destination: URL(string: "https://github.com/2witstudios/ppg-cli")!) {
                 Label("GitHub Repository", systemImage: "link")
             }
         }
@@ -185,9 +191,11 @@ struct SettingsView: View {
                 case .success:
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                case .failure:
-                    Image(systemName: "xmark.circle.fill")
+                case .failure(let message):
+                    Label(message, systemImage: "xmark.circle.fill")
+                        .font(.caption)
                         .foregroundStyle(.red)
+                        .lineLimit(1)
                 case nil:
                     EmptyView()
                 }
@@ -199,16 +207,18 @@ struct SettingsView: View {
     // MARK: - Actions
 
     private func handleQRScan(_ result: String) {
+        showQRScanner = false
         if let conn = ServerConnection.fromQRCode(result) {
             appState.addConnection(conn)
             Task { await appState.connect(to: conn) }
+        } else {
+            showQRError = true
         }
-        showQRScanner = false
     }
 
     private func testConnection() {
         testResult = .testing
-        Task {
+        Task { @MainActor in
             do {
                 _ = try await appState.client.fetchStatus()
                 testResult = .success
@@ -217,7 +227,9 @@ struct SettingsView: View {
             }
             // Auto-clear after 3 seconds
             try? await Task.sleep(for: .seconds(3))
-            testResult = nil
+            if !Task.isCancelled {
+                testResult = nil
+            }
         }
     }
 

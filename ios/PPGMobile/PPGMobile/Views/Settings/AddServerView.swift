@@ -8,6 +8,7 @@ struct AddServerView: View {
     @State private var host = ""
     @State private var port = "7700"
     @State private var token = ""
+    @State private var showToken = false
 
     var body: some View {
         NavigationStack {
@@ -25,10 +26,26 @@ struct AddServerView: View {
                 }
 
                 Section("Authentication") {
-                    TextField("Token", text: $token)
+                    HStack {
+                        Group {
+                            if showToken {
+                                TextField("Token", text: $token)
+                                    .fontDesign(.monospaced)
+                            } else {
+                                SecureField("Token", text: $token)
+                            }
+                        }
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .fontDesign(.monospaced)
+
+                        Button {
+                            showToken.toggle()
+                        } label: {
+                            Image(systemName: showToken ? "eye.slash" : "eye")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 Section {
