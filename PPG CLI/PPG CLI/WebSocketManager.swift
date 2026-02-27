@@ -9,7 +9,7 @@ extension Notification.Name {
 
 // MARK: - Connection State
 
-enum WebSocketConnectionState: Equatable, Sendable {
+nonisolated enum WebSocketConnectionState: Equatable, Sendable {
     case disconnected
     case connecting
     case connected
@@ -25,7 +25,7 @@ enum WebSocketConnectionState: Equatable, Sendable {
 
 // MARK: - Server Events
 
-enum WebSocketEvent: Sendable {
+nonisolated enum WebSocketEvent: Sendable {
     case manifestUpdated(ManifestModel)
     case agentStatusChanged(agentId: String, status: AgentStatus)
     case worktreeStatusChanged(worktreeId: String, status: String)
@@ -35,7 +35,7 @@ enum WebSocketEvent: Sendable {
 
 // MARK: - Client Commands
 
-enum WebSocketCommand: Sendable {
+nonisolated enum WebSocketCommand: Sendable {
     case subscribe(channel: String)
     case unsubscribe(channel: String)
     case terminalInput(agentId: String, data: String)
@@ -89,8 +89,10 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
     private var pingTimer: DispatchSourceTimer?
+    private var reconnectWorkItem: DispatchWorkItem?
     private var reconnectAttempt = 0
     private var intentionalDisconnect = false
+    private var isHandlingConnectionLoss = false
 
     // MARK: - Init
 
@@ -141,6 +143,9 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
         guard _state == .disconnected || _state.isReconnecting else { return }
 
         intentionalDisconnect = false
+        isHandlingConnectionLoss = false
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
 
         if _state.isReconnecting {
             // Already in reconnect flow — keep the attempt counter
@@ -160,6 +165,9 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
 
     private func doDisconnect() {
         intentionalDisconnect = true
+        isHandlingConnectionLoss = false
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
         stopPingTimer()
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
@@ -195,17 +203,20 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
 
     // MARK: - Receiving
 
-    private func listenForMessages() {
-        task?.receive { [weak self] result in
+    private func listenForMessages(for expectedTask: URLSessionWebSocketTask) {
+        expectedTask.receive { [weak self] result in
             guard let self = self else { return }
-            switch result {
-            case .success(let message):
-                self.handleMessage(message)
-                self.listenForMessages()
-            case .failure(let error):
-                if !self.intentionalDisconnect {
-                    NSLog("[WebSocketManager] receive error: \(error.localizedDescription)")
-                    self.queue.async { self.handleConnectionLost() }
+            self.queue.async {
+                guard self.task === expectedTask else { return }
+                switch result {
+                case .success(let message):
+                    self.handleMessage(message)
+                    self.listenForMessages(for: expectedTask)
+                case .failure(let error):
+                    if !self.intentionalDisconnect {
+                        NSLog("[WebSocketManager] receive error: \(error.localizedDescription)")
+                        self.handleConnectionLost()
+                    }
                 }
             }
         }
@@ -307,6 +318,8 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
 
     private func handleConnectionLost() {
         guard !intentionalDisconnect else { return }
+        guard !isHandlingConnectionLoss else { return }
+        isHandlingConnectionLoss = true
         stopPingTimer()
         task?.cancel(with: .abnormalClosure, reason: nil)
         task = nil
@@ -322,10 +335,14 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
         let delay = min(baseReconnectDelay * pow(2.0, Double(reconnectAttempt - 1)), maxReconnectDelay)
         NSLog("[WebSocketManager] reconnecting in %.1fs (attempt %d)", delay, reconnectAttempt)
 
-        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self = self, !self.intentionalDisconnect else { return }
+            self.reconnectWorkItem = nil
             self.doConnect()
         }
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     // MARK: - URLSessionWebSocketDelegate
@@ -333,16 +350,19 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         queue.async { [weak self] in
             guard let self = self else { return }
+            guard self.task === webSocketTask else { return }
             self.reconnectAttempt = 0
+            self.isHandlingConnectionLoss = false
             self.setState(.connected)
             self.startPingTimer()
-            self.listenForMessages()
+            self.listenForMessages(for: webSocketTask)
         }
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         queue.async { [weak self] in
             guard let self = self else { return }
+            guard self.task === webSocketTask else { return }
             if self.intentionalDisconnect {
                 self.setState(.disconnected)
             } else {
@@ -355,6 +375,8 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
         guard error != nil else { return }
         queue.async { [weak self] in
             guard let self = self, !self.intentionalDisconnect else { return }
+            guard let webSocketTask = task as? URLSessionWebSocketTask,
+                  self.task === webSocketTask else { return }
             self.handleConnectionLost()
         }
     }
