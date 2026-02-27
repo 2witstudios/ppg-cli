@@ -7,6 +7,7 @@ import { spawnAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { agentId, sessionId } from '../lib/id.js';
 import * as tmux from '../core/tmux.js';
+import type { Manifest } from '../types/manifest.js';
 
 vi.mock('node:fs/promises', async () => {
   const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
@@ -79,7 +80,7 @@ const mockedEnsureSession = vi.mocked(tmux.ensureSession);
 const mockedCreateWindow = vi.mocked(tmux.createWindow);
 const mockedSplitPane = vi.mocked(tmux.splitPane);
 
-function createManifest(tmuxWindow = '') {
+function createManifest(tmuxWindow = ''): Manifest {
   return {
     version: 1 as const,
     projectRoot: '/tmp/repo',
@@ -93,7 +94,7 @@ function createManifest(tmuxWindow = '') {
         baseBranch: 'main',
         status: 'active' as const,
         tmuxWindow,
-        agents: {} as Record<string, any>,
+        agents: {} as Manifest['worktrees'][string]['agents'],
         createdAt: '2026-02-27T00:00:00.000Z',
       },
     },
@@ -103,7 +104,7 @@ function createManifest(tmuxWindow = '') {
 }
 
 describe('spawnCommand', () => {
-  let manifestState = createManifest();
+  let manifestState: Manifest = createManifest();
   let nextAgent = 1;
   let nextSession = 1;
 
