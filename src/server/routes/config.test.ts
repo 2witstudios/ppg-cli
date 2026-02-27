@@ -1,22 +1,37 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import Fastify from 'fastify';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { configRoutes } from './config.js';
 
 let tmpDir: string;
+let globalDir: string;
+let app: FastifyInstance;
+
+vi.mock('../../lib/paths.js', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/paths.js')>('../../lib/paths.js');
+  return {
+    ...actual,
+    globalTemplatesDir: () => path.join(globalDir, 'templates'),
+    globalPromptsDir: () => path.join(globalDir, 'prompts'),
+  };
+});
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-config-routes-'));
+  globalDir = path.join(tmpDir, 'global');
+  await fs.mkdir(path.join(globalDir, 'templates'), { recursive: true });
+  await fs.mkdir(path.join(globalDir, 'prompts'), { recursive: true });
 });
 
 afterEach(async () => {
+  await app?.close();
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
 function buildApp(projectRoot: string) {
-  const app = Fastify({ logger: false });
+  app = Fastify({ logger: false });
   app.register(configRoutes, { projectRoot });
   return app;
 }
@@ -24,9 +39,9 @@ function buildApp(projectRoot: string) {
 // --- GET /api/config ---
 
 describe('GET /api/config', () => {
-  test('returns default config when no config.yaml exists', async () => {
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/config' });
+  test('given no config.yaml, should return default config', async () => {
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/config' });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -39,7 +54,7 @@ describe('GET /api/config', () => {
     expect(body.symlinkNodeModules).toBe(true);
   });
 
-  test('merges user config.yaml with defaults', async () => {
+  test('given user config.yaml, should merge with defaults', async () => {
     const ppgDir = path.join(tmpDir, '.ppg');
     await fs.mkdir(ppgDir, { recursive: true });
     await fs.writeFile(
@@ -47,49 +62,45 @@ describe('GET /api/config', () => {
       'sessionName: custom\ndefaultAgent: codex\nagents:\n  myagent:\n    name: myagent\n    command: myagent --fast\n    interactive: false\n',
     );
 
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/config' });
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/config' });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.sessionName).toBe('custom');
     expect(body.defaultAgent).toBe('codex');
-    // Default agents are preserved
     expect(body.agents.find((a: { name: string }) => a.name === 'claude')).toBeTruthy();
-    // Custom agent is added
     const myagent = body.agents.find((a: { name: string }) => a.name === 'myagent');
     expect(myagent).toBeTruthy();
     expect(myagent.command).toBe('myagent --fast');
     expect(myagent.interactive).toBe(false);
   });
 
-  test('returns agents as array not object', async () => {
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/config' });
+  test('given invalid YAML, should return 500 error', async () => {
+    const ppgDir = path.join(tmpDir, '.ppg');
+    await fs.mkdir(ppgDir, { recursive: true });
+    await fs.writeFile(path.join(ppgDir, 'config.yaml'), ':\n  bad: [yaml\n');
 
-    const body = res.json();
-    expect(Array.isArray(body.agents)).toBe(true);
-    for (const agent of body.agents) {
-      expect(agent).toHaveProperty('name');
-      expect(agent).toHaveProperty('command');
-      expect(agent).toHaveProperty('interactive');
-    }
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/config' });
+
+    expect(res.statusCode).toBe(500);
   });
 });
 
 // --- GET /api/templates ---
 
 describe('GET /api/templates', () => {
-  test('returns empty array when no templates exist', async () => {
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/templates' });
+  test('given no template dirs, should return empty array', async () => {
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/templates' });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.templates).toEqual([]);
   });
 
-  test('returns local templates with source and metadata', async () => {
+  test('given local template, should return source and metadata', async () => {
     const tplDir = path.join(tmpDir, '.ppg', 'templates');
     await fs.mkdir(tplDir, { recursive: true });
     await fs.writeFile(
@@ -97,8 +108,8 @@ describe('GET /api/templates', () => {
       '# Task Template\n\nDo {{TASK}} in {{WORKTREE_PATH}}\n',
     );
 
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/templates' });
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/templates' });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -111,23 +122,38 @@ describe('GET /api/templates', () => {
     });
   });
 
-  test('returns multiple templates sorted', async () => {
-    const tplDir = path.join(tmpDir, '.ppg', 'templates');
-    await fs.mkdir(tplDir, { recursive: true });
-    await fs.writeFile(path.join(tplDir, 'alpha.md'), '# Alpha\n');
-    await fs.writeFile(path.join(tplDir, 'beta.md'), '# Beta\n{{VAR}}\n');
+  test('given global template, should return with global source', async () => {
+    await fs.writeFile(
+      path.join(globalDir, 'templates', 'shared.md'),
+      '# Global Template\n\n{{VAR}}\n',
+    );
 
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/templates' });
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/templates' });
 
     const body = res.json();
-    expect(body.templates).toHaveLength(2);
-    const names = body.templates.map((t: { name: string }) => t.name);
-    expect(names).toContain('alpha');
-    expect(names).toContain('beta');
+    expect(body.templates).toHaveLength(1);
+    expect(body.templates[0].name).toBe('shared');
+    expect(body.templates[0].source).toBe('global');
   });
 
-  test('deduplicates variables in template', async () => {
+  test('given same name in local and global, should prefer local', async () => {
+    const tplDir = path.join(tmpDir, '.ppg', 'templates');
+    await fs.mkdir(tplDir, { recursive: true });
+    await fs.writeFile(path.join(tplDir, 'shared.md'), '# Local Version\n');
+    await fs.writeFile(path.join(globalDir, 'templates', 'shared.md'), '# Global Version\n');
+
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/templates' });
+
+    const body = res.json();
+    const shared = body.templates.filter((t: { name: string }) => t.name === 'shared');
+    expect(shared).toHaveLength(1);
+    expect(shared[0].source).toBe('local');
+    expect(shared[0].description).toBe('Local Version');
+  });
+
+  test('given duplicate variables, should deduplicate', async () => {
     const tplDir = path.join(tmpDir, '.ppg', 'templates');
     await fs.mkdir(tplDir, { recursive: true });
     await fs.writeFile(
@@ -135,8 +161,8 @@ describe('GET /api/templates', () => {
       '{{NAME}} and {{NAME}} and {{OTHER}}\n',
     );
 
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/templates' });
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/templates' });
 
     const body = res.json();
     expect(body.templates[0].variables).toEqual(['NAME', 'OTHER']);
@@ -146,16 +172,16 @@ describe('GET /api/templates', () => {
 // --- GET /api/prompts ---
 
 describe('GET /api/prompts', () => {
-  test('returns empty array when no prompts exist', async () => {
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/prompts' });
+  test('given no prompt dirs, should return empty array', async () => {
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/prompts' });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.prompts).toEqual([]);
   });
 
-  test('returns local prompts with source and metadata', async () => {
+  test('given local prompt, should return source and metadata', async () => {
     const pDir = path.join(tmpDir, '.ppg', 'prompts');
     await fs.mkdir(pDir, { recursive: true });
     await fs.writeFile(
@@ -163,8 +189,8 @@ describe('GET /api/prompts', () => {
       '# Code Review\n\nReview {{BRANCH}} for issues\n',
     );
 
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/prompts' });
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/prompts' });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -177,36 +203,47 @@ describe('GET /api/prompts', () => {
     });
   });
 
-  test('deduplicates prompts across local and global (local wins)', async () => {
-    // Local prompt
+  test('given same name in local and global, should prefer local', async () => {
     const localDir = path.join(tmpDir, '.ppg', 'prompts');
     await fs.mkdir(localDir, { recursive: true });
     await fs.writeFile(path.join(localDir, 'shared.md'), '# Local Shared\n');
+    await fs.writeFile(path.join(globalDir, 'prompts', 'shared.md'), '# Global Shared\n');
 
-    // Global prompt with same name — we can't easily write to ~/.ppg/prompts
-    // in a test, so we test the dedup logic via the entry listing behavior.
-    // The key assertion is that only one entry appears for a given name.
-
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/prompts' });
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/prompts' });
 
     const body = res.json();
-    const sharedEntries = body.prompts.filter(
-      (p: { name: string }) => p.name === 'shared',
-    );
-    expect(sharedEntries).toHaveLength(1);
-    expect(sharedEntries[0].source).toBe('local');
+    const shared = body.prompts.filter((p: { name: string }) => p.name === 'shared');
+    expect(shared).toHaveLength(1);
+    expect(shared[0].source).toBe('local');
+    expect(shared[0].description).toBe('Local Shared');
   });
 
-  test('ignores non-.md files in prompts directory', async () => {
+  test('given global-only prompt, should return with global source', async () => {
+    await fs.writeFile(
+      path.join(globalDir, 'prompts', 'global-only.md'),
+      '# Global Prompt\n\n{{WHO}}\n',
+    );
+
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/prompts' });
+
+    const body = res.json();
+    expect(body.prompts).toHaveLength(1);
+    expect(body.prompts[0].name).toBe('global-only');
+    expect(body.prompts[0].source).toBe('global');
+    expect(body.prompts[0].variables).toEqual(['WHO']);
+  });
+
+  test('given non-.md files, should ignore them', async () => {
     const pDir = path.join(tmpDir, '.ppg', 'prompts');
     await fs.mkdir(pDir, { recursive: true });
     await fs.writeFile(path.join(pDir, 'valid.md'), '# Valid Prompt\n');
     await fs.writeFile(path.join(pDir, 'readme.txt'), 'not a prompt');
     await fs.writeFile(path.join(pDir, '.hidden'), 'hidden file');
 
-    const app = buildApp(tmpDir);
-    const res = await app.inject({ method: 'GET', url: '/api/prompts' });
+    const server = buildApp(tmpDir);
+    const res = await server.inject({ method: 'GET', url: '/api/prompts' });
 
     const body = res.json();
     expect(body.prompts).toHaveLength(1);
