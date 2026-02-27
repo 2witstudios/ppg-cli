@@ -93,4 +93,11 @@ describe('getServeInfo', () => {
     const info = await getServeInfo('/fake/project');
     expect(info).toEqual(serveInfo);
   });
+
+  test('given malformed JSON in serve.json, should return null', async () => {
+    vi.spyOn(fs, 'readFile').mockResolvedValue('not valid json {{{');
+
+    const info = await getServeInfo('/fake/project');
+    expect(info).toBeNull();
+  });
 });

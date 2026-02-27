@@ -1,10 +1,10 @@
 import fs from 'node:fs/promises';
 import { getRepoRoot } from '../core/worktree.js';
-import { readManifest } from '../core/manifest.js';
+import { requireManifest, readManifest } from '../core/manifest.js';
 import { runServeDaemon, isServeRunning, getServePid, getServeInfo, readServeLog } from '../core/serve.js';
 import * as tmux from '../core/tmux.js';
-import { servePidPath, serveJsonPath, manifestPath } from '../lib/paths.js';
-import { PpgError, NotInitializedError } from '../lib/errors.js';
+import { servePidPath, serveJsonPath } from '../lib/paths.js';
+import { PpgError } from '../lib/errors.js';
 import { output, info, success, warn } from '../lib/output.js';
 
 export interface ServeStartOptions {
@@ -23,15 +23,18 @@ export interface ServeStatusOptions {
 }
 
 const SERVE_WINDOW_NAME = 'ppg-serve';
-const DEFAULT_PORT = 3000;
-const DEFAULT_HOST = 'localhost';
+const VALID_HOST = /^[\w.:-]+$/;
 
 export async function serveStartCommand(options: ServeStartOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
-  await requireInit(projectRoot);
+  await requireManifest(projectRoot);
 
-  const port = options.port ?? DEFAULT_PORT;
-  const host = options.host ?? DEFAULT_HOST;
+  const port = options.port!;
+  const host = options.host!;
+
+  if (!VALID_HOST.test(host)) {
+    throw new PpgError(`Invalid host: "${host}"`, 'INVALID_ARGS');
+  }
 
   // Check if already running
   if (await isServeRunning(projectRoot)) {
@@ -65,8 +68,8 @@ export async function serveStartCommand(options: ServeStartOptions): Promise<voi
       host,
     }, true);
   } else {
-    success(`Serve daemon started in tmux window: ${windowTarget}`);
-    info(`Listening on ${host}:${port}`);
+    success(`Serve daemon starting in tmux window: ${windowTarget}`);
+    info(`Configured for ${host}:${port}`);
     info(`Attach: tmux select-window -t ${windowTarget}`);
   }
 }
@@ -152,14 +155,6 @@ export async function serveStatusCommand(options: ServeStatusOptions): Promise<v
 
 export async function serveDaemonCommand(options: { port: number; host: string }): Promise<void> {
   const projectRoot = await getRepoRoot();
-  await requireInit(projectRoot);
+  await requireManifest(projectRoot);
   await runServeDaemon(projectRoot, options.port, options.host);
-}
-
-async function requireInit(projectRoot: string): Promise<void> {
-  try {
-    await fs.access(manifestPath(projectRoot));
-  } catch {
-    throw new NotInitializedError(projectRoot);
-  }
 }
