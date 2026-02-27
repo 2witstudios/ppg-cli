@@ -34,10 +34,12 @@ export interface WsHandler {
   close: () => Promise<void>;
 }
 
+const MAX_PAYLOAD = 65_536; // 64 KB
+
 export function createWsHandler(options: WsHandlerOptions): WsHandler {
   const { server, validateToken, onTerminalInput } = options;
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
   const clients = new Set<ClientState>();
 
   function sendEvent(client: ClientState, event: ServerEvent): void {
@@ -47,8 +49,11 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
   }
 
   function broadcast(event: ServerEvent): void {
+    const data = serializeEvent(event);
     for (const client of clients) {
-      sendEvent(client, event);
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(data);
+      }
     }
   }
 
@@ -68,19 +73,27 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
 
       case 'terminal:input':
         if (onTerminalInput) {
-          Promise.resolve(onTerminalInput(command.agentId, command.data)).catch(() => {
+          try {
+            Promise.resolve(onTerminalInput(command.agentId, command.data)).catch(() => {
+              sendEvent(client, {
+                type: 'error',
+                code: 'TERMINAL_INPUT_FAILED',
+                message: `Failed to send input to agent ${command.agentId}`,
+              });
+            });
+          } catch {
             sendEvent(client, {
               type: 'error',
               code: 'TERMINAL_INPUT_FAILED',
               message: `Failed to send input to agent ${command.agentId}`,
             });
-          });
+          }
         }
         break;
     }
   }
 
-  server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+  function onUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
 
     if (url.pathname !== '/ws') {
@@ -111,7 +124,9 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
         socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
         socket.destroy();
       });
-  });
+  }
+
+  server.on('upgrade', onUpgrade);
 
   wss.on('connection', (ws: WebSocket) => {
     const client: ClientState = {
@@ -146,13 +161,14 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
   });
 
   async function close(): Promise<void> {
+    server.removeListener('upgrade', onUpgrade);
     for (const client of clients) {
       client.ws.close(1001, 'Server shutting down');
     }
-    clients.clear();
     await new Promise<void>((resolve, reject) => {
       wss.close((err) => (err ? reject(err) : resolve()));
     });
+    clients.clear();
   }
 
   return { wss, clients, broadcast, sendEvent, close };

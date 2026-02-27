@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, afterEach } from 'vitest';
 import http from 'node:http';
 import { WebSocket } from 'ws';
 import { createWsHandler, type WsHandler } from './handler.js';
@@ -56,7 +56,6 @@ function waitForDisconnect(ws: WebSocket): Promise<void> {
     }
     ws.on('close', () => resolve());
     ws.on('error', () => {
-      // error fires before close on rejected upgrades — wait for close
       if (ws.readyState === WebSocket.CLOSED) resolve();
     });
   });
@@ -64,6 +63,13 @@ function waitForDisconnect(ws: WebSocket): Promise<void> {
 
 function send(ws: WebSocket, obj: Record<string, unknown>): void {
   ws.send(JSON.stringify(obj));
+}
+
+/** Send a ping and wait for pong — acts as a deterministic sync barrier. */
+async function roundTrip(ws: WebSocket): Promise<void> {
+  const msg = waitForMessage(ws);
+  send(ws, { type: 'ping' });
+  await msg;
 }
 
 // --- Tests ---
@@ -76,7 +82,7 @@ describe('WebSocket handler', () => {
   async function setup(
     opts: {
       validateToken?: (token: string) => boolean | Promise<boolean>;
-      onTerminalInput?: (agentId: string, data: string) => void;
+      onTerminalInput?: (agentId: string, data: string) => void | Promise<void>;
     } = {},
   ): Promise<number> {
     server = createTestServer();
@@ -196,7 +202,7 @@ describe('WebSocket handler', () => {
       const ws = await connect(port);
 
       send(ws, { type: 'terminal:subscribe', agentId: 'ag-12345678' });
-      await new Promise((r) => setTimeout(r, 50));
+      await roundTrip(ws);
 
       const [client] = handler.clients;
       expect(client.subscribedAgents.has('ag-12345678')).toBe(true);
@@ -207,10 +213,10 @@ describe('WebSocket handler', () => {
       const ws = await connect(port);
 
       send(ws, { type: 'terminal:subscribe', agentId: 'ag-12345678' });
-      await new Promise((r) => setTimeout(r, 50));
+      await roundTrip(ws);
 
       send(ws, { type: 'terminal:unsubscribe', agentId: 'ag-12345678' });
-      await new Promise((r) => setTimeout(r, 50));
+      await roundTrip(ws);
 
       const [client] = handler.clients;
       expect(client.subscribedAgents.has('ag-12345678')).toBe(false);
@@ -229,10 +235,54 @@ describe('WebSocket handler', () => {
       const ws = await connect(port);
 
       send(ws, { type: 'terminal:input', agentId: 'ag-12345678', data: 'hello\n' });
-      await new Promise((r) => setTimeout(r, 50));
+      await roundTrip(ws);
 
       expect(capturedAgentId).toBe('ag-12345678');
       expect(capturedData).toBe('hello\n');
+    });
+
+    test('terminal:input is a no-op when onTerminalInput is not provided', async () => {
+      const port = await setup(); // no onTerminalInput
+      const ws = await connect(port);
+
+      send(ws, { type: 'terminal:input', agentId: 'ag-12345678', data: 'hello\n' });
+      // Should not throw or send error — verify via round-trip
+      const msg = waitForMessage(ws);
+      send(ws, { type: 'ping' });
+      const event = await msg;
+      expect(event).toEqual({ type: 'pong' });
+    });
+
+    test('terminal:input sends error when onTerminalInput throws', async () => {
+      const port = await setup({
+        onTerminalInput: () => {
+          throw new Error('tmux exploded');
+        },
+      });
+      const ws = await connect(port);
+
+      const msgPromise = waitForMessage(ws);
+      send(ws, { type: 'terminal:input', agentId: 'ag-12345678', data: 'hello\n' });
+
+      const event = await msgPromise;
+      expect(event.type).toBe('error');
+      expect((event as { code: string }).code).toBe('TERMINAL_INPUT_FAILED');
+    });
+
+    test('terminal:input sends error when async onTerminalInput rejects', async () => {
+      const port = await setup({
+        onTerminalInput: async () => {
+          throw new Error('async tmux exploded');
+        },
+      });
+      const ws = await connect(port);
+
+      const msgPromise = waitForMessage(ws);
+      send(ws, { type: 'terminal:input', agentId: 'ag-12345678', data: 'hello\n' });
+
+      const event = await msgPromise;
+      expect(event.type).toBe('error');
+      expect((event as { code: string }).code).toBe('TERMINAL_INPUT_FAILED');
     });
   });
 
@@ -267,15 +317,33 @@ describe('WebSocket handler', () => {
     test('sendEvent sends to specific client only', async () => {
       const port = await setup();
       const ws1 = await connect(port);
-      await connect(port); // ws2 — should not receive
+      const ws2 = await connect(port);
 
-      const msg1 = waitForMessage(ws1);
       const [client1] = handler.clients;
-
       handler.sendEvent(client1, { type: 'pong' });
 
-      const event = await msg1;
+      // ws1 should receive the pong
+      const event = await waitForMessage(ws1);
       expect(event).toEqual({ type: 'pong' });
+
+      // ws2 should have no pending messages — verify by sending a ping
+      // and confirming the next message is the pong, not the earlier event
+      const msg2 = waitForMessage(ws2);
+      send(ws2, { type: 'ping' });
+      const event2 = await msg2;
+      expect(event2).toEqual({ type: 'pong' });
+    });
+
+    test('sendEvent skips client with closed socket', async () => {
+      const port = await setup();
+      const ws = await connect(port);
+
+      const [client] = handler.clients;
+      ws.close();
+      await waitForDisconnect(ws);
+
+      // Should not throw when sending to a closed client
+      handler.sendEvent(client, { type: 'pong' });
     });
   });
 
@@ -288,9 +356,11 @@ describe('WebSocket handler', () => {
 
       ws.close();
       await waitForDisconnect(ws);
-      await new Promise((r) => setTimeout(r, 50));
+      // Use a round-trip on a second connection as a sync barrier
+      const ws2 = await connect(port);
+      await roundTrip(ws2);
 
-      expect(handler.clients.size).toBe(0);
+      expect(handler.clients.size).toBe(1); // only ws2 remains
     });
 
     test('close() terminates all clients', async () => {
@@ -304,6 +374,18 @@ describe('WebSocket handler', () => {
       await handler.close();
       await Promise.all([close1, close2]);
 
+      expect(handler.clients.size).toBe(0);
+    });
+
+    test('close() removes upgrade listener from server', async () => {
+      const port = await setup();
+      await handler.close();
+
+      // After close, a new WS connection attempt should not be handled
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=valid-token`);
+      openSockets.push(ws);
+
+      await waitForDisconnect(ws);
       expect(handler.clients.size).toBe(0);
     });
   });
