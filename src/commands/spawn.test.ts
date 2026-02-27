@@ -8,7 +8,6 @@ import { getRepoRoot } from '../core/worktree.js';
 import { agentId, sessionId } from '../lib/id.js';
 import type { AgentEntry, Manifest } from '../types/manifest.js';
 import * as tmux from '../core/tmux.js';
-import type { AgentEntry, Manifest } from '../types/manifest.js';
 
 vi.mock('node:fs/promises', async () => {
   const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
@@ -147,7 +146,8 @@ describe('spawnCommand', () => {
     mockedReadManifest.mockImplementation(async () => structuredClone(manifestState));
     mockedResolveWorktree.mockImplementation((manifest, ref) => (manifest as any).worktrees[ref as string]);
     mockedUpdateManifest.mockImplementation(async (_projectRoot, updater) => {
-import type { AgentEntry, Manifest } from '../types/manifest.js';
+      manifestState = await updater(structuredClone(manifestState));
+      return manifestState;
     });
     mockedAgentId.mockImplementation(() => `ag-${nextAgent++}`);
     mockedSessionId.mockImplementation(() => `session-${nextSession++}`);
