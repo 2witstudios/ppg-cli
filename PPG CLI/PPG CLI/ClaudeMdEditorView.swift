@@ -199,6 +199,7 @@ class ClaudeMdEditorView: NSView, NSTextStorageDelegate {
         currentFileIndex = index
         isDirty = false
         saveButton.isEnabled = false
+        SyntaxHighlighter.highlightMarkdown(editorTextView.textStorage)
     }
 
     @objc private func fileSwitcherChanged(_ sender: NSPopUpButton) {
@@ -250,5 +251,6 @@ class ClaudeMdEditorView: NSView, NSTextStorageDelegate {
         guard editedMask.contains(.editedCharacters) else { return }
         isDirty = true
         saveButton.isEnabled = true
+        SyntaxHighlighter.highlightMarkdown(editorTextView.textStorage)
     }
 }

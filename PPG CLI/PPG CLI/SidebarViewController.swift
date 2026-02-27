@@ -1090,7 +1090,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
             menu.addItem(withTitle: "Delete", action: #selector(contextDelete(_:)), keyEquivalent: "").target = self
         case .agentGroup:
-            contextClickedNode = nil  // no context menu for groups yet
+            contextClickedNode = node
+            menu.addItem(withTitle: "Rename…", action: #selector(contextRenameGroup(_:)), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "Delete All", action: #selector(contextDeleteGroup(_:)), keyEquivalent: "").target = self
         case .terminal:
             contextClickedNode = node
             menu.addItem(withTitle: "Rename…", action: #selector(contextRename(_:)), keyEquivalent: "").target = self
@@ -1146,6 +1148,52 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
         default:
             break
+        }
+    }
+
+    @objc private func contextRenameGroup(_ sender: Any) {
+        guard let node = contextClickedNode, case .agentGroup(let agents, _) = node.item else { return }
+        guard !agents.isEmpty else { return }
+
+        let currentLabel = agents.first.map { $0.name.isEmpty ? $0.id : $0.name } ?? ""
+
+        let alert = NSAlert()
+        alert.messageText = "Rename Agent Group"
+        alert.informativeText = "Enter a new name for all \(agents.count) agents in this group:"
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.stringValue = currentLabel
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let newLabel = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !newLabel.isEmpty else { return }
+
+        guard let ctx = projectContext(for: node.item) else { return }
+
+        for agent in agents {
+            onRenameAgent?(ctx, agent.id, newLabel)
+        }
+    }
+
+    @objc private func contextDeleteGroup(_ sender: Any) {
+        guard let node = contextClickedNode, case .agentGroup(let agents, _) = node.item else { return }
+        guard !agents.isEmpty else { return }
+        guard let ctx = projectContext(for: node.item) else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Delete all \(agents.count) agents in this group?"
+        alert.informativeText = "This will kill all agents in the split pane and remove them from the manifest."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete All")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        for agent in agents {
+            onDeleteAgent?(ctx, agent.id)
         }
     }
 

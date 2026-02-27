@@ -783,6 +783,8 @@ class PaneCellView: NSView {
             overlay.updatePosition(in: bounds)
             hoverOverlay = overlay
         }
+        // Ensure overlay is above terminal views that may have been added after it
+        hoverOverlay!.superview?.addSubview(hoverOverlay!, positioned: .above, relativeTo: nil)
         hoverOverlay?.updateSplitAvailability(canSplitH: canSplitH, canSplitV: canSplitV)
         hoverOverlay?.animator().alphaValue = 1
     }

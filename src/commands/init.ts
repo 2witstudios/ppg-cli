@@ -5,12 +5,12 @@ import { execa } from 'execa';
 import { ppgDir, resultsDir, logsDir, templatesDir, promptsDir, promptFile, swarmsDir, manifestPath, agentPromptsDir, configPath } from '../lib/paths.js';
 import { NotGitRepoError } from '../lib/errors.js';
 import { success, info } from '../lib/output.js';
-import { writeDefaultConfig } from '../core/config.js';
+import { loadConfig, writeDefaultConfig } from '../core/config.js';
 import { createEmptyManifest, writeManifest } from '../core/manifest.js';
 import { bundledPrompts } from '../bundled/prompts.js';
 import { bundledSwarms } from '../bundled/swarms.js';
 import { execaEnv } from '../lib/env.js';
-import { checkTmux } from '../core/tmux.js';
+import { checkTmux, sanitizeTmuxName } from '../core/tmux.js';
 
 const CONDUCTOR_CONTEXT = `# PPG Conductor Context
 
@@ -102,8 +102,15 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   }
 
   // 5. Write empty manifest
+  // Honor sessionName from config.yaml if user has set a custom value;
+  // otherwise derive from directory name. Always sanitize for tmux
+  // (dots/colons are session.window.pane separators in tmux targets).
+  const config = await loadConfig(projectRoot);
   const dirName = path.basename(projectRoot);
-  const sessionName = `ppg-${dirName}`;
+  const rawSessionName = config.sessionName !== 'ppg'
+    ? config.sessionName
+    : `ppg-${dirName}`;
+  const sessionName = sanitizeTmuxName(rawSessionName);
   const manifest = createEmptyManifest(projectRoot, sessionName);
   await writeManifest(projectRoot, manifest);
   info('Wrote empty manifest.json');

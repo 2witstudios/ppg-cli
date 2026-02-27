@@ -572,6 +572,7 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         editorTextView.textContainer?.widthTracksTextView = true
         editorTextView.textContainerInset = NSSize(width: 8, height: 8)
         editorTextView.autoresizingMask = [.width, .height]
+        editorTextView.textStorage?.delegate = self
 
         editorScrollView.documentView = editorTextView
         editorScrollView.hasVerticalScroller = true
@@ -759,6 +760,7 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         pendingBodyText = nil
         backButton.isHidden = true
         refsTableView.reloadData()
+        SyntaxHighlighter.highlightMarkdown(editorTextView.textStorage)
     }
 
     private func clearDetailForm() {
@@ -1327,6 +1329,7 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         editingRefFile = refName
         backButton.isHidden = false
         editorTextView.string = content
+        SyntaxHighlighter.highlightMarkdown(editorTextView.textStorage)
     }
 
     @objc private func backToSkillClicked() {
@@ -1335,5 +1338,13 @@ class SkillsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextStor
         backButton.isHidden = true
         editorTextView.string = pendingBodyText ?? skills[idx].body
         pendingBodyText = nil
+        SyntaxHighlighter.highlightMarkdown(editorTextView.textStorage)
+    }
+
+    // MARK: - NSTextStorageDelegate
+
+    func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
+        guard editedMask.contains(.editedCharacters) else { return }
+        SyntaxHighlighter.highlightMarkdown(editorTextView.textStorage)
     }
 }

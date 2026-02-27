@@ -114,7 +114,7 @@ class CommandPalettePanel: NSPanel {
 
 // MARK: - CommandPaletteViewController
 
-class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
+class CommandPaletteViewController: NSViewController, NSTextFieldDelegate, NSTextViewDelegate {
 
     var onSelect: ((AgentVariant, String?) -> Void)?
     var onDismiss: (() -> Void)?
@@ -138,8 +138,10 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
     private let promptHeader = NSStackView()
     private let promptHeaderIcon = NSImageView()
     private let promptHeaderLabel = NSTextField(labelWithString: "")
-    private let promptField = NSTextField()
-    private let promptHint = NSTextField(labelWithString: "Enter to submit")
+    private let promptScrollView = NSScrollView()
+    private let promptTextView = NSTextView()
+    private let promptHint = NSTextField(labelWithString: "Enter to submit · Shift+Enter for newline")
+    private var promptHeightConstraint: NSLayoutConstraint!
 
     // Shared
     private let containerView = ThemeAwareView()
@@ -292,19 +294,32 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
         promptHeader.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(promptHeader)
 
-        // Prompt field
-        promptField.placeholderString = "Enter prompt..."
-        promptField.isBordered = true
-        promptField.isBezeled = true
-        promptField.bezelStyle = .roundedBezel
-        promptField.focusRingType = .none
-        promptField.drawsBackground = true
-        promptField.backgroundColor = inputBackgroundColor
-        promptField.textColor = textColor
-        promptField.font = .systemFont(ofSize: 16)
-        promptField.delegate = self
-        promptField.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(promptField)
+        // Prompt text view inside scroll view
+        promptTextView.isEditable = true
+        promptTextView.isRichText = false
+        promptTextView.allowsUndo = true
+        promptTextView.font = .systemFont(ofSize: 16)
+        promptTextView.textColor = textColor
+        promptTextView.backgroundColor = inputBackgroundColor
+        promptTextView.isVerticallyResizable = true
+        promptTextView.isHorizontallyResizable = false
+        promptTextView.textContainer?.widthTracksTextView = true
+        promptTextView.textContainer?.lineFragmentPadding = 8
+        promptTextView.textContainerInset = NSSize(width: 0, height: 6)
+        promptTextView.delegate = self
+        promptTextView.isAutomaticQuoteSubstitutionEnabled = false
+        promptTextView.isAutomaticDashSubstitutionEnabled = false
+        promptTextView.isAutomaticTextReplacementEnabled = false
+
+        promptScrollView.documentView = promptTextView
+        promptScrollView.hasVerticalScroller = true
+        promptScrollView.hasHorizontalScroller = false
+        promptScrollView.autohidesScrollers = true
+        promptScrollView.drawsBackground = true
+        promptScrollView.backgroundColor = inputBackgroundColor
+        promptScrollView.borderType = .bezelBorder
+        promptScrollView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(promptScrollView)
 
         // Hint
         promptHint.font = .systemFont(ofSize: 12)
@@ -313,17 +328,20 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
         promptHint.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(promptHint)
 
+        promptHeightConstraint = promptScrollView.heightAnchor.constraint(equalToConstant: 60)
+
         NSLayoutConstraint.activate([
             promptHeader.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
             promptHeader.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
             promptHeader.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
 
-            promptField.topAnchor.constraint(equalTo: promptHeader.bottomAnchor, constant: 20),
-            promptField.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
-            promptField.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
-            promptField.heightAnchor.constraint(equalToConstant: 24),
+            promptScrollView.topAnchor.constraint(equalTo: promptHeader.bottomAnchor, constant: 16),
+            promptScrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
+            promptScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
+            promptHeightConstraint,
+            promptScrollView.heightAnchor.constraint(lessThanOrEqualToConstant: 120),
 
-            promptHint.topAnchor.constraint(equalTo: promptField.bottomAnchor, constant: 16),
+            promptHint.topAnchor.constraint(equalTo: promptScrollView.bottomAnchor, constant: 12),
             promptHint.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
         ])
     }
@@ -341,7 +359,7 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
         scrollView.isHidden = false
 
         promptHeader.isHidden = true
-        promptField.isHidden = true
+        promptScrollView.isHidden = true
         promptHint.isHidden = true
 
         tableView.reloadData()
@@ -366,15 +384,17 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
         promptHeaderIcon.contentTintColor = textColor
         promptHeaderLabel.stringValue = variant.displayName
 
-        promptField.placeholderString = variant.promptPlaceholder
-        promptField.stringValue = ""
+        promptTextView.string = ""
+        promptTextView.setPlaceholder(variant.promptPlaceholder)
 
         promptHeader.isHidden = false
-        promptField.isHidden = false
+        promptScrollView.isHidden = false
         promptHint.isHidden = false
 
+        promptHeightConstraint.constant = 60
+
         // Resize for prompt phase
-        let panelHeight: CGFloat = 130
+        let panelHeight: CGFloat = 170
         if let panel = view.window as? CommandPalettePanel {
             var frame = panel.frame
             let dy = frame.height - panelHeight
@@ -384,7 +404,7 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.view.window?.makeFirstResponder(self?.promptField)
+            self?.view.window?.makeFirstResponder(self?.promptTextView)
         }
     }
 
@@ -442,8 +462,9 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
 
         searchField.textColor = textColor
         promptHeaderLabel.textColor = textColor
-        promptField.textColor = textColor
-        promptField.backgroundColor = inputBackgroundColor
+        promptTextView.textColor = textColor
+        promptTextView.backgroundColor = inputBackgroundColor
+        promptScrollView.backgroundColor = inputBackgroundColor
         promptHint.textColor = dimColor
         updateHighlight()
     }
@@ -468,7 +489,7 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
 
     private func submitPrompt() {
         guard case .prompt(let variant) = phase else { return }
-        let prompt = promptField.stringValue.trimmingCharacters(in: .whitespaces)
+        let prompt = promptTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         onSelect?(variant, prompt.isEmpty ? nil : prompt)
     }
 
@@ -501,10 +522,32 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if control === searchField {
             return handleSearchFieldCommand(commandSelector)
-        } else if control === promptField {
-            return handlePromptFieldCommand(commandSelector)
         }
         return false
+    }
+
+    // MARK: - NSTextViewDelegate
+
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard textView === promptTextView else { return false }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            if NSEvent.modifierFlags.contains(.shift) || NSEvent.modifierFlags.contains(.option) {
+                textView.insertNewlineIgnoringFieldEditor(nil)
+                return true
+            }
+            submitPrompt()
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            handleEscape()
+            return true
+        }
+        return false
+    }
+
+    func textDidChange(_ notification: Notification) {
+        guard let textView = notification.object as? NSTextView, textView === promptTextView else { return }
+        adjustPromptHeight()
     }
 
     private func handleSearchFieldCommand(_ sel: Selector) -> Bool {
@@ -534,16 +577,23 @@ class CommandPaletteViewController: NSViewController, NSTextFieldDelegate {
         }
     }
 
-    private func handlePromptFieldCommand(_ sel: Selector) -> Bool {
-        switch sel {
-        case #selector(NSResponder.insertNewline(_:)):
-            submitPrompt()
-            return true
-        case #selector(NSResponder.cancelOperation(_:)):
-            handleEscape()
-            return true
-        default:
-            return false
+    private func adjustPromptHeight() {
+        guard let layoutManager = promptTextView.layoutManager,
+              let textContainer = promptTextView.textContainer else { return }
+        layoutManager.ensureLayout(for: textContainer)
+        let textHeight = layoutManager.usedRect(for: textContainer).height
+        let insets = promptTextView.textContainerInset
+        let newHeight = min(max(textHeight + insets.height * 2 + 4, 60), 120)
+        promptHeightConstraint.constant = newHeight
+
+        // Resize panel to fit
+        let panelHeight: CGFloat = 16 + 22 + 16 + newHeight + 12 + 16 + 16 // top + header + gap + textview + gap + hint + bottom
+        if let panel = view.window as? CommandPalettePanel {
+            var frame = panel.frame
+            let dy = frame.height - panelHeight
+            frame.origin.y += dy
+            frame.size.height = panelHeight
+            panel.setFrame(frame, display: true)
         }
     }
 }
@@ -618,5 +668,18 @@ extension CommandPaletteViewController: NSTableViewDataSource, NSTableViewDelega
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         // No-op — we handle selection via selectedIndex
+    }
+}
+
+// MARK: - NSTextView Placeholder Helper
+
+private extension NSTextView {
+    func setPlaceholder(_ text: String) {
+        let attrs: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.placeholderTextColor,
+            .font: font ?? NSFont.systemFont(ofSize: 16),
+        ]
+        setValue(NSAttributedString(string: text, attributes: attrs),
+                forKey: "placeholderAttributedString")
     }
 }

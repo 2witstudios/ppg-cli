@@ -178,6 +178,7 @@ class PpgAgentsView: NSView, NSTextStorageDelegate {
         currentConfigIndex = index
         isDirty = false
         saveButton.isEnabled = false
+        SyntaxHighlighter.highlightYAML(editorTextView.textStorage)
     }
 
     @objc private func projectSwitcherChanged(_ sender: NSPopUpButton) {
@@ -223,5 +224,6 @@ class PpgAgentsView: NSView, NSTextStorageDelegate {
         guard editedMask.contains(.editedCharacters) else { return }
         isDirty = true
         saveButton.isEnabled = true
+        SyntaxHighlighter.highlightYAML(editorTextView.textStorage)
     }
 }

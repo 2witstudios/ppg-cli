@@ -2,6 +2,15 @@ import { execa, ExecaError } from 'execa';
 import { TmuxNotFoundError } from '../lib/errors.js';
 import { execaEnv } from '../lib/env.js';
 
+/**
+ * Sanitize a string for use as a tmux session name.
+ * Tmux treats dots and colons as session.window.pane separators,
+ * so they must be replaced to avoid targeting ambiguity.
+ */
+export function sanitizeTmuxName(name: string): string {
+  return name.replace(/[.:]/g, '-');
+}
+
 export async function checkTmux(): Promise<void> {
   try {
     await execa('tmux', ['-V'], execaEnv);
@@ -22,9 +31,17 @@ export async function sessionExists(name: string): Promise<boolean> {
 
 export async function ensureSession(name: string): Promise<void> {
   if (!(await sessionExists(name))) {
-    await execa('tmux', ['new-session', '-d', '-s', name, '-x', '220', '-y', '50'], execaEnv);
-    await execa('tmux', ['set-option', '-t', name, 'mouse', 'on'], execaEnv);
-    await execa('tmux', ['set-option', '-t', name, 'history-limit', '50000'], execaEnv);
+    try {
+      await execa('tmux', ['new-session', '-d', '-s', name, '-x', '220', '-y', '50'], execaEnv);
+    } catch (err) {
+      throw new Error(
+        `Failed to create tmux session "${name}": ${err instanceof Error ? err.message : String(err)}. ` +
+        `Session names containing dots or colons break tmux targeting. ` +
+        `Try re-running 'ppg init' to regenerate with a sanitized name.`,
+      );
+    }
+    await execa('tmux', ['set-option', '-t', `=${name}`, 'mouse', 'on'], execaEnv);
+    await execa('tmux', ['set-option', '-t', `=${name}`, 'history-limit', '50000'], execaEnv);
   }
 }
 
@@ -43,6 +60,12 @@ export async function createWindow(
     '-P', '-F', '#{window_index}',
   ], execaEnv);
   const windowIndex = result.stdout.trim();
+  if (!windowIndex || !/^\d+$/.test(windowIndex)) {
+    throw new Error(
+      `tmux create-window returned invalid window index "${windowIndex}" for session "${session}". ` +
+      `This usually means the session name contains characters that confuse tmux targeting.`,
+    );
+  }
   return `${session}:${windowIndex}`;
 }
 
