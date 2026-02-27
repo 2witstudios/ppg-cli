@@ -1,28 +1,46 @@
 import Foundation
 import Security
 
-enum KeychainError: Error {
-    case duplicateItem
+// MARK: - Error Types
+
+enum KeychainError: LocalizedError {
     case itemNotFound
     case unexpectedStatus(OSStatus)
     case invalidData
+
+    var errorDescription: String? {
+        switch self {
+        case .itemNotFound:
+            return "Token not found in keychain"
+        case .unexpectedStatus(let status):
+            return "Keychain operation failed with status \(status)"
+        case .invalidData:
+            return "Token data could not be encoded or decoded"
+        }
+    }
 }
 
-struct TokenStorage {
-    private static let serviceName = "com.ppg.mobile"
+// MARK: - Protocol
 
-    static func save(token: String, for connectionId: UUID) throws {
+protocol TokenStoring {
+    func save(token: String, for connectionId: UUID) throws
+    func load(for connectionId: UUID) throws -> String
+    func delete(for connectionId: UUID) throws
+}
+
+// MARK: - Implementation
+
+struct TokenStorage: TokenStoring {
+    private let serviceName = "com.ppg.mobile"
+
+    func save(token: String, for connectionId: UUID) throws {
         guard let data = token.data(using: .utf8) else {
             throw KeychainError.invalidData
         }
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: connectionId.uuidString,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
-        ]
+        var query = baseQuery(for: connectionId)
+        query[kSecValueData as String] = data
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
 
         let status = SecItemAdd(query as CFDictionary, nil)
 
@@ -30,18 +48,12 @@ struct TokenStorage {
         case errSecSuccess:
             return
         case errSecDuplicateItem:
-            // Item already exists — update it
-            let searchQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: serviceName,
-                kSecAttrAccount as String: connectionId.uuidString
-            ]
             let updateAttributes: [String: Any] = [
                 kSecValueData as String: data,
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
             ]
             let updateStatus = SecItemUpdate(
-                searchQuery as CFDictionary,
+                baseQuery(for: connectionId) as CFDictionary,
                 updateAttributes as CFDictionary
             )
             guard updateStatus == errSecSuccess else {
@@ -52,14 +64,10 @@ struct TokenStorage {
         }
     }
 
-    static func load(for connectionId: UUID) throws -> String {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: connectionId.uuidString,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+    func load(for connectionId: UUID) throws -> String {
+        var query = baseQuery(for: connectionId)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -79,17 +87,21 @@ struct TokenStorage {
         return token
     }
 
-    static func delete(for connectionId: UUID) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: connectionId.uuidString
-        ]
-
-        let status = SecItemDelete(query as CFDictionary)
+    func delete(for connectionId: UUID) throws {
+        let status = SecItemDelete(baseQuery(for: connectionId) as CFDictionary)
 
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.unexpectedStatus(status)
         }
+    }
+
+    // MARK: - Private
+
+    private func baseQuery(for connectionId: UUID) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+            kSecAttrAccount as String: connectionId.uuidString
+        ]
     }
 }
