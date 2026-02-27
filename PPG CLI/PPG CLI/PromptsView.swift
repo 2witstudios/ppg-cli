@@ -454,27 +454,7 @@ class PromptsView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextSto
     }
 
     private func highlightVariables() {
-        guard let storage = editorTextView.textStorage else { return }
-        let fullRange = NSRange(location: 0, length: storage.length)
-        let monoFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        let boldFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)
-
-        storage.beginEditing()
-        storage.addAttributes([
-            .foregroundColor: Theme.primaryText,
-            .font: monoFont,
-        ], range: fullRange)
-
-        let text = storage.string
-        let regex = try! NSRegularExpression(pattern: "\\{\\{\\w+\\}\\}")
-        let matches = regex.matches(in: text, range: fullRange)
-        for match in matches {
-            storage.addAttributes([
-                .foregroundColor: NSColor.systemOrange,
-                .font: boldFont,
-            ], range: match.range)
-        }
-        storage.endEditing()
+        SyntaxHighlighter.highlightMarkdown(editorTextView.textStorage)
     }
 
     // MARK: - Actions
