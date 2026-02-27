@@ -282,6 +282,18 @@ program
     await installDashboardCommand(options);
   });
 
+program
+  .command('feedback')
+  .description('Submit feedback or report an issue')
+  .requiredOption('--title <text>', 'Issue title')
+  .requiredOption('--body <text>', 'Issue body')
+  .option('--label <label>', 'GitHub label (bug, feature, feedback)', 'feedback')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { feedbackCommand } = await import('./commands/feedback.js');
+    await feedbackCommand(options);
+  });
+
 const cronCmd = program.command('cron').description('Manage scheduled runs');
 
 cronCmd
