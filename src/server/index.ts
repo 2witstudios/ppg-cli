@@ -1,10 +1,11 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { createRequire } from 'node:module';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { serveStatePath, servePidPath } from '../lib/paths.js';
-import { info, success, warn } from '../lib/output.js';
+import { info, success } from '../lib/output.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
@@ -67,11 +68,14 @@ export async function startServer(options: ServeOptions): Promise<void> {
   await app.register(cors, { origin: true });
 
   if (token) {
+    const expectedHeader = `Bearer ${token}`;
     app.addHook('onRequest', async (request, reply) => {
-      if (request.url === '/health') return;
-      const authHeader = request.headers.authorization;
-      if (authHeader !== `Bearer ${token}`) {
-        reply.code(401).send({ error: 'Unauthorized' });
+      if (request.routeOptions.url === '/health') return;
+      const authHeader = request.headers.authorization ?? '';
+      const headerBuf = Buffer.from(authHeader);
+      const expectedBuf = Buffer.from(expectedHeader);
+      if (headerBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(headerBuf, expectedBuf)) {
+        return reply.code(401).send({ error: 'Unauthorized' });
       }
     });
   }

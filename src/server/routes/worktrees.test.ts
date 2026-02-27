@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { makeWorktree, makeAgent } from '../../test-fixtures.js';
 import type { Manifest } from '../../types/manifest.js';
+import type { WorktreeEntry } from '../../types/manifest.js';
 
 // ---- Mocks ----
 
@@ -16,7 +17,6 @@ const mockManifest: Manifest = {
 };
 
 vi.mock('../../core/manifest.js', () => ({
-  requireManifest: vi.fn(),
   updateManifest: vi.fn(async (_root: string, updater: (m: Manifest) => Manifest | Promise<Manifest>) => {
     return updater(structuredClone(mockManifest));
   }),
@@ -25,36 +25,43 @@ vi.mock('../../core/manifest.js', () => ({
 
 vi.mock('../../core/agent.js', () => ({
   refreshAllAgentStatuses: vi.fn((m: Manifest) => m),
-  killAgents: vi.fn(),
 }));
 
-vi.mock('../../core/worktree.js', () => ({
-  getCurrentBranch: vi.fn(() => 'main'),
+vi.mock('../../core/merge.js', () => ({
+  mergeWorktree: vi.fn(async (_root: string, wt: WorktreeEntry, opts: Record<string, unknown> = {}) => ({
+    worktreeId: wt.id,
+    branch: wt.branch,
+    baseBranch: wt.baseBranch,
+    strategy: (opts.strategy as string) ?? 'squash',
+    cleaned: opts.cleanup !== false,
+    selfProtected: false,
+  })),
 }));
 
-vi.mock('../../core/cleanup.js', () => ({
-  cleanupWorktree: vi.fn(),
+vi.mock('../../core/kill.js', () => ({
+  killWorktreeAgents: vi.fn(async (_root: string, wt: WorktreeEntry) => {
+    const killed = Object.values(wt.agents)
+      .filter((a) => a.status === 'running')
+      .map((a) => a.id);
+    return { worktreeId: wt.id, killed };
+  }),
 }));
 
-vi.mock('../../commands/pr.js', () => ({
-  buildBodyFromResults: vi.fn(() => 'PR body'),
-}));
-
-vi.mock('execa', () => ({
-  execa: vi.fn(() => ({ stdout: 'https://github.com/owner/repo/pull/1' })),
-}));
-
-vi.mock('../../lib/env.js', () => ({
-  execaEnv: {},
+vi.mock('../../core/pr.js', () => ({
+  createWorktreePr: vi.fn(async (_root: string, wt: WorktreeEntry) => ({
+    worktreeId: wt.id,
+    branch: wt.branch,
+    baseBranch: wt.baseBranch,
+    prUrl: 'https://github.com/owner/repo/pull/1',
+  })),
 }));
 
 // ---- Imports (after mocks) ----
 
-import { resolveWorktree } from '../../core/manifest.js';
-import { killAgents } from '../../core/agent.js';
-import { cleanupWorktree } from '../../core/cleanup.js';
-import { getCurrentBranch } from '../../core/worktree.js';
-import { execa } from 'execa';
+import { resolveWorktree, updateManifest } from '../../core/manifest.js';
+import { mergeWorktree } from '../../core/merge.js';
+import { killWorktreeAgents } from '../../core/kill.js';
+import { createWorktreePr } from '../../core/pr.js';
 import { worktreeRoutes } from './worktrees.js';
 
 const PROJECT_ROOT = '/tmp/project';
@@ -95,10 +102,12 @@ describe('worktreeRoutes', () => {
       expect(body.worktreeId).toBe('wt-abc123');
       expect(body.strategy).toBe('squash');
       expect(body.cleaned).toBe(true);
-      expect(vi.mocked(cleanupWorktree)).toHaveBeenCalled();
+      expect(vi.mocked(mergeWorktree)).toHaveBeenCalledWith(
+        PROJECT_ROOT, wt, { strategy: undefined, cleanup: undefined, force: undefined },
+      );
     });
 
-    test('given strategy no-ff, should merge with --no-ff', async () => {
+    test('given strategy no-ff, should pass strategy to mergeWorktree', async () => {
       const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
@@ -112,15 +121,12 @@ describe('worktreeRoutes', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json().strategy).toBe('no-ff');
-
-      // Should have called git merge --no-ff
-      const execaCalls = vi.mocked(execa).mock.calls;
-      const mergeCall = execaCalls.find((c) => c[0] === 'git' && (c[1] as string[])?.[0] === 'merge');
-      expect(mergeCall).toBeDefined();
-      expect((mergeCall![1] as string[])).toContain('--no-ff');
+      expect(vi.mocked(mergeWorktree)).toHaveBeenCalledWith(
+        PROJECT_ROOT, wt, expect.objectContaining({ strategy: 'no-ff' }),
+      );
     });
 
-    test('given cleanup false, should skip cleanup', async () => {
+    test('given cleanup false, should pass cleanup false', async () => {
       const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
@@ -134,7 +140,9 @@ describe('worktreeRoutes', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json().cleaned).toBe(false);
-      expect(vi.mocked(cleanupWorktree)).not.toHaveBeenCalled();
+      expect(vi.mocked(mergeWorktree)).toHaveBeenCalledWith(
+        PROJECT_ROOT, wt, expect.objectContaining({ cleanup: false }),
+      );
     });
 
     test('given worktree not found, should return 404', async () => {
@@ -151,14 +159,15 @@ describe('worktreeRoutes', () => {
       expect(res.json().code).toBe('WORKTREE_NOT_FOUND');
     });
 
-    test('given running agents without force, should return 409', async () => {
-      const agent = makeAgent({ id: 'ag-running1', status: 'running' });
-      const wt = makeWorktree({
-        id: 'wt-abc123',
-        agents: { 'ag-running1': agent },
-      });
+    test('given AGENTS_RUNNING error from core, should return 409', async () => {
+      const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
+
+      const { PpgError } = await import('../../lib/errors.js');
+      vi.mocked(mergeWorktree).mockRejectedValueOnce(
+        new PpgError('1 agent(s) still running', 'AGENTS_RUNNING'),
+      );
 
       const app = await buildApp();
       const res = await app.inject({
@@ -171,12 +180,8 @@ describe('worktreeRoutes', () => {
       expect(res.json().code).toBe('AGENTS_RUNNING');
     });
 
-    test('given running agents with force, should merge anyway', async () => {
-      const agent = makeAgent({ id: 'ag-running1', status: 'running' });
-      const wt = makeWorktree({
-        id: 'wt-abc123',
-        agents: { 'ag-running1': agent },
-      });
+    test('given force flag, should pass force to mergeWorktree', async () => {
+      const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
 
@@ -188,14 +193,20 @@ describe('worktreeRoutes', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json().success).toBe(true);
+      expect(vi.mocked(mergeWorktree)).toHaveBeenCalledWith(
+        PROJECT_ROOT, wt, expect.objectContaining({ force: true }),
+      );
     });
 
-    test('given git merge failure, should return 500 with MERGE_FAILED', async () => {
+    test('given MERGE_FAILED error from core, should return 500', async () => {
       const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
-      vi.mocked(execa).mockRejectedValueOnce(new Error('conflict'));
+
+      const { MergeFailedError } = await import('../../lib/errors.js');
+      vi.mocked(mergeWorktree).mockRejectedValueOnce(
+        new MergeFailedError('Merge failed: conflict'),
+      );
 
       const app = await buildApp();
       const res = await app.inject({
@@ -204,8 +215,6 @@ describe('worktreeRoutes', () => {
         payload: {},
       });
 
-      // getCurrentBranch returns 'main' which matches baseBranch, so no checkout call.
-      // First execa call is git merge --squash which fails.
       expect(res.statusCode).toBe(500);
       expect(res.json().code).toBe('MERGE_FAILED');
     });
@@ -215,7 +224,7 @@ describe('worktreeRoutes', () => {
   // POST /api/worktrees/:id/kill
   // ==================================================================
   describe('POST /api/worktrees/:id/kill', () => {
-    test('given worktree with running agents, should kill all running agents', async () => {
+    test('given worktree with running agents, should kill via core and return killed list', async () => {
       const agent1 = makeAgent({ id: 'ag-run00001', status: 'running' });
       const agent2 = makeAgent({ id: 'ag-idle0001', status: 'idle' });
       const wt = makeWorktree({
@@ -236,7 +245,7 @@ describe('worktreeRoutes', () => {
       const body = res.json();
       expect(body.success).toBe(true);
       expect(body.killed).toEqual(['ag-run00001']);
-      expect(vi.mocked(killAgents)).toHaveBeenCalledWith([agent1]);
+      expect(vi.mocked(killWorktreeAgents)).toHaveBeenCalledWith(PROJECT_ROOT, wt);
     });
 
     test('given worktree with no running agents, should return empty killed list', async () => {
@@ -257,7 +266,6 @@ describe('worktreeRoutes', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json().killed).toEqual([]);
-      expect(vi.mocked(killAgents)).toHaveBeenCalledWith([]);
     });
 
     test('given worktree not found, should return 404', async () => {
@@ -279,7 +287,7 @@ describe('worktreeRoutes', () => {
   // POST /api/worktrees/:id/pr
   // ==================================================================
   describe('POST /api/worktrees/:id/pr', () => {
-    test('given valid worktree, should create PR and store URL', async () => {
+    test('given valid worktree, should create PR and return URL', async () => {
       const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
@@ -296,9 +304,12 @@ describe('worktreeRoutes', () => {
       expect(body.success).toBe(true);
       expect(body.prUrl).toBe('https://github.com/owner/repo/pull/1');
       expect(body.worktreeId).toBe('wt-abc123');
+      expect(vi.mocked(createWorktreePr)).toHaveBeenCalledWith(
+        PROJECT_ROOT, wt, { title: 'My PR', body: 'Description', draft: undefined },
+      );
     });
 
-    test('given draft flag, should pass --draft to gh', async () => {
+    test('given draft flag, should pass draft to createWorktreePr', async () => {
       const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
@@ -310,10 +321,9 @@ describe('worktreeRoutes', () => {
         payload: { draft: true },
       });
 
-      const ghCalls = vi.mocked(execa).mock.calls.filter((c) => c[0] === 'gh');
-      const prCreateCall = ghCalls.find((c) => (c[1] as string[])?.includes('create'));
-      expect(prCreateCall).toBeDefined();
-      expect((prCreateCall![1] as string[])).toContain('--draft');
+      expect(vi.mocked(createWorktreePr)).toHaveBeenCalledWith(
+        PROJECT_ROOT, wt, expect.objectContaining({ draft: true }),
+      );
     });
 
     test('given worktree not found, should return 404', async () => {
@@ -330,13 +340,13 @@ describe('worktreeRoutes', () => {
       expect(res.json().code).toBe('WORKTREE_NOT_FOUND');
     });
 
-    test('given gh not available, should return 502', async () => {
+    test('given GH_NOT_FOUND error from core, should return 502', async () => {
       const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
 
-      // First call is gh --version which should fail
-      vi.mocked(execa).mockRejectedValueOnce(new Error('gh not found'));
+      const { GhNotFoundError } = await import('../../lib/errors.js');
+      vi.mocked(createWorktreePr).mockRejectedValueOnce(new GhNotFoundError());
 
       const app = await buildApp();
       const res = await app.inject({
@@ -349,15 +359,15 @@ describe('worktreeRoutes', () => {
       expect(res.json().code).toBe('GH_NOT_FOUND');
     });
 
-    test('given push failure, should return 400', async () => {
+    test('given INVALID_ARGS error from core, should return 400', async () => {
       const wt = makeWorktree({ id: 'wt-abc123', agents: {} });
       mockManifest.worktrees['wt-abc123'] = wt;
       vi.mocked(resolveWorktree).mockReturnValue(wt);
 
-      // gh --version succeeds, git push fails
-      vi.mocked(execa)
-        .mockResolvedValueOnce({ stdout: 'gh version 2.0' } as never)
-        .mockRejectedValueOnce(new Error('push rejected'));
+      const { PpgError } = await import('../../lib/errors.js');
+      vi.mocked(createWorktreePr).mockRejectedValueOnce(
+        new PpgError('Failed to push', 'INVALID_ARGS'),
+      );
 
       const app = await buildApp();
       const res = await app.inject({
