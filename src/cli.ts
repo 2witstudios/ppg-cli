@@ -266,7 +266,7 @@ worktreeCmd
 program
   .command('serve')
   .description('Start the API server with TLS and display pairing QR code')
-  .option('-p, --port <number>', 'Port to listen on', (v: string) => Number(v), 7700)
+  .option('-p, --port <number>', 'Port to listen on', parsePort, 7700)
   .option('-H, --host <address>', 'Host to bind to', '0.0.0.0')
   .option('--daemon', 'Run in daemon mode (suppress QR code)')
   .option('--json', 'Output as JSON')
@@ -382,6 +382,14 @@ function parsePositiveInt(optionName: string) {
     }
     return n;
   };
+}
+
+function parsePort(v: string): number {
+  const port = Number(v);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('--port must be an integer between 1 and 65535');
+  }
+  return port;
 }
 
 async function main() {

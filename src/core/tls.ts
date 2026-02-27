@@ -24,27 +24,31 @@ export async function ensureTlsCerts(projectRoot: string): Promise<TlsCredential
     ]);
     const fingerprint = getCertFingerprint(cert);
     return { key, cert, fingerprint };
-  } catch {
-    await fs.mkdir(certsDir, { recursive: true });
-
-    const { privateKey } = generateKeyPairSync('ec', {
-      namedCurve: 'prime256v1',
-    });
-
-    const keyPem = privateKey.export({ type: 'sec1', format: 'pem' }) as string;
-    const certPem = await generateSelfSignedCert(keyPem);
-
-    await Promise.all([
-      fs.writeFile(keyPath, keyPem, { mode: 0o600 }),
-      fs.writeFile(certPath, certPem),
-    ]);
-
-    const fingerprint = getCertFingerprint(certPem);
-    return { key: keyPem, cert: certPem, fingerprint };
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) {
+      throw error;
+    }
   }
+
+  await fs.mkdir(certsDir, { recursive: true });
+
+  const { privateKey } = generateKeyPairSync('ec', {
+    namedCurve: 'prime256v1',
+  });
+
+  const keyPem = privateKey.export({ type: 'sec1', format: 'pem' }) as string;
+  const certPem = await generateSelfSignedCert(keyPem, buildSubjectAltName());
+
+  await Promise.all([
+    fs.writeFile(keyPath, keyPem, { mode: 0o600 }),
+    fs.writeFile(certPath, certPem),
+  ]);
+
+  const fingerprint = getCertFingerprint(certPem);
+  return { key: keyPem, cert: certPem, fingerprint };
 }
 
-async function generateSelfSignedCert(keyPem: string): Promise<string> {
+async function generateSelfSignedCert(keyPem: string, subjectAltName: string): Promise<string> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ppg-tls-'));
   const tmpKey = path.join(tmpDir, 'server.key');
   const tmpCert = path.join(tmpDir, 'server.crt');
@@ -57,12 +61,37 @@ async function generateSelfSignedCert(keyPem: string): Promise<string> {
       '-out', tmpCert,
       '-days', '365',
       '-subj', '/CN=ppg-server',
-      '-addext', 'subjectAltName=IP:127.0.0.1,IP:::1',
+      '-addext', subjectAltName,
     ], { ...execaEnv, stdio: 'pipe' });
     return await fs.readFile(tmpCert, 'utf-8');
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
+}
+
+function buildSubjectAltName(): string {
+  const sanEntries = new Set<string>([
+    'DNS:localhost',
+    'IP:127.0.0.1',
+    'IP:::1',
+  ]);
+
+  for (const addresses of Object.values(os.networkInterfaces())) {
+    for (const iface of addresses ?? []) {
+      if (iface.internal) continue;
+      if (iface.family !== 'IPv4' && iface.family !== 'IPv6') continue;
+      sanEntries.add(`IP:${iface.address}`);
+    }
+  }
+
+  return `subjectAltName=${Array.from(sanEntries).join(',')}`;
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === code;
 }
 
 export function getCertFingerprint(certPem: string): string {
