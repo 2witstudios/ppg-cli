@@ -1,0 +1,95 @@
+<UserControl x:Class="PPGDesktop.Views.SidebarView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:PPGDesktop.ViewModels"
+             Background="{StaticResource SidebarBackgroundBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="12,10"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <TextBlock Text="PROJECTS" FontSize="11" FontWeight="SemiBold"
+                       Foreground="{StaticResource MutedForegroundBrush}"
+                       LetterSpacing="0.5" />
+        </Border>
+
+        <!-- Tree -->
+        <TreeView Grid.Row="1" ItemsSource="{Binding Projects}"
+                  SelectedItemChanged="TreeView_SelectedItemChanged"
+                  Background="Transparent" BorderThickness="0"
+                  Padding="4">
+            <TreeView.Resources>
+                <!-- Remove default blue selection highlight -->
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2d2d30" />
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#d4d4d4" />
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#2d2d30" />
+            </TreeView.Resources>
+
+            <TreeView.ItemContainerStyle>
+                <Style TargetType="TreeViewItem">
+                    <Setter Property="IsExpanded" Value="True" />
+                    <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}" />
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="Padding" Value="2" />
+                </Style>
+            </TreeView.ItemContainerStyle>
+
+            <!-- Project Template -->
+            <TreeView.ItemTemplate>
+                <HierarchicalDataTemplate DataType="{x:Type vm:ProjectNode}"
+                                          ItemsSource="{Binding Worktrees}">
+                    <StackPanel Orientation="Horizontal" Margin="2,3">
+                        <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                   Foreground="{StaticResource AccentBrush}" Margin="0,0,8,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" />
+                    </StackPanel>
+
+                    <!-- Worktree Template -->
+                    <HierarchicalDataTemplate.ItemTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type vm:WorktreeNode}"
+                                                  ItemsSource="{Binding Agents}">
+                            <StackPanel Orientation="Horizontal" Margin="2,2">
+                                <Ellipse Width="8" Height="8"
+                                         Fill="{Binding Status, Converter={StaticResource StatusToColor}}"
+                                         Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}" FontSize="13" />
+                                <TextBlock Text="{Binding AgentCount, StringFormat=' ({0})'}"
+                                           Foreground="{StaticResource MutedForegroundBrush}"
+                                           FontSize="12" />
+                            </StackPanel>
+
+                            <!-- Agent Template -->
+                            <HierarchicalDataTemplate.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:AgentNode}">
+                                    <StackPanel Orientation="Horizontal" Margin="2,1">
+                                        <Ellipse Width="6" Height="6"
+                                                 Fill="{Binding Status, Converter={StaticResource StatusToColor}}"
+                                                 Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding DisplayName}" FontSize="12" />
+                                        <TextBlock Text="{Binding AgentType, StringFormat=' [{0}]'}"
+                                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                                   FontSize="11" Margin="2,0,0,0" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </HierarchicalDataTemplate.ItemTemplate>
+                        </HierarchicalDataTemplate>
+                    </HierarchicalDataTemplate.ItemTemplate>
+                </HierarchicalDataTemplate>
+            </TreeView.ItemTemplate>
+        </TreeView>
+
+        <!-- Empty state -->
+        <TextBlock Grid.Row="1" Text="No projects connected.&#x0a;Configure a server in Settings."
+                   Foreground="{StaticResource MutedForegroundBrush}"
+                   FontSize="12" TextAlignment="Center"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Visibility="{Binding Projects.Count, Converter={StaticResource BoolToVisibility},
+                                ConverterParameter=invert}" />
+    </Grid>
+</UserControl>

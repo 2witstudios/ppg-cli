@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <!-- <ApplicationIcon>Assets\ppg-icon.ico</ApplicationIcon> -->
+    <AssemblyName>PPGDesktop</AssemblyName>
+    <RootNamespace>PPGDesktop</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2739.15" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Terminal\terminal.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Terminal\xterm.min.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Terminal\xterm-addon-fit.min.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Terminal\xterm.css" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
