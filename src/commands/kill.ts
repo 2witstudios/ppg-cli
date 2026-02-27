@@ -43,12 +43,13 @@ export async function killCommand(options: KillOptions): Promise<void> {
 
 function formatOutput(result: KillResult, options: KillOptions): void {
   if (options.json) {
-    output({ success: true, ...result }, true);
+    output(result, true);
     return;
   }
 
-  if (result.message) {
-    info(result.message);
+  // Emit per-agent progress for killed agents
+  for (const id of result.killed) {
+    info(`Killing agent ${id}`);
   }
 
   if (result.skipped?.length) {
@@ -68,18 +69,31 @@ function formatOutput(result: KillResult, options: KillOptions): void {
       success(`Deleted agent ${options.agent}`);
     } else if (result.killed.length > 0) {
       success(`Killed agent ${options.agent}`);
+    } else if (result.message) {
+      info(result.message);
     }
   } else if (options.worktree) {
-    success(`Killed ${result.killed.length} agent(s) in worktree ${options.worktree}`);
+    if (result.killed.length > 0 || !result.skipped?.length) {
+      success(`Killed ${result.killed.length} agent(s) in worktree ${options.worktree}`);
+    }
+    if (result.skipped?.length) {
+      warn(`Skipped ${result.skipped.length} agent(s) due to self-protection`);
+    }
     if (result.deleted?.length) {
       success(`Deleted worktree ${options.worktree}`);
     } else if (result.removed?.length) {
       success(`Removed worktree ${options.worktree}`);
     }
   } else if (options.all) {
-    success(`Killed ${result.killed.length} agent(s)`);
+    const wtMsg = result.worktreeCount !== undefined
+      ? ` across ${result.worktreeCount} worktree(s)`
+      : '';
+    success(`Killed ${result.killed.length} agent(s)${wtMsg}`);
     if (result.skipped?.length) {
       warn(`Skipped ${result.skipped.length} agent(s) due to self-protection`);
+    }
+    if (result.skippedOpenPrs?.length) {
+      warn(`Skipped deletion of ${result.skippedOpenPrs.length} worktree(s) with open PRs`);
     }
     if (result.deleted?.length) {
       success(`Deleted ${result.deleted.length} worktree(s)`);

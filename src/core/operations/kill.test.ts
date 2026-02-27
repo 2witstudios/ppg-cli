@@ -6,9 +6,7 @@ import type { PaneInfo } from '../tmux.js';
 
 vi.mock('../manifest.js', () => ({
   readManifest: vi.fn(),
-  updateManifest: vi.fn(async (_root: string, updater: (m: any) => any) => {
-    return updater(currentManifest());
-  }),
+  updateManifest: vi.fn(),
   findAgent: vi.fn(),
   resolveWorktree: vi.fn(),
 }));
@@ -35,12 +33,11 @@ vi.mock('../cleanup.js', () => ({
 }));
 
 vi.mock('../self.js', () => ({
-  excludeSelf: vi.fn((agents: AgentEntry[]) => ({ safe: agents, skipped: [] })),
+  excludeSelf: vi.fn(),
 }));
 
 vi.mock('../tmux.js', () => ({
   killPane: vi.fn(async () => {}),
-  listSessionPanes: vi.fn(async () => new Map()),
 }));
 
 import { performKill } from './kill.js';
@@ -103,29 +100,17 @@ function currentManifest(): Manifest {
 
 describe('performKill', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     _manifest = makeManifest();
-    // Re-establish default mock implementations after restore
+    // Establish defaults for all mocks after clearing
     vi.mocked(readManifest).mockResolvedValue(_manifest);
     vi.mocked(updateManifest).mockImplementation(async (_root: string, updater: (m: any) => any) => {
       return updater(currentManifest());
     });
     vi.mocked(findAgent).mockReturnValue(undefined);
     vi.mocked(resolveWorktree).mockReturnValue(undefined);
-    vi.mocked(killAgent).mockResolvedValue(undefined);
-    vi.mocked(killAgents).mockResolvedValue(undefined);
     vi.mocked(checkPrState).mockResolvedValue('UNKNOWN');
-    vi.mocked(cleanupWorktree).mockResolvedValue({
-      worktreeId: 'wt-abc123',
-      manifestUpdated: true,
-      tmuxKilled: 1,
-      tmuxSkipped: 0,
-      tmuxFailed: 0,
-      selfProtected: false,
-      selfProtectedTargets: [],
-    });
     vi.mocked(excludeSelf).mockImplementation((agents: AgentEntry[]) => ({ safe: agents, skipped: [] }));
-    vi.mocked(killPane).mockResolvedValue(undefined);
   });
 
   test('throws INVALID_ARGS when no target specified', async () => {
@@ -151,7 +136,34 @@ describe('performKill', () => {
 
       expect(killAgent).toHaveBeenCalled();
       expect(updateManifest).toHaveBeenCalled();
+      expect(result.success).toBe(true);
       expect(result.killed).toEqual(['ag-12345678']);
+    });
+
+    test('manifest updater sets agent status to gone', async () => {
+      await performKill({
+        projectRoot: '/project',
+        agent: 'ag-12345678',
+      });
+
+      // Verify the updater was called and inspect what it does
+      const updaterCall = vi.mocked(updateManifest).mock.calls[0];
+      expect(updaterCall[0]).toBe('/project');
+      const updater = updaterCall[1];
+
+      // Run the updater against a test manifest to verify the mutation
+      const testManifest = makeManifest({
+        'wt-abc123': makeWorktree({
+          agents: { 'ag-12345678': makeAgent('ag-12345678') },
+        }),
+      });
+      // findAgent mock returns matching agent from test manifest
+      vi.mocked(findAgent).mockReturnValue({
+        worktree: testManifest.worktrees['wt-abc123'],
+        agent: testManifest.worktrees['wt-abc123'].agents['ag-12345678'],
+      });
+      const result = updater(testManifest) as Manifest;
+      expect(result.worktrees['wt-abc123'].agents['ag-12345678'].status).toBe('gone');
     });
 
     test('skips kill for terminal-state agent', async () => {
@@ -165,6 +177,7 @@ describe('performKill', () => {
       });
 
       expect(killAgent).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
       expect(result.killed).toEqual([]);
       expect(result.message).toContain('already gone');
     });
@@ -177,7 +190,7 @@ describe('performKill', () => {
       expect((err as PpgError).code).toBe('AGENT_NOT_FOUND');
     });
 
-    test('self-protection returns skipped result', async () => {
+    test('self-protection returns success:false with skipped', async () => {
       const agent = makeAgent('ag-12345678');
       vi.mocked(excludeSelf).mockReturnValue({
         safe: [],
@@ -192,6 +205,7 @@ describe('performKill', () => {
       });
 
       expect(killAgent).not.toHaveBeenCalled();
+      expect(result.success).toBe(false);
       expect(result.killed).toEqual([]);
       expect(result.skipped).toEqual(['ag-12345678']);
     });
@@ -206,7 +220,31 @@ describe('performKill', () => {
       expect(killAgent).toHaveBeenCalled();
       expect(killPane).toHaveBeenCalled();
       expect(updateManifest).toHaveBeenCalled();
+      expect(result.success).toBe(true);
       expect(result.deleted).toEqual(['ag-12345678']);
+    });
+
+    test('--delete manifest updater removes agent entry', async () => {
+      await performKill({
+        projectRoot: '/project',
+        agent: 'ag-12345678',
+        delete: true,
+      });
+
+      const updaterCall = vi.mocked(updateManifest).mock.calls[0];
+      const updater = updaterCall[1];
+
+      const testManifest = makeManifest({
+        'wt-abc123': makeWorktree({
+          agents: { 'ag-12345678': makeAgent('ag-12345678') },
+        }),
+      });
+      vi.mocked(findAgent).mockReturnValue({
+        worktree: testManifest.worktrees['wt-abc123'],
+        agent: testManifest.worktrees['wt-abc123'].agents['ag-12345678'],
+      });
+      const result = updater(testManifest) as Manifest;
+      expect(result.worktrees['wt-abc123'].agents['ag-12345678']).toBeUndefined();
     });
 
     test('--delete on terminal agent skips kill but still deletes', async () => {
@@ -222,8 +260,21 @@ describe('performKill', () => {
 
       expect(killAgent).not.toHaveBeenCalled();
       expect(killPane).toHaveBeenCalled();
+      expect(result.success).toBe(true);
       expect(result.deleted).toEqual(['ag-12345678']);
       expect(result.killed).toEqual([]);
+    });
+
+    test('propagates killAgent errors', async () => {
+      vi.mocked(killAgent).mockRejectedValue(new Error('tmux crash'));
+
+      const err = await performKill({
+        projectRoot: '/project',
+        agent: 'ag-12345678',
+      }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toBe('tmux crash');
     });
   });
 
@@ -253,6 +304,7 @@ describe('performKill', () => {
       });
 
       expect(killAgents).toHaveBeenCalledWith([agent1, agent2]);
+      expect(result.success).toBe(true);
       expect(result.killed).toEqual(['ag-aaaaaaaa', 'ag-bbbbbbbb']);
     });
 
@@ -367,9 +419,19 @@ describe('performKill', () => {
       });
 
       expect(killAgents).toHaveBeenCalled();
+      expect(result.success).toBe(true);
       expect(result.killed).toHaveLength(2);
       expect(result.killed).toContain('ag-aaaaaaaa');
       expect(result.killed).toContain('ag-bbbbbbbb');
+    });
+
+    test('includes worktreeCount in result', async () => {
+      const result = await performKill({
+        projectRoot: '/project',
+        all: true,
+      });
+
+      expect(result.worktreeCount).toBe(2);
     });
 
     test('--delete removes all active worktrees', async () => {
@@ -381,6 +443,19 @@ describe('performKill', () => {
 
       expect(cleanupWorktree).toHaveBeenCalledTimes(2);
       expect(result.deleted).toHaveLength(2);
+    });
+
+    test('--remove triggers cleanup without manifest deletion', async () => {
+      const result = await performKill({
+        projectRoot: '/project',
+        all: true,
+        remove: true,
+      });
+
+      expect(cleanupWorktree).toHaveBeenCalledTimes(2);
+      expect(result.removed).toHaveLength(2);
+      // --remove without --delete: cleanup happens but entries stay in manifest
+      expect(result.deleted).toEqual([]);
     });
 
     test('self-protection filters agents', async () => {

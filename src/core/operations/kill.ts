@@ -3,7 +3,7 @@ import { killAgent, killAgents } from '../agent.js';
 import { checkPrState } from '../pr.js';
 import { cleanupWorktree } from '../cleanup.js';
 import { excludeSelf } from '../self.js';
-import { killPane, listSessionPanes, type PaneInfo } from '../tmux.js';
+import { killPane, type PaneInfo } from '../tmux.js';
 import { PpgError, AgentNotFoundError, WorktreeNotFoundError } from '../../lib/errors.js';
 import type { AgentEntry } from '../../types/manifest.js';
 
@@ -20,11 +20,13 @@ export interface KillInput {
 }
 
 export interface KillResult {
+  success: boolean;
   killed: string[];
   skipped?: string[];
   removed?: string[];
   deleted?: string[];
   skippedOpenPrs?: string[];
+  worktreeCount?: number;
   message?: string;
 }
 
@@ -60,7 +62,7 @@ async function killSingleAgent(
   if (input.selfPaneId && input.paneMap) {
     const { skipped } = excludeSelf([agent], input.selfPaneId, input.paneMap);
     if (skipped.length > 0) {
-      return { killed: [], skipped: [agentId], message: 'self-protection' };
+      return { success: false, killed: [], skipped: [agentId], message: 'self-protection' };
     }
   }
 
@@ -78,11 +80,11 @@ async function killSingleAgent(
       return m;
     });
 
-    return { killed: isTerminal ? [] : [agentId], deleted: [agentId] };
+    return { success: true, killed: isTerminal ? [] : [agentId], deleted: [agentId] };
   }
 
   if (isTerminal) {
-    return { killed: [], message: `Agent ${agentId} already ${agent.status}` };
+    return { success: true, killed: [], message: `Agent ${agentId} already ${agent.status}` };
   }
 
   await killAgent(agent);
@@ -95,7 +97,7 @@ async function killSingleAgent(
     return m;
   });
 
-  return { killed: [agentId] };
+  return { success: true, killed: [agentId] };
 }
 
 async function killWorktreeAgents(
@@ -153,6 +155,7 @@ async function killWorktreeAgents(
   }
 
   return {
+    success: true,
     killed: killedIds,
     skipped: skippedIds.length > 0 ? skippedIds : undefined,
     removed: shouldRemove ? [wt.id] : [],
@@ -236,11 +239,13 @@ async function killAllAgents(
   }
 
   return {
+    success: true,
     killed: killedIds,
     skipped: skippedIds.length > 0 ? skippedIds : undefined,
     removed: shouldRemove ? worktreesToRemove : [],
     deleted: input.delete ? worktreesToRemove : [],
     skippedOpenPrs: openPrWorktreeIds.length > 0 ? openPrWorktreeIds : undefined,
+    worktreeCount: activeWorktreeIds.length,
   };
 }
 
