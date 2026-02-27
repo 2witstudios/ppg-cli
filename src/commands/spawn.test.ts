@@ -6,6 +6,7 @@ import { readManifest, resolveWorktree, updateManifest } from '../core/manifest.
 import { spawnAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { agentId, sessionId } from '../lib/id.js';
+import type { Manifest } from '../types/manifest.js';
 import * as tmux from '../core/tmux.js';
 import type { Manifest } from '../types/manifest.js';
 
