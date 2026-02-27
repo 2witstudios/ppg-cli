@@ -3,7 +3,9 @@ import { agentPromptFile, agentPromptsDir } from '../lib/paths.js';
 import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
 import { updateManifest } from './manifest.js';
 import { PpgError } from '../lib/errors.js';
-import type { AgentEntry, AgentStatus } from '../types/manifest.js';
+import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
+import { renderTemplate, type TemplateContext } from './template.js';
+import type { AgentEntry, AgentStatus, WorktreeEntry } from '../types/manifest.js';
 import type { AgentConfig } from '../types/config.js';
 import * as tmux from './tmux.js';
 
@@ -240,6 +242,88 @@ export async function killAgents(agents: AgentEntry[]): Promise<void> {
       await tmux.killPane(a.tmuxTarget);
     }
   }));
+}
+
+export interface RestartAgentOptions {
+  projectRoot: string;
+  agentId: string;
+  worktree: WorktreeEntry;
+  oldAgent: AgentEntry;
+  sessionName: string;
+  agentConfig: AgentConfig;
+  promptText: string;
+}
+
+export interface RestartAgentResult {
+  oldAgentId: string;
+  newAgentId: string;
+  tmuxTarget: string;
+  sessionId: string;
+  worktreeId: string;
+  worktreeName: string;
+  branch: string;
+  path: string;
+}
+
+/**
+ * Restart an agent: kill old, spawn new in a fresh tmux window, update manifest.
+ */
+export async function restartAgent(opts: RestartAgentOptions): Promise<RestartAgentResult> {
+  const { projectRoot, worktree: wt, oldAgent, sessionName, agentConfig, promptText } = opts;
+
+  // Kill old agent if still running
+  if (oldAgent.status === 'running') {
+    await killAgent(oldAgent);
+  }
+
+  await tmux.ensureSession(sessionName);
+  const newAgentId = genAgentId();
+  const windowTarget = await tmux.createWindow(sessionName, `${wt.name}-restart`, wt.path);
+
+  const ctx: TemplateContext = {
+    WORKTREE_PATH: wt.path,
+    BRANCH: wt.branch,
+    AGENT_ID: newAgentId,
+    PROJECT_ROOT: projectRoot,
+    TASK_NAME: wt.name,
+    PROMPT: promptText,
+  };
+  const renderedPrompt = renderTemplate(promptText, ctx);
+
+  const newSessionId = genSessionId();
+  const agentEntry = await spawnAgent({
+    agentId: newAgentId,
+    agentConfig,
+    prompt: renderedPrompt,
+    worktreePath: wt.path,
+    tmuxTarget: windowTarget,
+    projectRoot,
+    branch: wt.branch,
+    sessionId: newSessionId,
+  });
+
+  await updateManifest(projectRoot, (m) => {
+    const mWt = m.worktrees[wt.id];
+    if (mWt) {
+      const mOldAgent = mWt.agents[oldAgent.id];
+      if (mOldAgent && mOldAgent.status === 'running') {
+        mOldAgent.status = 'gone';
+      }
+      mWt.agents[newAgentId] = agentEntry;
+    }
+    return m;
+  });
+
+  return {
+    oldAgentId: oldAgent.id,
+    newAgentId,
+    tmuxTarget: windowTarget,
+    sessionId: newSessionId,
+    worktreeId: wt.id,
+    worktreeName: wt.name,
+    branch: wt.branch,
+    path: wt.path,
+  };
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

@@ -1,13 +1,9 @@
-import { readManifest, updateManifest, findAgent, resolveWorktree } from '../core/manifest.js';
-import { killAgent, killAgents } from '../core/agent.js';
-import { checkPrState } from '../core/pr.js';
+import { performKill, type KillResult } from '../core/operations/kill.js';
+import { getCurrentPaneId } from '../core/self.js';
+import { readManifest } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { cleanupWorktree } from '../core/cleanup.js';
-import { getCurrentPaneId, excludeSelf } from '../core/self.js';
-import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { PpgError, NotInitializedError, AgentNotFoundError, WorktreeNotFoundError } from '../lib/errors.js';
+import { listSessionPanes } from '../core/tmux.js';
 import { output, success, info, warn } from '../lib/output.js';
-import type { AgentEntry } from '../types/manifest.js';
 
 export interface KillOptions {
   agent?: string;
@@ -22,314 +18,87 @@ export interface KillOptions {
 export async function killCommand(options: KillOptions): Promise<void> {
   const projectRoot = await getRepoRoot();
 
-  if (!options.agent && !options.worktree && !options.all) {
-    throw new PpgError('One of --agent, --worktree, or --all is required', 'INVALID_ARGS');
-  }
-
   // Capture self-identification once at the start
   const selfPaneId = getCurrentPaneId();
-  let paneMap: Map<string, PaneInfo> | undefined;
+  let paneMap: Map<string, import('../core/tmux.js').PaneInfo> | undefined;
   if (selfPaneId) {
     const manifest = await readManifest(projectRoot);
     paneMap = await listSessionPanes(manifest.sessionName);
   }
 
-  if (options.agent) {
-    await killSingleAgent(projectRoot, options.agent, options, selfPaneId, paneMap);
-  } else if (options.worktree) {
-    await killWorktreeAgents(projectRoot, options.worktree, options, selfPaneId, paneMap);
-  } else if (options.all) {
-    await killAllAgents(projectRoot, options, selfPaneId, paneMap);
-  }
-}
-
-async function killSingleAgent(
-  projectRoot: string,
-  agentId: string,
-  options: KillOptions,
-  selfPaneId: string | null,
-  paneMap?: Map<string, PaneInfo>,
-): Promise<void> {
-  const manifest = await readManifest(projectRoot);
-  const found = findAgent(manifest, agentId);
-  if (!found) throw new AgentNotFoundError(agentId);
-
-  const { agent } = found;
-  const isTerminal = agent.status !== 'running';
-
-  // Self-protection check
-  if (selfPaneId && paneMap) {
-    const { skipped } = excludeSelf([agent], selfPaneId, paneMap);
-    if (skipped.length > 0) {
-      warn(`Cannot kill agent ${agentId} — it contains the current ppg process`);
-      if (options.json) {
-        output({ success: false, skipped: [agentId], reason: 'self-protection' }, true);
-      }
-      return;
-    }
-  }
-
-  if (options.delete) {
-    // For --delete: skip kill if already in terminal state, just clean up
-    if (!isTerminal) {
-      info(`Killing agent ${agentId}`);
-      await killAgent(agent);
-    }
-    // Kill the tmux pane explicitly (handles already-dead)
-    await import('../core/tmux.js').then((tmux) => tmux.killPane(agent.tmuxTarget));
-
-    await updateManifest(projectRoot, (m) => {
-      const f = findAgent(m, agentId);
-      if (f) {
-        delete f.worktree.agents[agentId];
-      }
-      return m;
-    });
-
-    if (options.json) {
-      output({ success: true, killed: [agentId], deleted: [agentId] }, true);
-    } else {
-      success(`Deleted agent ${agentId}`);
-    }
-  } else {
-    if (isTerminal) {
-      if (options.json) {
-        output({ success: true, killed: [], message: `Agent ${agentId} already ${agent.status}` }, true);
-      } else {
-        info(`Agent ${agentId} already ${agent.status}, skipping kill`);
-      }
-      return;
-    }
-
-    info(`Killing agent ${agentId}`);
-    await killAgent(agent);
-
-    await updateManifest(projectRoot, (m) => {
-      const f = findAgent(m, agentId);
-      if (f) {
-        f.agent.status = 'gone';
-      }
-      return m;
-    });
-
-    if (options.json) {
-      output({ success: true, killed: [agentId] }, true);
-    } else {
-      success(`Killed agent ${agentId}`);
-    }
-  }
-}
-
-async function killWorktreeAgents(
-  projectRoot: string,
-  worktreeRef: string,
-  options: KillOptions,
-  selfPaneId: string | null,
-  paneMap?: Map<string, PaneInfo>,
-): Promise<void> {
-  const manifest = await readManifest(projectRoot);
-  const wt = resolveWorktree(manifest, worktreeRef);
-
-  if (!wt) throw new WorktreeNotFoundError(worktreeRef);
-
-  let toKill = Object.values(wt.agents)
-    .filter((a) => a.status === 'running');
-
-  // Self-protection: filter out agents that would kill the current process
-  const skippedIds: string[] = [];
-  if (selfPaneId && paneMap) {
-    const { safe, skipped } = excludeSelf(toKill, selfPaneId, paneMap);
-    toKill = safe;
-    for (const a of skipped) {
-      skippedIds.push(a.id);
-      warn(`Skipping agent ${a.id} — contains current ppg process`);
-    }
-  }
-
-  const killedIds = toKill.map((a) => a.id);
-
-  for (const a of toKill) info(`Killing agent ${a.id}`);
-  await killAgents(toKill);
-
-  await updateManifest(projectRoot, (m) => {
-    const mWt = m.worktrees[wt.id];
-    if (mWt) {
-      for (const agent of Object.values(mWt.agents)) {
-        if (killedIds.includes(agent.id)) {
-          agent.status = 'gone';
-        }
-      }
-    }
-    return m;
-  });
-
-  // Check for open PR before deleting worktree
-  let skippedOpenPr = false;
-  if (options.delete && !options.includeOpenPrs) {
-    const prState = await checkPrState(wt.branch);
-    if (prState === 'OPEN') {
-      skippedOpenPr = true;
-      warn(`Skipping deletion of worktree ${wt.id} (${wt.name}) — has open PR on branch ${wt.branch}. Use --include-open-prs to override.`);
-    }
-  }
-
-  // --delete implies --remove (always clean up worktree)
-  const shouldRemove = (options.remove || options.delete) && !skippedOpenPr;
-  if (shouldRemove) {
-    await removeWorktreeCleanup(projectRoot, wt.id, selfPaneId, paneMap);
-  }
-
-  // --delete also removes the worktree entry from manifest
-  if (options.delete && !skippedOpenPr) {
-    await updateManifest(projectRoot, (m) => {
-      delete m.worktrees[wt.id];
-      return m;
-    });
-  }
-
-  if (options.json) {
-    output({
-      success: true,
-      killed: killedIds,
-      skipped: skippedIds.length > 0 ? skippedIds : undefined,
-      removed: shouldRemove ? [wt.id] : [],
-      deleted: (options.delete && !skippedOpenPr) ? [wt.id] : [],
-      skippedOpenPrs: skippedOpenPr ? [wt.id] : undefined,
-    }, true);
-  } else {
-    success(`Killed ${killedIds.length} agent(s) in worktree ${wt.id}`);
-    if (skippedIds.length > 0) {
-      warn(`Skipped ${skippedIds.length} agent(s) due to self-protection`);
-    }
-    if (options.delete && !skippedOpenPr) {
-      success(`Deleted worktree ${wt.id}`);
-    } else if (options.remove && !skippedOpenPr) {
-      success(`Removed worktree ${wt.id}`);
-    }
-  }
-}
-
-async function killAllAgents(
-  projectRoot: string,
-  options: KillOptions,
-  selfPaneId: string | null,
-  paneMap?: Map<string, PaneInfo>,
-): Promise<void> {
-  const manifest = await readManifest(projectRoot);
-  let toKill: AgentEntry[] = [];
-
-  for (const wt of Object.values(manifest.worktrees)) {
-    for (const agent of Object.values(wt.agents)) {
-      if (agent.status === 'running') {
-        toKill.push(agent);
-      }
-    }
-  }
-
-  // Self-protection: filter out agents that would kill the current process
-  const skippedIds: string[] = [];
-  if (selfPaneId && paneMap) {
-    const { safe, skipped } = excludeSelf(toKill, selfPaneId, paneMap);
-    toKill = safe;
-    for (const a of skipped) {
-      skippedIds.push(a.id);
-      warn(`Skipping agent ${a.id} — contains current ppg process`);
-    }
-  }
-
-  const killedIds = toKill.map((a) => a.id);
-  for (const a of toKill) info(`Killing agent ${a.id}`);
-  await killAgents(toKill);
-
-  // Only track active worktrees for removal (not already merged/cleaned)
-  const activeWorktreeIds = Object.values(manifest.worktrees)
-    .filter((wt) => wt.status === 'active')
-    .map((wt) => wt.id);
-
-  await updateManifest(projectRoot, (m) => {
-    for (const wt of Object.values(m.worktrees)) {
-      for (const agent of Object.values(wt.agents)) {
-        if (killedIds.includes(agent.id)) {
-          agent.status = 'gone';
-        }
-      }
-    }
-    return m;
-  });
-
-  // Filter out worktrees with open PRs
-  let worktreesToRemove = activeWorktreeIds;
-  const openPrWorktreeIds: string[] = [];
-  if (options.delete && !options.includeOpenPrs) {
-    worktreesToRemove = [];
-    for (const wtId of activeWorktreeIds) {
-      const wt = manifest.worktrees[wtId];
-      if (wt) {
-        const prState = await checkPrState(wt.branch);
-        if (prState === 'OPEN') {
-          openPrWorktreeIds.push(wtId);
-          warn(`Skipping deletion of worktree ${wtId} (${wt.name}) — has open PR`);
-        } else {
-          worktreesToRemove.push(wtId);
-        }
-      }
-    }
-  }
-
-  // --delete implies --remove
-  const shouldRemove = options.remove || options.delete;
-  if (shouldRemove) {
-    for (const wtId of worktreesToRemove) {
-      await removeWorktreeCleanup(projectRoot, wtId, selfPaneId, paneMap);
-    }
-  }
-
-  // --delete also removes worktree entries from manifest
-  if (options.delete) {
-    await updateManifest(projectRoot, (m) => {
-      for (const wtId of worktreesToRemove) {
-        delete m.worktrees[wtId];
-      }
-      return m;
-    });
-  }
-
-  if (options.json) {
-    output({
-      success: true,
-      killed: killedIds,
-      skipped: skippedIds.length > 0 ? skippedIds : undefined,
-      removed: shouldRemove ? worktreesToRemove : [],
-      deleted: options.delete ? worktreesToRemove : [],
-      skippedOpenPrs: openPrWorktreeIds.length > 0 ? openPrWorktreeIds : undefined,
-    }, true);
-  } else {
-    success(`Killed ${killedIds.length} agent(s) across ${activeWorktreeIds.length} worktree(s)`);
-    if (skippedIds.length > 0) {
-      warn(`Skipped ${skippedIds.length} agent(s) due to self-protection`);
-    }
-    if (openPrWorktreeIds.length > 0) {
-      warn(`Skipped deletion of ${openPrWorktreeIds.length} worktree(s) with open PRs`);
-    }
-    if (options.delete) {
-      success(`Deleted ${worktreesToRemove.length} worktree(s)`);
-    } else if (options.remove) {
-      success(`Removed ${worktreesToRemove.length} worktree(s)`);
-    }
-  }
-}
-
-async function removeWorktreeCleanup(
-  projectRoot: string,
-  wtId: string,
-  selfPaneId: string | null,
-  paneMap?: Map<string, PaneInfo>,
-): Promise<void> {
-  const manifest = await readManifest(projectRoot);
-  const wt = resolveWorktree(manifest, wtId);
-  if (!wt) return;
-  await cleanupWorktree(projectRoot, wt, {
+  const result = await performKill({
+    projectRoot,
+    agent: options.agent,
+    worktree: options.worktree,
+    all: options.all,
+    remove: options.remove,
+    delete: options.delete,
+    includeOpenPrs: options.includeOpenPrs,
     selfPaneId,
     paneMap,
   });
+
+  formatOutput(result, options);
+}
+
+function formatOutput(result: KillResult, options: KillOptions): void {
+  if (options.json) {
+    output(result, true);
+    return;
+  }
+
+  // Emit per-agent progress for killed agents
+  for (const id of result.killed) {
+    info(`Killing agent ${id}`);
+  }
+
+  if (result.skipped?.length) {
+    for (const id of result.skipped) {
+      warn(`Skipping agent ${id} — contains current ppg process`);
+    }
+  }
+
+  if (result.skippedOpenPrs?.length) {
+    for (const id of result.skippedOpenPrs) {
+      warn(`Skipping deletion of worktree ${id} — has open PR`);
+    }
+  }
+
+  if (options.agent) {
+    if (result.deleted?.length) {
+      success(`Deleted agent ${options.agent}`);
+    } else if (result.killed.length > 0) {
+      success(`Killed agent ${options.agent}`);
+    } else if (result.message) {
+      info(result.message);
+    }
+  } else if (options.worktree) {
+    if (result.killed.length > 0 || !result.skipped?.length) {
+      success(`Killed ${result.killed.length} agent(s) in worktree ${options.worktree}`);
+    }
+    if (result.skipped?.length) {
+      warn(`Skipped ${result.skipped.length} agent(s) due to self-protection`);
+    }
+    if (result.deleted?.length) {
+      success(`Deleted worktree ${options.worktree}`);
+    } else if (result.removed?.length) {
+      success(`Removed worktree ${options.worktree}`);
+    }
+  } else if (options.all) {
+    const wtMsg = result.worktreeCount !== undefined
+      ? ` across ${result.worktreeCount} worktree(s)`
+      : '';
+    success(`Killed ${result.killed.length} agent(s)${wtMsg}`);
+    if (result.skipped?.length) {
+      warn(`Skipped ${result.skipped.length} agent(s) due to self-protection`);
+    }
+    if (result.skippedOpenPrs?.length) {
+      warn(`Skipped deletion of ${result.skippedOpenPrs.length} worktree(s) with open PRs`);
+    }
+    if (result.deleted?.length) {
+      success(`Deleted ${result.deleted.length} worktree(s)`);
+    } else if (result.removed?.length) {
+      success(`Removed ${result.removed.length} worktree(s)`);
+    }
+  }
 }

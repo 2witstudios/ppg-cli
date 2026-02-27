@@ -14,12 +14,20 @@ import {
   promptFile,
   agentPromptsDir,
   agentPromptFile,
+  serveDir,
+  tlsDir,
+  tlsCaKeyPath,
+  tlsCaCertPath,
+  tlsServerKeyPath,
+  tlsServerCertPath,
   worktreeBaseDir,
   worktreePath,
   globalPpgDir,
   globalPromptsDir,
   globalTemplatesDir,
   globalSwarmsDir,
+  serveStatePath,
+  servePidPath,
 } from './paths.js';
 
 const ROOT = '/tmp/project';
@@ -79,6 +87,30 @@ describe('paths', () => {
     );
   });
 
+  test('serveDir', () => {
+    expect(serveDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve'));
+  });
+
+  test('tlsDir', () => {
+    expect(tlsDir(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls'));
+  });
+
+  test('tlsCaKeyPath', () => {
+    expect(tlsCaKeyPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'ca-key.pem'));
+  });
+
+  test('tlsCaCertPath', () => {
+    expect(tlsCaCertPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'ca-cert.pem'));
+  });
+
+  test('tlsServerKeyPath', () => {
+    expect(tlsServerKeyPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'server-key.pem'));
+  });
+
+  test('tlsServerCertPath', () => {
+    expect(tlsServerCertPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve', 'tls', 'server-cert.pem'));
+  });
+
   test('worktreeBaseDir', () => {
     expect(worktreeBaseDir(ROOT)).toBe(path.join(ROOT, '.worktrees'));
   });
@@ -103,5 +135,13 @@ describe('paths', () => {
 
   test('globalSwarmsDir', () => {
     expect(globalSwarmsDir()).toBe(path.join(os.homedir(), '.ppg', 'swarms'));
+  });
+
+  test('serveStatePath', () => {
+    expect(serveStatePath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve.json'));
+  });
+
+  test('servePidPath', () => {
+    expect(servePidPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve.pid'));
   });
 });
