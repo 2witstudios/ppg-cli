@@ -92,6 +92,10 @@ class DashboardSplitViewController: NSSplitViewController {
             self?.showSettings()
         }
 
+        sidebar.onFeedbackClicked = { [weak self] in
+            self?.showFeedback()
+        }
+
         sidebar.onAddProject = {
             guard let delegate = NSApp.delegate as? AppDelegate else { return }
             delegate.openProject()
@@ -197,6 +201,11 @@ class DashboardSplitViewController: NSSplitViewController {
     private func showSettings() {
         let settingsVC = SettingsViewController()
         presentAsSheet(settingsVC)
+    }
+
+    private func showFeedback() {
+        let feedbackVC = FeedbackViewController()
+        presentAsSheet(feedbackVC)
     }
 
     // MARK: - Single Entry Conversion
