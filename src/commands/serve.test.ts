@@ -12,12 +12,19 @@ vi.mock('../core/manifest.js', () => ({
   readManifest: vi.fn(() => ({ sessionName: 'ppg-test' })),
 }));
 
-vi.mock('../core/tmux.js', () => ({
-  ensureSession: vi.fn(),
-  createWindow: vi.fn(() => 'ppg-test:1'),
-  sendKeys: vi.fn(),
-  listSessionWindows: vi.fn(() => []),
-  killWindow: vi.fn(),
+const mockEnsureSession = vi.fn();
+const mockCreateWindow = vi.fn(() => 'ppg-test:1');
+const mockSendKeys = vi.fn();
+const mockListSessionWindows = vi.fn((): { index: number; name: string }[] => []);
+const mockKillWindow = vi.fn();
+vi.mock('../core/backend.js', () => ({
+  getBackend: () => ({
+    ensureSession: mockEnsureSession,
+    createWindow: mockCreateWindow,
+    sendKeys: mockSendKeys,
+    listSessionWindows: mockListSessionWindows,
+    killWindow: mockKillWindow,
+  }),
 }));
 
 vi.mock('../lib/paths.js', async (importOriginal) => {
@@ -59,7 +66,6 @@ const { serveStartCommand, serveStopCommand, serveStatusCommand, serveDaemonComm
 const { output, success, warn, info } = await import('../lib/output.js');
 const { isServeRunning, getServePid, getServeInfo, readServeLog, runServeDaemon } = await import('../core/serve.js');
 const { requireManifest } = await import('../core/manifest.js');
-const tmux = await import('../core/tmux.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -74,16 +80,16 @@ describe('serveStartCommand', () => {
     await serveStartCommand({ port: 3000, host: 'localhost' });
 
     expect(requireManifest).toHaveBeenCalledWith('/fake/project');
-    expect(tmux.ensureSession).toHaveBeenCalledWith('ppg-test');
-    expect(tmux.createWindow).toHaveBeenCalledWith('ppg-test', 'ppg-serve', '/fake/project');
-    expect(tmux.sendKeys).toHaveBeenCalledWith('ppg-test:1', 'ppg serve _daemon --port 3000 --host localhost');
+    expect(mockEnsureSession).toHaveBeenCalledWith('ppg-test');
+    expect(mockCreateWindow).toHaveBeenCalledWith('ppg-test', 'ppg-serve', '/fake/project');
+    expect(mockSendKeys).toHaveBeenCalledWith('ppg-test:1', 'ppg serve _daemon --port 3000 --host localhost');
     expect(success).toHaveBeenCalledWith('Serve daemon starting in tmux window: ppg-test:1');
   });
 
   test('given custom port and host, should pass them to daemon command', async () => {
     await serveStartCommand({ port: 8080, host: '0.0.0.0' });
 
-    expect(tmux.sendKeys).toHaveBeenCalledWith('ppg-test:1', 'ppg serve _daemon --port 8080 --host 0.0.0.0');
+    expect(mockSendKeys).toHaveBeenCalledWith('ppg-test:1', 'ppg serve _daemon --port 8080 --host 0.0.0.0');
   });
 
   test('given server already running, should warn and return', async () => {
@@ -98,7 +104,7 @@ describe('serveStartCommand', () => {
 
     await serveStartCommand({ port: 3000, host: 'localhost' });
 
-    expect(tmux.createWindow).not.toHaveBeenCalled();
+    expect(mockCreateWindow).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith('Serve daemon is already running (PID: 12345)');
     expect(info).toHaveBeenCalledWith('Listening on localhost:3000');
   });
@@ -135,7 +141,7 @@ describe('serveStartCommand', () => {
     vi.mocked(requireManifest).mockRejectedValue(err);
 
     await expect(serveStartCommand({ port: 3000, host: 'localhost' })).rejects.toThrow('Not initialized');
-    expect(tmux.createWindow).not.toHaveBeenCalled();
+    expect(mockCreateWindow).not.toHaveBeenCalled();
   });
 
   test('given invalid host with shell metacharacters, should throw INVALID_ARGS', async () => {
@@ -170,14 +176,14 @@ describe('serveStopCommand', () => {
     vi.mocked(getServePid).mockResolvedValue(99999);
     vi.spyOn(process, 'kill').mockImplementation(() => true);
     vi.spyOn(fs, 'unlink').mockResolvedValue(undefined);
-    vi.mocked(tmux.listSessionWindows).mockResolvedValue([
+    mockListSessionWindows.mockResolvedValue([
       { index: 0, name: 'bash' },
       { index: 1, name: 'ppg-serve' },
     ]);
 
     await serveStopCommand({});
 
-    expect(tmux.killWindow).toHaveBeenCalledWith('ppg-test:1');
+    expect(mockKillWindow).toHaveBeenCalledWith('ppg-test:1');
 
     vi.mocked(process.kill).mockRestore();
   });

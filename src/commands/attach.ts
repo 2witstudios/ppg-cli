@@ -1,8 +1,7 @@
 import { requireManifest, resolveWorktree, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { getPaneInfo } from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { resumeAgent } from '../core/agent.js';
-import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { PpgError } from '../lib/errors.js';
 import { info, success } from '../lib/output.js';
@@ -43,7 +42,7 @@ export async function attachCommand(target: string): Promise<void> {
 
   // Check if the pane is dead and agent has a sessionId — auto-resume
   if (agent?.sessionId && worktreeId) {
-    const paneInfo = await getPaneInfo(tmuxTarget);
+    const paneInfo = await getBackend().getPaneInfo(tmuxTarget);
     if (!paneInfo || paneInfo.isDead) {
       info(`Pane is dead. Resuming session ${agent.sessionId}...`);
       const resumeWt = manifest.worktrees[worktreeId];
@@ -62,11 +61,11 @@ export async function attachCommand(target: string): Promise<void> {
     }
   }
 
-  const insideTmux = await tmux.isInsideTmux();
+  const insideSession = getBackend().isInsideSession();
 
-  if (insideTmux) {
+  if (insideSession) {
     // Agent targets are now window targets (e.g. "ppg:3"), so use selectWindow for both
-    await tmux.selectWindow(tmuxTarget);
+    await getBackend().selectWindow(tmuxTarget);
     info(`Switched to ${tmuxTarget}`);
   } else {
     // Open a new Terminal.app window attached to the target

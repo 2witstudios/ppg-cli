@@ -2,7 +2,7 @@ import { performKill, type KillResult } from '../core/operations/kill.js';
 import { getCurrentPaneId } from '../core/self.js';
 import { readManifest } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { listSessionPanes } from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { output, success, info, warn } from '../lib/output.js';
 
 export interface KillOptions {
@@ -20,10 +20,10 @@ export async function killCommand(options: KillOptions): Promise<void> {
 
   // Capture self-identification once at the start
   const selfPaneId = getCurrentPaneId();
-  let paneMap: Map<string, import('../core/tmux.js').PaneInfo> | undefined;
+  let paneMap: Map<string, import('../core/process-manager.js').PaneInfo> | undefined;
   if (selfPaneId) {
     const manifest = await readManifest(projectRoot);
-    paneMap = await listSessionPanes(manifest.sessionName);
+    paneMap = await getBackend().listSessionPanes(manifest.sessionName);
   }
 
   const result = await performKill({

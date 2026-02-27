@@ -43,9 +43,13 @@ vi.mock('../agent.js', () => ({
   killAgent: vi.fn(),
 }));
 
-vi.mock('../tmux.js', () => ({
-  ensureSession: vi.fn(),
-  createWindow: vi.fn(),
+const mockEnsureSession = vi.fn();
+const mockCreateWindow = vi.fn();
+vi.mock('../backend.js', () => ({
+  getBackend: () => ({
+    ensureSession: mockEnsureSession,
+    createWindow: mockCreateWindow,
+  }),
 }));
 
 vi.mock('../template.js', () => ({
@@ -69,7 +73,6 @@ vi.mock('../../lib/errors.js', async () => {
 import fs from 'node:fs/promises';
 import { requireManifest, updateManifest, findAgent } from '../manifest.js';
 import { spawnAgent, killAgent } from '../agent.js';
-import * as tmux from '../tmux.js';
 import { performRestart } from './restart.js';
 
 const mockedFindAgent = vi.mocked(findAgent);
@@ -77,8 +80,8 @@ const mockedRequireManifest = vi.mocked(requireManifest);
 const mockedUpdateManifest = vi.mocked(updateManifest);
 const mockedSpawnAgent = vi.mocked(spawnAgent);
 const mockedKillAgent = vi.mocked(killAgent);
-const mockedEnsureSession = vi.mocked(tmux.ensureSession);
-const mockedCreateWindow = vi.mocked(tmux.createWindow);
+const mockedEnsureSession = mockEnsureSession;
+const mockedCreateWindow = mockCreateWindow;
 const mockedReadFile = vi.mocked(fs.readFile);
 
 const PROJECT_ROOT = '/tmp/project';

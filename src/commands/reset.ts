@@ -4,7 +4,8 @@ import { checkPrState } from '../core/pr.js';
 import { getRepoRoot, pruneWorktrees } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, excludeSelf, wouldCleanupAffectSelf } from '../core/self.js';
-import { listSessionPanes, killOrphanWindows, type PaneInfo } from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
+import type { PaneInfo } from '../core/process-manager.js';
 import { NotInitializedError, UnmergedWorkError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
@@ -64,7 +65,7 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
   const selfPaneId = getCurrentPaneId();
   let paneMap: Map<string, PaneInfo> | undefined;
   if (selfPaneId) {
-    paneMap = await listSessionPanes(manifest.sessionName);
+    paneMap = await getBackend().listSessionPanes(manifest.sessionName);
   }
 
   // Collect all running agents
@@ -158,7 +159,7 @@ export async function resetCommand(options: ResetOptions): Promise<void> {
 
   // Kill any orphaned tmux windows left in the session (e.g., from failed cleanups)
   // Pass selfPaneId so we don't kill the conductor's own window
-  const orphansKilled = await killOrphanWindows(manifest.sessionName, selfPaneId);
+  const orphansKilled = await getBackend().killOrphanWindows(manifest.sessionName, selfPaneId);
   if (orphansKilled > 0) {
     info(`Killed ${orphansKilled} orphaned tmux window(s)`);
   }

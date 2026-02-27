@@ -3,7 +3,8 @@ import { killAgent, killAgents } from '../agent.js';
 import { checkPrState } from '../pr.js';
 import { cleanupWorktree } from '../cleanup.js';
 import { excludeSelf } from '../self.js';
-import { killPane, type PaneInfo } from '../tmux.js';
+import { getBackend } from '../backend.js';
+import type { PaneInfo } from '../process-manager.js';
 import { PpgError, AgentNotFoundError, WorktreeNotFoundError } from '../../lib/errors.js';
 import type { AgentEntry } from '../../types/manifest.js';
 
@@ -70,7 +71,7 @@ async function killSingleAgent(
     if (!isTerminal) {
       await killAgent(agent);
     }
-    await killPane(agent.tmuxTarget);
+    await getBackend().killPane(agent.tmuxTarget);
 
     await updateManifest(projectRoot, (m) => {
       const f = findAgent(m, agentId);

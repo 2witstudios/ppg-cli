@@ -21,8 +21,11 @@ vi.mock('../../core/agent.js', () => ({
   checkAgentStatus: vi.fn(),
 }));
 
-vi.mock('../../core/tmux.js', () => ({
-  listSessionPanes: vi.fn(),
+const mockListSessionPanes = vi.fn();
+vi.mock('../../core/backend.js', () => ({
+  getBackend: () => ({
+    listSessionPanes: mockListSessionPanes,
+  }),
 }));
 
 vi.mock('../../lib/paths.js', () => ({
@@ -33,12 +36,11 @@ vi.mock('../../lib/paths.js', () => ({
 import nodefs from 'node:fs';
 import { readManifest } from '../../core/manifest.js';
 import { checkAgentStatus } from '../../core/agent.js';
-import { listSessionPanes } from '../../core/tmux.js';
 import { startManifestWatcher } from './watcher.js';
 
 const mockedReadManifest = vi.mocked(readManifest);
 const mockedCheckAgentStatus = vi.mocked(checkAgentStatus);
-const mockedListSessionPanes = vi.mocked(listSessionPanes);
+const mockedListSessionPanes = mockListSessionPanes;
 const mockedFsWatch = vi.mocked(nodefs.watch);
 
 const PROJECT_ROOT = '/tmp/project';

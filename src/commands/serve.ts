@@ -5,7 +5,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import { requireManifest, readManifest } from '../core/manifest.js';
 import { runServeDaemon, isServeRunning, getServePid, getServeInfo, readServeLog } from '../core/serve.js';
 import { startServer } from '../server/index.js';
-import * as tmux from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { servePidPath, serveJsonPath } from '../lib/paths.js';
 import { PpgError } from '../lib/errors.js';
 import { output, info, success, warn } from '../lib/output.js';
@@ -92,14 +92,14 @@ export async function serveStartCommand(options: ServeStartOptions): Promise<voi
   // Start daemon in a tmux window
   const manifest = await readManifest(projectRoot);
   const sessionName = manifest.sessionName;
-  await tmux.ensureSession(sessionName);
+  await getBackend().ensureSession(sessionName);
 
-  const windowTarget = await tmux.createWindow(sessionName, SERVE_WINDOW_NAME, projectRoot);
+  const windowTarget = await getBackend().createWindow(sessionName, SERVE_WINDOW_NAME, projectRoot);
   let command = `ppg serve _daemon --port ${port} --host ${host}`;
   if (options.token) {
     command += ` --token ${options.token}`;
   }
-  await tmux.sendKeys(windowTarget, command);
+  await getBackend().sendKeys(windowTarget, command);
 
   if (options.json) {
     output({
@@ -142,10 +142,10 @@ export async function serveStopCommand(options: ServeOptions): Promise<void> {
   // Try to kill the tmux window too
   try {
     const manifest = await readManifest(projectRoot);
-    const windows = await tmux.listSessionWindows(manifest.sessionName);
+    const windows = await getBackend().listSessionWindows(manifest.sessionName);
     const serveWindow = windows.find((w) => w.name === SERVE_WINDOW_NAME);
     if (serveWindow) {
-      await tmux.killWindow(`${manifest.sessionName}:${serveWindow.index}`);
+      await getBackend().killWindow(`${manifest.sessionName}:${serveWindow.index}`);
     }
   } catch { /* best effort */ }
 

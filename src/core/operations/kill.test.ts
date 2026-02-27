@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import type { Manifest, AgentEntry, WorktreeEntry } from '../../types/manifest.js';
-import type { PaneInfo } from '../tmux.js';
+import type { PaneInfo } from '../process-manager.js';
 
 // --- Mocks ---
 
@@ -36,8 +36,11 @@ vi.mock('../self.js', () => ({
   excludeSelf: vi.fn(),
 }));
 
-vi.mock('../tmux.js', () => ({
-  killPane: vi.fn(async () => {}),
+const mockKillPane = vi.fn(async () => {});
+vi.mock('../backend.js', () => ({
+  getBackend: () => ({
+    killPane: mockKillPane,
+  }),
 }));
 
 import { performKill } from './kill.js';
@@ -46,8 +49,9 @@ import { killAgent, killAgents } from '../agent.js';
 import { checkPrState } from '../pr.js';
 import { cleanupWorktree } from '../cleanup.js';
 import { excludeSelf } from '../self.js';
-import { killPane } from '../tmux.js';
 import { PpgError } from '../../lib/errors.js';
+
+const killPane = mockKillPane;
 
 // --- Helpers ---
 

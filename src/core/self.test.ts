@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { getCurrentPaneId, wouldAffectSelf, excludeSelf, wouldCleanupAffectSelf } from './self.js';
-import type { PaneInfo } from './tmux.js';
+import type { PaneInfo } from './process-manager.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
 
 function makePaneInfo(paneId: string): PaneInfo {

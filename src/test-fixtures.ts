@@ -1,5 +1,5 @@
 import type { AgentEntry, Manifest, WorktreeEntry } from './types/manifest.js';
-import type { PaneInfo } from './core/tmux.js';
+import type { PaneInfo } from './core/process-manager.js';
 
 export function makeAgent(overrides?: Partial<AgentEntry>): AgentEntry {
   return {

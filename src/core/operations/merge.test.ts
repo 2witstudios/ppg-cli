@@ -57,8 +57,11 @@ vi.mock('../self.js', () => ({
   getCurrentPaneId: vi.fn(() => null),
 }));
 
-vi.mock('../tmux.js', () => ({
-  listSessionPanes: vi.fn(async () => new Map()),
+const mockListSessionPanes = vi.fn(async () => new Map());
+vi.mock('../backend.js', () => ({
+  getBackend: () => ({
+    listSessionPanes: mockListSessionPanes,
+  }),
 }));
 
 vi.mock('../../lib/env.js', () => ({
@@ -70,7 +73,6 @@ import { updateManifest } from '../manifest.js';
 import { getCurrentBranch } from '../worktree.js';
 import { cleanupWorktree } from '../cleanup.js';
 import { getCurrentPaneId } from '../self.js';
-import { listSessionPanes } from '../tmux.js';
 import { PpgError, MergeFailedError, WorktreeNotFoundError } from '../../lib/errors.js';
 
 function makeWorktree(overrides: Partial<WorktreeEntry> = {}): WorktreeEntry {
@@ -283,14 +285,14 @@ describe('performMerge', () => {
   test('passes self-protection context to cleanup', async () => {
     vi.mocked(getCurrentPaneId).mockReturnValueOnce('%5');
     const paneMap = new Map();
-    vi.mocked(listSessionPanes).mockResolvedValueOnce(paneMap);
+    mockListSessionPanes.mockResolvedValueOnce(paneMap);
 
     await performMerge({
       projectRoot: '/project',
       worktreeRef: 'wt-abc123',
     });
 
-    expect(listSessionPanes).toHaveBeenCalledWith('ppg');
+    expect(mockListSessionPanes).toHaveBeenCalledWith('ppg');
     expect(cleanupWorktree).toHaveBeenCalledWith(
       '/project',
       expect.objectContaining({ id: 'wt-abc123' }),

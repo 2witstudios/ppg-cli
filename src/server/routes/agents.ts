@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { requireManifest, findAgent, updateManifest } from '../../core/manifest.js';
 import { killAgent, checkAgentStatus, restartAgent } from '../../core/agent.js';
 import { loadConfig, resolveAgentConfig } from '../../core/config.js';
-import * as tmux from '../../core/tmux.js';
+import { getBackend } from '../../core/backend.js';
 import { PpgError, AgentNotFoundError } from '../../lib/errors.js';
 import { agentPromptFile } from '../../lib/paths.js';
 import fs from 'node:fs/promises';
@@ -77,7 +77,7 @@ export async function agentRoutes(
 
       let content: string;
       try {
-        content = await tmux.capturePane(agent.tmuxTarget, lines);
+        content = await getBackend().capturePane(agent.tmuxTarget, lines);
       } catch {
         throw new PpgError(
           `Could not capture pane for agent ${id}. Pane may no longer exist.`,
@@ -131,14 +131,14 @@ export async function agentRoutes(
 
       switch (mode) {
         case 'raw':
-          await tmux.sendRawKeys(agent.tmuxTarget, text);
+          await getBackend().sendRawKeys(agent.tmuxTarget, text);
           break;
         case 'literal':
-          await tmux.sendLiteral(agent.tmuxTarget, text);
+          await getBackend().sendLiteral(agent.tmuxTarget, text);
           break;
         case 'with-enter':
         default:
-          await tmux.sendKeys(agent.tmuxTarget, text);
+          await getBackend().sendKeys(agent.tmuxTarget, text);
           break;
       }
 

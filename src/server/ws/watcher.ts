@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readManifest } from '../../core/manifest.js';
 import { checkAgentStatus } from '../../core/agent.js';
-import { listSessionPanes, type PaneInfo } from '../../core/tmux.js';
+import { getBackend } from '../../core/backend.js';
+import type { PaneInfo } from '../../core/process-manager.js';
 import { manifestPath, ppgDir } from '../../lib/paths.js';
 import type { AgentStatus, Manifest } from '../../types/manifest.js';
 
@@ -120,7 +121,7 @@ export function startManifestWatcher(
 
       let paneMap: Map<string, PaneInfo>;
       try {
-        paneMap = await listSessionPanes(manifest.sessionName);
+        paneMap = await getBackend().listSessionPanes(manifest.sessionName);
       } catch (err) {
         onError?.(err);
         return;

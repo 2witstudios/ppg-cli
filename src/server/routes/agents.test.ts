@@ -30,11 +30,17 @@ vi.mock('../../core/agent.js', () => ({
   restartAgent: vi.fn(),
 }));
 
-vi.mock('../../core/tmux.js', () => ({
-  capturePane: vi.fn(),
-  sendKeys: vi.fn(),
-  sendLiteral: vi.fn(),
-  sendRawKeys: vi.fn(),
+const mockCapturePane = vi.fn();
+const mockSendKeys = vi.fn();
+const mockSendLiteral = vi.fn();
+const mockSendRawKeys = vi.fn();
+vi.mock('../../core/backend.js', () => ({
+  getBackend: () => ({
+    capturePane: mockCapturePane,
+    sendKeys: mockSendKeys,
+    sendLiteral: mockSendLiteral,
+    sendRawKeys: mockSendRawKeys,
+  }),
 }));
 
 vi.mock('../../core/config.js', () => ({
@@ -55,7 +61,6 @@ vi.mock('node:fs/promises', async () => {
 
 import { requireManifest, findAgent, updateManifest } from '../../core/manifest.js';
 import { killAgent, checkAgentStatus, restartAgent } from '../../core/agent.js';
-import * as tmux from '../../core/tmux.js';
 import { loadConfig, resolveAgentConfig } from '../../core/config.js';
 import fs from 'node:fs/promises';
 
@@ -86,7 +91,7 @@ beforeEach(() => {
 describe('GET /api/agents/:id/logs', () => {
   test('returns captured pane output with default 200 lines', async () => {
     setupAgentMocks();
-    vi.mocked(tmux.capturePane).mockResolvedValue('line1\nline2\nline3');
+    vi.mocked(mockCapturePane).mockResolvedValue('line1\nline2\nline3');
 
     const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/api/agents/ag-test1234/logs' });
@@ -96,31 +101,31 @@ describe('GET /api/agents/:id/logs', () => {
     expect(body.agentId).toBe('ag-test1234');
     expect(body.output).toBe('line1\nline2\nline3');
     expect(body.lines).toBe(200);
-    expect(tmux.capturePane).toHaveBeenCalledWith('ppg:1.0', 200);
+    expect(mockCapturePane).toHaveBeenCalledWith('ppg:1.0', 200);
   });
 
   test('respects custom lines parameter', async () => {
     setupAgentMocks();
-    vi.mocked(tmux.capturePane).mockResolvedValue('output');
+    vi.mocked(mockCapturePane).mockResolvedValue('output');
 
     const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/api/agents/ag-test1234/logs?lines=50' });
 
     expect(res.statusCode).toBe(200);
     expect(res.json().lines).toBe(50);
-    expect(tmux.capturePane).toHaveBeenCalledWith('ppg:1.0', 50);
+    expect(mockCapturePane).toHaveBeenCalledWith('ppg:1.0', 50);
   });
 
   test('caps lines at 10000', async () => {
     setupAgentMocks();
-    vi.mocked(tmux.capturePane).mockResolvedValue('output');
+    vi.mocked(mockCapturePane).mockResolvedValue('output');
 
     const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/api/agents/ag-test1234/logs?lines=999999' });
 
     expect(res.statusCode).toBe(200);
     expect(res.json().lines).toBe(10000);
-    expect(tmux.capturePane).toHaveBeenCalledWith('ppg:1.0', 10000);
+    expect(mockCapturePane).toHaveBeenCalledWith('ppg:1.0', 10000);
   });
 
   test('returns 400 for invalid lines', async () => {
@@ -144,7 +149,7 @@ describe('GET /api/agents/:id/logs', () => {
 
   test('returns 410 when pane no longer exists', async () => {
     setupAgentMocks();
-    vi.mocked(tmux.capturePane).mockRejectedValue(new Error('pane not found'));
+    vi.mocked(mockCapturePane).mockRejectedValue(new Error('pane not found'));
 
     const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/api/agents/ag-test1234/logs' });
@@ -170,7 +175,7 @@ describe('POST /api/agents/:id/send', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().success).toBe(true);
     expect(res.json().mode).toBe('with-enter');
-    expect(tmux.sendKeys).toHaveBeenCalledWith('ppg:1.0', 'hello');
+    expect(mockSendKeys).toHaveBeenCalledWith('ppg:1.0', 'hello');
   });
 
   test('sends literal text without Enter', async () => {
@@ -184,7 +189,7 @@ describe('POST /api/agents/:id/send', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(tmux.sendLiteral).toHaveBeenCalledWith('ppg:1.0', 'hello');
+    expect(mockSendLiteral).toHaveBeenCalledWith('ppg:1.0', 'hello');
   });
 
   test('sends raw tmux keys', async () => {
@@ -198,7 +203,7 @@ describe('POST /api/agents/:id/send', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(tmux.sendRawKeys).toHaveBeenCalledWith('ppg:1.0', 'C-c');
+    expect(mockSendRawKeys).toHaveBeenCalledWith('ppg:1.0', 'C-c');
   });
 
   test('rejects invalid mode', async () => {

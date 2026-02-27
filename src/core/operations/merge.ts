@@ -4,7 +4,8 @@ import { refreshAllAgentStatuses } from '../agent.js';
 import { getCurrentBranch } from '../worktree.js';
 import { cleanupWorktree } from '../cleanup.js';
 import { getCurrentPaneId } from '../self.js';
-import { listSessionPanes, type PaneInfo } from '../tmux.js';
+import { getBackend } from '../backend.js';
+import type { PaneInfo } from '../process-manager.js';
 import { PpgError, WorktreeNotFoundError, MergeFailedError } from '../../lib/errors.js';
 import { execaEnv } from '../../lib/env.js';
 
@@ -132,7 +133,7 @@ export async function performMerge(options: MergeOptions): Promise<MergeResult> 
     const selfPaneId = getCurrentPaneId();
     let paneMap: Map<string, PaneInfo> | undefined;
     if (selfPaneId) {
-      paneMap = await listSessionPanes(manifest.sessionName);
+      paneMap = await getBackend().listSessionPanes(manifest.sessionName);
     }
 
     const cleanupResult = await cleanupWorktree(projectRoot, wt, { selfPaneId, paneMap });

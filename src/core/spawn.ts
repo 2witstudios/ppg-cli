@@ -4,7 +4,7 @@ import { getCurrentBranch, createWorktree } from './worktree.js';
 import { setupWorktreeEnv } from './env.js';
 import { loadTemplate, renderTemplate, type TemplateContext } from './template.js';
 import { spawnAgent } from './agent.js';
-import * as tmux from './tmux.js';
+import { getBackend } from './backend.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { PpgError } from '../lib/errors.js';
 import { normalizeName } from '../lib/name.js';
@@ -46,10 +46,10 @@ async function resolveAgentTarget(opts: SpawnTargetOptions): Promise<string> {
   }
   if (opts.split) {
     const direction = opts.index % 2 === 1 ? 'horizontal' : 'vertical';
-    const pane = await tmux.splitPane(opts.windowTarget, direction, opts.worktreePath);
+    const pane = await getBackend().splitPane(opts.windowTarget, direction, opts.worktreePath);
     return pane.target;
   }
-  return tmux.createWindow(opts.sessionName, `${opts.windowNamePrefix}-${opts.index}`, opts.worktreePath);
+  return getBackend().createWindow(opts.sessionName, `${opts.windowNamePrefix}-${opts.index}`, opts.worktreePath);
 }
 
 export async function spawnAgentBatch(opts: SpawnBatchOptions): Promise<AgentEntry[]> {
@@ -144,10 +144,10 @@ export async function spawnNewWorktree(
   await setupWorktreeEnv(projectRoot, wtPath, config);
 
   // Ensure tmux session (manifest is the source of truth for session name)
-  await tmux.ensureSession(sessionName);
+  await getBackend().ensureSession(sessionName);
 
   // Create tmux window
-  const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
+  const windowTarget = await getBackend().createWindow(sessionName, name, wtPath);
 
   // Register skeleton worktree in manifest before spawning agents
   // so partial failures leave a record for cleanup

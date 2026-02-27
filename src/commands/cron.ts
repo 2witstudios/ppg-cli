@@ -5,7 +5,7 @@ import { getRepoRoot } from '../core/worktree.js';
 import { readManifest } from '../core/manifest.js';
 import { loadSchedules, getNextRun, formatCronHuman, validateCronExpression } from '../core/schedule.js';
 import { runCronDaemon, isCronRunning, getCronPid, readCronLog } from '../core/cron.js';
-import * as tmux from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { cronPidPath, manifestPath, schedulesPath } from '../lib/paths.js';
 import { getLockfile, getWriteFileAtomic } from '../lib/cjs-compat.js';
 import { PpgError, NotInitializedError } from '../lib/errors.js';
@@ -48,11 +48,11 @@ export async function cronStartCommand(options: CronOptions): Promise<void> {
   // Start daemon in a tmux window
   const manifest = await readManifest(projectRoot);
   const sessionName = manifest.sessionName;
-  await tmux.ensureSession(sessionName);
+  await getBackend().ensureSession(sessionName);
 
-  const windowTarget = await tmux.createWindow(sessionName, CRON_WINDOW_NAME, projectRoot);
+  const windowTarget = await getBackend().createWindow(sessionName, CRON_WINDOW_NAME, projectRoot);
   const command = `ppg cron _daemon`;
-  await tmux.sendKeys(windowTarget, command);
+  await getBackend().sendKeys(windowTarget, command);
 
   if (options.json) {
     output({
@@ -96,10 +96,10 @@ export async function cronStopCommand(options: CronOptions): Promise<void> {
   // Try to kill the tmux window too
   try {
     const manifest = await readManifest(projectRoot);
-    const windows = await tmux.listSessionWindows(manifest.sessionName);
+    const windows = await getBackend().listSessionWindows(manifest.sessionName);
     const cronWindow = windows.find((w) => w.name === CRON_WINDOW_NAME);
     if (cronWindow) {
-      await tmux.killWindow(`${manifest.sessionName}:${cronWindow.index}`);
+      await getBackend().killWindow(`${manifest.sessionName}:${cronWindow.index}`);
     }
   } catch { /* best effort */ }
 

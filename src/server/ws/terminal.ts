@@ -1,4 +1,4 @@
-import { capturePane } from '../../core/tmux.js';
+import { getBackend } from '../../core/backend.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,7 +95,7 @@ export class TerminalStreamer {
     capture?: (target: string, lines?: number) => Promise<string>;
   }) {
     this.pollIntervalMs = options?.pollIntervalMs ?? POLL_INTERVAL_MS;
-    this.capture = options?.capture ?? capturePane;
+    this.capture = options?.capture ?? ((target, lines) => getBackend().capturePane(target, lines));
   }
 
   /**

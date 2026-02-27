@@ -44,11 +44,17 @@ vi.mock('../agent.js', () => ({
   spawnAgent: vi.fn(),
 }));
 
-vi.mock('../tmux.js', () => ({
-  ensureSession: vi.fn(),
-  createWindow: vi.fn(),
-  splitPane: vi.fn(),
-  sendKeys: vi.fn(),
+const mockEnsureSession = vi.fn();
+const mockCreateWindow = vi.fn();
+const mockSplitPane = vi.fn();
+
+vi.mock('../backend.js', () => ({
+  getBackend: () => ({
+    ensureSession: mockEnsureSession,
+    createWindow: mockCreateWindow,
+    splitPane: mockSplitPane,
+    sendKeys: vi.fn(),
+  }),
 }));
 
 vi.mock('../terminal.js', () => ({
@@ -82,7 +88,6 @@ import { getRepoRoot, getCurrentBranch, createWorktree, adoptWorktree } from '..
 import { setupWorktreeEnv } from '../env.js';
 import { loadTemplate } from '../template.js';
 import { spawnAgent } from '../agent.js';
-import * as tmux from '../tmux.js';
 import { openTerminalWindow } from '../terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../../lib/id.js';
 import { performSpawn } from './spawn.js';
@@ -95,9 +100,9 @@ const mockedUpdateManifest = vi.mocked(updateManifest);
 const mockedResolveWorktree = vi.mocked(resolveWorktree);
 const mockedCreateWorktree = vi.mocked(createWorktree);
 const mockedSpawnAgent = vi.mocked(spawnAgent);
-const mockedEnsureSession = vi.mocked(tmux.ensureSession);
-const mockedCreateWindow = vi.mocked(tmux.createWindow);
-const mockedSplitPane = vi.mocked(tmux.splitPane);
+const mockedEnsureSession = mockEnsureSession;
+const mockedCreateWindow = mockCreateWindow;
+const mockedSplitPane = mockSplitPane;
 const mockedLoadTemplate = vi.mocked(loadTemplate);
 
 const PROJECT_ROOT = '/tmp/project';

@@ -1,6 +1,6 @@
 import { requireManifest, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
-import * as tmux from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { AgentNotFoundError } from '../lib/errors.js';
 import { output, success } from '../lib/output.js';
 
@@ -22,13 +22,13 @@ export async function sendCommand(agentId: string, text: string, options: SendOp
 
   if (options.keys) {
     // Raw tmux key names (e.g., "C-c", "Enter", "Escape")
-    await tmux.sendRawKeys(agent.tmuxTarget, text);
+    await getBackend().sendRawKeys(agent.tmuxTarget, text);
   } else if (options.enter === false) {
     // Send literal text without Enter
-    await tmux.sendLiteral(agent.tmuxTarget, text);
+    await getBackend().sendLiteral(agent.tmuxTarget, text);
   } else {
     // Default: send literal text + Enter
-    await tmux.sendKeys(agent.tmuxTarget, text);
+    await getBackend().sendKeys(agent.tmuxTarget, text);
   }
 
   if (options.json) {

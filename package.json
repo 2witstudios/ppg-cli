@@ -67,6 +67,9 @@
     "typescript": "^5.7.3",
     "vitest": "^3.0.6"
   },
+  "optionalDependencies": {
+    "node-pty": "^1.0.0"
+  },
   "engines": {
     "node": ">=20"
   }

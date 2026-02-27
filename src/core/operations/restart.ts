@@ -3,7 +3,7 @@ import { requireManifest, updateManifest, findAgent } from '../manifest.js';
 import { loadConfig, resolveAgentConfig } from '../config.js';
 import { spawnAgent, killAgent } from '../agent.js';
 import { getRepoRoot } from '../worktree.js';
-import * as tmux from '../tmux.js';
+import { getBackend } from '../backend.js';
 import { agentId as genAgentId, sessionId as genSessionId } from '../../lib/id.js';
 import { agentPromptFile } from '../../lib/paths.js';
 import { AgentNotFoundError, PromptNotFoundError } from '../../lib/errors.js';
@@ -67,11 +67,11 @@ export async function performRestart(params: RestartParams): Promise<RestartResu
   const agentConfig = resolveAgentConfig(config, agentType ?? oldAgent.agentType);
 
   // Ensure tmux session
-  await tmux.ensureSession(manifest.sessionName);
+  await getBackend().ensureSession(manifest.sessionName);
 
   // Create new tmux window in same worktree
   const newAgentId = genAgentId();
-  const windowTarget = await tmux.createWindow(manifest.sessionName, `${wt.name}-restart`, wt.path);
+  const windowTarget = await getBackend().createWindow(manifest.sessionName, `${wt.name}-restart`, wt.path);
 
   // Render template vars
   const ctx: TemplateContext = {

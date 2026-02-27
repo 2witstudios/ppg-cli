@@ -5,7 +5,7 @@ import { getRepoRoot, getCurrentBranch, createWorktree, adoptWorktree } from '..
 import { setupWorktreeEnv } from '../env.js';
 import { loadTemplate, renderTemplate, type TemplateContext } from '../template.js';
 import { spawnAgent } from '../agent.js';
-import * as tmux from '../tmux.js';
+import { getBackend } from '../backend.js';
 import { openTerminalWindow } from '../terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../../lib/id.js';
 import { manifestPath } from '../../lib/paths.js';
@@ -154,10 +154,10 @@ async function resolveAgentTarget(opts: SpawnTargetOptions): Promise<string> {
   }
   if (opts.split) {
     const direction = opts.index % 2 === 1 ? 'horizontal' : 'vertical';
-    const pane = await tmux.splitPane(opts.windowTarget, direction, opts.worktreePath);
+    const pane = await getBackend().splitPane(opts.windowTarget, direction, opts.worktreePath);
     return pane.target;
   }
-  return tmux.createWindow(opts.sessionName, `${opts.windowNamePrefix}-${opts.index}`, opts.worktreePath);
+  return getBackend().createWindow(opts.sessionName, `${opts.windowNamePrefix}-${opts.index}`, opts.worktreePath);
 }
 
 async function spawnAgentBatch(opts: SpawnBatchOptions): Promise<AgentEntry[]> {
@@ -244,10 +244,10 @@ async function spawnNewWorktree(
   // Ensure tmux session (manifest is the source of truth for session name)
   const manifest = await readManifest(projectRoot);
   const sessionName = manifest.sessionName;
-  await tmux.ensureSession(sessionName);
+  await getBackend().ensureSession(sessionName);
 
   // Create tmux window
-  const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
+  const windowTarget = await getBackend().createWindow(sessionName, name, wtPath);
 
   // Register skeleton worktree in manifest before spawning agents
   // so partial failures leave a record for cleanup
@@ -330,10 +330,10 @@ async function spawnOnExistingBranch(
   // Ensure tmux session
   const manifest = await readManifest(projectRoot);
   const sessionName = manifest.sessionName;
-  await tmux.ensureSession(sessionName);
+  await getBackend().ensureSession(sessionName);
 
   // Create tmux window
-  const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
+  const windowTarget = await getBackend().createWindow(sessionName, name, wtPath);
 
   // Register worktree in manifest
   const worktreeEntry: WorktreeEntry = {
@@ -404,8 +404,8 @@ async function spawnIntoExistingWorktree(
   // Lazily create tmux window if worktree has none (standalone worktree)
   let windowTarget = wt.tmuxWindow;
   if (!windowTarget) {
-    await tmux.ensureSession(manifest.sessionName);
-    windowTarget = await tmux.createWindow(manifest.sessionName, wt.name, wt.path);
+    await getBackend().ensureSession(manifest.sessionName);
+    windowTarget = await getBackend().createWindow(manifest.sessionName, wt.name, wt.path);
 
     // Persist tmux window before spawning agents so partial failures are tracked.
     await updateManifest(projectRoot, (m) => {
