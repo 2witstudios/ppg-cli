@@ -79,6 +79,18 @@ export function cronPidPath(projectRoot: string): string {
   return path.join(ppgDir(projectRoot), 'cron.pid');
 }
 
+export function servePidPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve.pid');
+}
+
+export function serveLogPath(projectRoot: string): string {
+  return path.join(logsDir(projectRoot), 'serve.log');
+}
+
+export function serveJsonPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve.json');
+}
+
 export function worktreeBaseDir(projectRoot: string): string {
   return path.join(projectRoot, '.worktrees');
 }
