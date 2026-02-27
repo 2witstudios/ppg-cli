@@ -94,3 +94,11 @@ export function serveStatePath(projectRoot: string): string {
 export function servePidPath(projectRoot: string): string {
   return path.join(ppgDir(projectRoot), 'serve.pid');
 }
+
+export function serveDir(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve');
+}
+
+export function authPath(projectRoot: string): string {
+  return path.join(serveDir(projectRoot), 'auth.json');
+}
