@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// Terminal output view that subscribes to WebSocket terminal streaming.
@@ -109,7 +110,7 @@ final class TerminalViewModel {
     private(set) var isSubscribed = false
 
     private static let maxOutputLength = 50_000
-    private var previousOnMessage: ((ServerMessage) -> Void)?
+    private var subscriptionID: UUID?
 
     func subscribe(agentId: String, appState: AppState) async {
         guard !isSubscribed else { return }
@@ -129,35 +130,27 @@ final class TerminalViewModel {
 
         // Subscribe to live WebSocket updates
         let wsManager = appState.wsManager
-        wsManager.subscribeTerminal(agentId: agentId)
-
-        // Chain onto existing message handler so AppState's manifest/status handling
-        // continues to work. The previous handler is restored in unsubscribe().
-        previousOnMessage = wsManager.onMessage
-        let existingHandler = previousOnMessage
-        wsManager.onMessage = { [weak self] message in
-            // Forward all messages to existing handler (AppState)
-            existingHandler?(message)
-
-            // Append terminal output for this specific agent
-            if message.type == "terminal:output" && message.agentId == agentId {
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if let data = message.data {
-                        self.output += data
-                        self.trimOutput()
-                    }
-                }
+        subscriptionID = TerminalMessageRouter.shared.addSubscriber(wsManager: wsManager) { [weak self] message in
+            guard message.type == "terminal:output", message.agentId == agentId, let data = message.data else {
+                return
+            }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.output += data
+                self.trimOutput()
             }
         }
+        wsManager.subscribeTerminal(agentId: agentId)
     }
 
     func unsubscribe(agentId: String, wsManager: WebSocketManager) {
         guard isSubscribed else { return }
         isSubscribed = false
         wsManager.unsubscribeTerminal(agentId: agentId)
-        wsManager.onMessage = previousOnMessage
-        previousOnMessage = nil
+        if let subscriptionID {
+            TerminalMessageRouter.shared.removeSubscriber(wsManager: wsManager, subscriberID: subscriptionID)
+            self.subscriptionID = nil
+        }
     }
 
     /// Keep output within bounds, trimming at a newline boundary when possible.
@@ -168,6 +161,75 @@ final class TerminalViewModel {
             output = String(output[output.index(after: newlineIndex)...])
         } else {
             output = String(output[startIndex...])
+        }
+    }
+}
+
+private struct TerminalRouterState {
+    var previousOnMessage: ((ServerMessage) -> Void)?
+    var subscribers: [UUID: (ServerMessage) -> Void]
+}
+
+/// Multiplexes WebSocket messages so multiple terminal views can subscribe safely.
+private final class TerminalMessageRouter {
+    static let shared = TerminalMessageRouter()
+
+    private let lock = NSLock()
+    private var states: [ObjectIdentifier: TerminalRouterState] = [:]
+
+    private init() {}
+
+    func addSubscriber(
+        wsManager: WebSocketManager,
+        subscriber: @escaping (ServerMessage) -> Void
+    ) -> UUID {
+        let managerID = ObjectIdentifier(wsManager)
+        let subscriberID = UUID()
+
+        lock.lock()
+        if states[managerID] == nil {
+            let previousOnMessage = wsManager.onMessage
+            states[managerID] = TerminalRouterState(previousOnMessage: previousOnMessage, subscribers: [:])
+            wsManager.onMessage = { [weak self] message in
+                self?.dispatch(message: message, managerID: managerID)
+            }
+        }
+        states[managerID]?.subscribers[subscriberID] = subscriber
+        lock.unlock()
+
+        return subscriberID
+    }
+
+    func removeSubscriber(wsManager: WebSocketManager, subscriberID: UUID) {
+        let managerID = ObjectIdentifier(wsManager)
+
+        lock.lock()
+        guard var state = states[managerID] else {
+            lock.unlock()
+            return
+        }
+
+        state.subscribers.removeValue(forKey: subscriberID)
+        if state.subscribers.isEmpty {
+            states.removeValue(forKey: managerID)
+            lock.unlock()
+            wsManager.onMessage = state.previousOnMessage
+            return
+        }
+
+        states[managerID] = state
+        lock.unlock()
+    }
+
+    private func dispatch(message: ServerMessage, managerID: ObjectIdentifier) {
+        lock.lock()
+        let state = states[managerID]
+        let subscribers = state?.subscribers.values.map { $0 } ?? []
+        lock.unlock()
+
+        state?.previousOnMessage?(message)
+        for subscriber in subscribers {
+            subscriber(message)
         }
     }
 }
