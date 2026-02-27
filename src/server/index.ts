@@ -103,6 +103,9 @@ export async function startServer(options: ServeOptions): Promise<void> {
     });
   }
 
+  // Decorate with projectRoot so routes can access it
+  app.decorate('projectRoot', projectRoot);
+
   app.get('/health', async () => {
     return {
       status: 'ok',
@@ -113,6 +116,8 @@ export async function startServer(options: ServeOptions): Promise<void> {
 
   // Register route plugins
   await app.register(agentRoutes, { prefix: '/api', projectRoot });
+  const { worktreeRoutes } = await import('./routes/worktrees.js');
+  await app.register(worktreeRoutes, { prefix: '/api' });
 
   const lanAddress = detectLanAddress();
 
