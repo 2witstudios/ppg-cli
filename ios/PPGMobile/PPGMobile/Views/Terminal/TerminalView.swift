@@ -7,30 +7,13 @@ struct TerminalView: View {
     let agentName: String
 
     @Environment(AppState.self) private var appState
-    @State private var terminalOutput = ""
+    @State private var viewModel = TerminalViewModel()
     @State private var inputText = ""
-    @State private var isSubscribed = false
     @State private var showKillConfirm = false
-    @State private var previousOnMessage: ((ServerMessage) -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(terminalOutput.isEmpty ? "Connecting to terminal..." : terminalOutput)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .id("terminal-bottom")
-                }
-                .background(Color.black)
-                .foregroundStyle(.green)
-                .onChange(of: terminalOutput) { _, _ in
-                    withAnimation {
-                        proxy.scrollTo("terminal-bottom", anchor: .bottom)
-                    }
-                }
-            }
+            terminalContent
 
             TerminalInputBar(text: $inputText) {
                 guard !inputText.isEmpty else { return }
@@ -55,8 +38,52 @@ struct TerminalView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .onAppear { subscribe() }
-        .onDisappear { unsubscribe() }
+        .task { await viewModel.subscribe(agentId: agentId, appState: appState) }
+        .onDisappear { viewModel.unsubscribe(agentId: agentId, wsManager: appState.wsManager) }
+    }
+
+    @ViewBuilder
+    private var terminalContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    if viewModel.output.isEmpty {
+                        Text(statusMessage)
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                    } else {
+                        Text(viewModel.output)
+                            .font(.system(.footnote, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                            .textSelection(.enabled)
+                    }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("terminal-bottom")
+                }
+            }
+            .defaultScrollAnchor(.bottom)
+            .background(Color.black)
+            .foregroundStyle(.green)
+            .onChange(of: viewModel.output) { _, _ in
+                withAnimation {
+                    proxy.scrollTo("terminal-bottom", anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    private var statusMessage: String {
+        if appState.activeConnection == nil {
+            return "Not connected to server"
+        }
+        if viewModel.isSubscribed {
+            return "Waiting for output..."
+        }
+        return "Loading terminal output..."
     }
 
     private var agentIsTerminal: Bool {
@@ -68,51 +95,79 @@ struct TerminalView: View {
         }
         return true
     }
+}
 
-    private func subscribe() {
+// MARK: - View Model
+
+/// Manages terminal subscription lifecycle, output buffering, and message handler chaining.
+/// Uses @Observable instead of @State closures to avoid type inference issues.
+@Observable
+@MainActor
+final class TerminalViewModel {
+    var output = ""
+    var hasError = false
+    private(set) var isSubscribed = false
+
+    private static let maxOutputLength = 50_000
+    private var previousOnMessage: ((ServerMessage) -> Void)?
+
+    func subscribe(agentId: String, appState: AppState) async {
         guard !isSubscribed else { return }
         isSubscribed = true
 
-        // Fetch initial log content
-        Task {
-            if let client = appState.client {
-                do {
-                    let logs = try await client.fetchLogs(agentId: agentId, lines: 200)
-                    terminalOutput = logs.output
-                } catch {
-                    terminalOutput = "Failed to load logs: \(error.localizedDescription)"
-                }
+        // Fetch initial log content via REST
+        if let client = appState.client {
+            do {
+                let logs = try await client.fetchLogs(agentId: agentId, lines: 200)
+                output = logs.output
+                trimOutput()
+            } catch {
+                output = "Failed to load logs: \(error.localizedDescription)"
+                hasError = true
             }
         }
 
-        // Subscribe to live updates via WebSocket
-        appState.wsManager.subscribeTerminal(agentId: agentId)
+        // Subscribe to live WebSocket updates
+        let wsManager = appState.wsManager
+        wsManager.subscribeTerminal(agentId: agentId)
 
-        // Chain onto existing message handler to avoid overwriting AppState's handler
-        previousOnMessage = appState.wsManager.onMessage
+        // Chain onto existing message handler so AppState's manifest/status handling
+        // continues to work. The previous handler is restored in unsubscribe().
+        previousOnMessage = wsManager.onMessage
         let existingHandler = previousOnMessage
-        appState.wsManager.onMessage = { message in
-            // Forward to existing handler (AppState)
+        wsManager.onMessage = { [weak self] message in
+            // Forward all messages to existing handler (AppState)
             existingHandler?(message)
 
-            // Handle terminal output for this agent
+            // Append terminal output for this specific agent
             if message.type == "terminal:output" && message.agentId == agentId {
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     if let data = message.data {
-                        terminalOutput += data
+                        self.output += data
+                        self.trimOutput()
                     }
                 }
             }
         }
     }
 
-    private func unsubscribe() {
+    func unsubscribe(agentId: String, wsManager: WebSocketManager) {
         guard isSubscribed else { return }
         isSubscribed = false
-        appState.wsManager.unsubscribeTerminal(agentId: agentId)
-
-        // Restore the previous message handler
-        appState.wsManager.onMessage = previousOnMessage
+        wsManager.unsubscribeTerminal(agentId: agentId)
+        wsManager.onMessage = previousOnMessage
         previousOnMessage = nil
+    }
+
+    /// Keep output within bounds, trimming at a newline boundary when possible.
+    private func trimOutput() {
+        guard output.count > Self.maxOutputLength else { return }
+        let startIndex = output.index(output.endIndex, offsetBy: -Self.maxOutputLength)
+        if let newlineIndex = output[startIndex...].firstIndex(of: "\n") {
+            output = String(output[output.index(after: newlineIndex)...])
+        } else {
+            output = String(output[startIndex...])
+        }
     }
 }

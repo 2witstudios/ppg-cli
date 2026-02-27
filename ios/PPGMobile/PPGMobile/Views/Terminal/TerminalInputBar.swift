@@ -8,10 +8,10 @@ struct TerminalInputBar: View {
     var body: some View {
         HStack(spacing: 8) {
             TextField("Send to terminal...", text: $text)
-                .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
-                .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textFieldStyle(.roundedBorder)
                 .onSubmit(onSend)
 
             Button(action: onSend) {
