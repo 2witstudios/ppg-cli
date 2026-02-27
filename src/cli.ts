@@ -282,6 +282,19 @@ program
     await installDashboardCommand(options);
   });
 
+program
+  .command('serve')
+  .description('Start the ppg API server')
+  .option('-p, --port <number>', 'Port to listen on', (v: string) => Number(v), 3100)
+  .option('-H, --host <address>', 'Host to bind to', '127.0.0.1')
+  .option('--token <secret>', 'Bearer token for authentication')
+  .option('--daemon', 'Run as background daemon')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { serveCommand } = await import('./commands/serve.js');
+    await serveCommand(options);
+  });
+
 const cronCmd = program.command('cron').description('Manage scheduled runs');
 
 cronCmd
