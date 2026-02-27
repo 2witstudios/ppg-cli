@@ -20,6 +20,8 @@ import {
   globalPromptsDir,
   globalTemplatesDir,
   globalSwarmsDir,
+  serveStatePath,
+  servePidPath,
 } from './paths.js';
 
 const ROOT = '/tmp/project';
@@ -103,5 +105,13 @@ describe('paths', () => {
 
   test('globalSwarmsDir', () => {
     expect(globalSwarmsDir()).toBe(path.join(os.homedir(), '.ppg', 'swarms'));
+  });
+
+  test('serveStatePath', () => {
+    expect(serveStatePath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve.json'));
+  });
+
+  test('servePidPath', () => {
+    expect(servePidPath(ROOT)).toBe(path.join(ROOT, '.ppg', 'serve.pid'));
   });
 });

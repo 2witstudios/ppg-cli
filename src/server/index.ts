@@ -1,10 +1,11 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { createRequire } from 'node:module';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { serveStatePath, servePidPath } from '../lib/paths.js';
-import { info, success, warn } from '../lib/output.js';
+import { info, success } from '../lib/output.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
@@ -39,6 +40,15 @@ export function detectLanAddress(): string | undefined {
   return undefined;
 }
 
+export function timingSafeTokenMatch(header: string | undefined, expected: string): boolean {
+  const expectedValue = `Bearer ${expected}`;
+  if (!header || header.length !== expectedValue.length) return false;
+  return crypto.timingSafeEqual(
+    Buffer.from(header),
+    Buffer.from(expectedValue),
+  );
+}
+
 async function writeStateFile(projectRoot: string, state: ServeState): Promise<void> {
   const statePath = serveStatePath(projectRoot);
   await fs.writeFile(statePath, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 });
@@ -69,9 +79,8 @@ export async function startServer(options: ServeOptions): Promise<void> {
   if (token) {
     app.addHook('onRequest', async (request, reply) => {
       if (request.url === '/health') return;
-      const authHeader = request.headers.authorization;
-      if (authHeader !== `Bearer ${token}`) {
-        reply.code(401).send({ error: 'Unauthorized' });
+      if (!timingSafeTokenMatch(request.headers.authorization, token)) {
+        return reply.code(401).send({ error: 'Unauthorized' });
       }
     });
   }
@@ -93,8 +102,8 @@ export async function startServer(options: ServeOptions): Promise<void> {
     process.exit(0);
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
+  process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
 
   await app.listen({ port, host });
 
