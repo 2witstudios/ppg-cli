@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, vi, afterEach } from 'vitest';
 import os from 'node:os';
 import { detectLanAddress, timingSafeTokenMatch } from './index.js';
 
@@ -56,6 +56,12 @@ describe('timingSafeTokenMatch', () => {
 
   test('given header with different length, should return false', () => {
     expect(timingSafeTokenMatch('Bearer short', token)).toBe(false);
+  });
+
+  test('given header with same char length but different byte length, should return false', () => {
+    const unicodeHeader = `Bearer ${'é'.repeat(token.length)}`;
+    expect(() => timingSafeTokenMatch(unicodeHeader, token)).not.toThrow();
+    expect(timingSafeTokenMatch(unicodeHeader, token)).toBe(false);
   });
 
   test('given raw token without Bearer prefix, should return false', () => {

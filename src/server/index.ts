@@ -8,7 +8,21 @@ import { serveStatePath, servePidPath } from '../lib/paths.js';
 import { info, success } from '../lib/output.js';
 
 const require = createRequire(import.meta.url);
-const pkg = require('../../package.json') as { version: string };
+const PACKAGE_JSON_PATHS = ['../../package.json', '../package.json'] as const;
+
+function getPackageVersion(): string {
+  for (const packageJsonPath of PACKAGE_JSON_PATHS) {
+    try {
+      const pkg = require(packageJsonPath) as { version?: unknown };
+      if (typeof pkg.version === 'string') return pkg.version;
+    } catch {
+      // Fall through and try alternate path.
+    }
+  }
+  throw new Error('Unable to resolve package version');
+}
+
+const packageVersion = getPackageVersion();
 
 export interface ServeOptions {
   projectRoot: string;
@@ -43,9 +57,12 @@ export function detectLanAddress(): string | undefined {
 export function timingSafeTokenMatch(header: string | undefined, expected: string): boolean {
   const expectedValue = `Bearer ${expected}`;
   if (!header || header.length !== expectedValue.length) return false;
+  const headerBuffer = Buffer.from(header);
+  const expectedBuffer = Buffer.from(expectedValue);
+  if (headerBuffer.length !== expectedBuffer.length) return false;
   return crypto.timingSafeEqual(
-    Buffer.from(header),
-    Buffer.from(expectedValue),
+    headerBuffer,
+    expectedBuffer,
   );
 }
 
@@ -89,7 +106,7 @@ export async function startServer(options: ServeOptions): Promise<void> {
     return {
       status: 'ok',
       uptime: process.uptime(),
-      version: pkg.version,
+      version: packageVersion,
     };
   });
 
@@ -113,7 +130,7 @@ export async function startServer(options: ServeOptions): Promise<void> {
     host,
     lanAddress,
     startedAt: new Date().toISOString(),
-    version: pkg.version,
+    version: packageVersion,
   };
 
   await writeStateFile(projectRoot, state);
