@@ -53,8 +53,10 @@ struct AgentRow: View {
         }
         .padding(.vertical, 4)
         .confirmationDialog("Kill Agent", isPresented: $confirmingKill) {
-            Button("Kill", role: .destructive) {
-                onKill?()
+            if let onKill {
+                Button("Kill", role: .destructive) {
+                    onKill()
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -80,7 +82,7 @@ struct AgentRow: View {
     @ViewBuilder
     private var actionButtons: some View {
         HStack(spacing: 12) {
-            if agent.status.isActive {
+            if agent.status.isActive, onKill != nil {
                 Button {
                     confirmingKill = true
                 } label: {
@@ -91,9 +93,9 @@ struct AgentRow: View {
                 .buttonStyle(.borderless)
             }
 
-            if agent.status == .failed || agent.status == .killed {
+            if (agent.status == .failed || agent.status == .killed), let onRestart {
                 Button {
-                    onRestart?()
+                    onRestart()
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.caption)

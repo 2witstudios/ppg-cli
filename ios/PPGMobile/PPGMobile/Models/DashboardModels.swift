@@ -117,8 +117,9 @@ enum AgentStatus: String, CaseIterable {
 
 // MARK: - Store
 
+@MainActor
 @Observable
-class DashboardStore {
+final class DashboardStore {
     var projectName: String = ""
     var worktrees: [Worktree] = []
     var connectionState: ConnectionState = .disconnected
@@ -139,6 +140,7 @@ class DashboardStore {
 // MARK: - Preview Helpers
 
 #if DEBUG
+@MainActor
 extension DashboardStore {
     static var preview: DashboardStore {
         let store = DashboardStore()
