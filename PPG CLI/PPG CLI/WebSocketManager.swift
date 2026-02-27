@@ -16,6 +16,11 @@ enum WebSocketConnectionState: Equatable, Sendable {
     case reconnecting(attempt: Int)
 
     var isConnected: Bool { self == .connected }
+
+    var isReconnecting: Bool {
+        if case .reconnecting = self { return true }
+        return false
+    }
 }
 
 // MARK: - Server Events
@@ -30,26 +35,26 @@ enum WebSocketEvent: Sendable {
 
 // MARK: - Client Commands
 
-enum WebSocketCommand {
+enum WebSocketCommand: Sendable {
     case subscribe(channel: String)
     case unsubscribe(channel: String)
     case terminalInput(agentId: String, data: String)
 
     var jsonString: String {
+        let dict: [String: String]
         switch self {
         case .subscribe(let channel):
-            return #"{"type":"subscribe","channel":"\#(channel)"}"#
+            dict = ["type": "subscribe", "channel": channel]
         case .unsubscribe(let channel):
-            return #"{"type":"unsubscribe","channel":"\#(channel)"}"#
+            dict = ["type": "unsubscribe", "channel": channel]
         case .terminalInput(let agentId, let data):
-            let escaped = data
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "\\r")
-                .replacingOccurrences(of: "\t", with: "\\t")
-            return #"{"type":"terminal_input","agentId":"\#(agentId)","data":"\#(escaped)"}"#
+            dict = ["type": "terminal_input", "agentId": agentId, "data": data]
         }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
     }
 }
 
@@ -72,18 +77,13 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
     // MARK: - State
 
     private let queue = DispatchQueue(label: "ppg.websocket-manager", qos: .utility)
-    private(set) var state: WebSocketConnectionState = .disconnected {
-        didSet {
-            guard state != oldValue else { return }
-            let newState = state
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: .webSocketStateDidChange,
-                    object: nil,
-                    userInfo: [WebSocketManager.stateUserInfoKey: newState]
-                )
-            }
-        }
+
+    /// Internal state — only read/write on `queue`.
+    private var _state: WebSocketConnectionState = .disconnected
+
+    /// Thread-safe read of the current connection state.
+    var state: WebSocketConnectionState {
+        queue.sync { _state }
     }
 
     private var session: URLSession?
@@ -91,11 +91,6 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
     private var pingTimer: DispatchSourceTimer?
     private var reconnectAttempt = 0
     private var intentionalDisconnect = false
-
-    // MARK: - Callbacks (alternative to NotificationCenter)
-
-    var onStateChange: ((WebSocketConnectionState) -> Void)?
-    var onEvent: ((WebSocketEvent) -> Void)?
 
     // MARK: - Init
 
@@ -110,7 +105,14 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
     }
 
     deinit {
-        disconnect()
+        // Synchronous cleanup — safe because we're the last reference holder.
+        intentionalDisconnect = true
+        pingTimer?.cancel()
+        pingTimer = nil
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        session?.invalidateAndCancel()
+        session = nil
     }
 
     // MARK: - Public API
@@ -136,15 +138,15 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
     // MARK: - Connection Lifecycle
 
     private func doConnect() {
-        guard state == .disconnected || state != .connecting else { return }
+        guard _state == .disconnected || _state.isReconnecting else { return }
 
         intentionalDisconnect = false
 
-        if case .reconnecting = state {
+        if _state.isReconnecting {
             // Already in reconnect flow — keep the attempt counter
         } else {
             reconnectAttempt = 0
-            state = .connecting
+            setState(.connecting)
         }
 
         let config = URLSessionConfiguration.default
@@ -164,13 +166,26 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
         session?.invalidateAndCancel()
         session = nil
         reconnectAttempt = 0
-        state = .disconnected
+        setState(.disconnected)
+    }
+
+    /// Set state on the queue and post a notification on main.
+    private func setState(_ newState: WebSocketConnectionState) {
+        guard _state != newState else { return }
+        _state = newState
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .webSocketStateDidChange,
+                object: nil,
+                userInfo: [WebSocketManager.stateUserInfoKey: newState]
+            )
+        }
     }
 
     // MARK: - Sending
 
     private func doSend(_ text: String) {
-        guard state == .connected, let task = task else { return }
+        guard _state == .connected, let task = task else { return }
         task.send(.string(text)) { error in
             if let error = error {
                 NSLog("[WebSocketManager] send error: \(error.localizedDescription)")
@@ -210,9 +225,7 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
 
         guard let event = parseEvent(text) else { return }
 
-        // Notify via callback
-        DispatchQueue.main.async { [weak self] in
-            self?.onEvent?(event)
+        DispatchQueue.main.async {
             NotificationCenter.default.post(
                 name: .webSocketDidReceiveEvent,
                 object: nil,
@@ -223,7 +236,8 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
 
     // MARK: - Event Parsing
 
-    private func parseEvent(_ text: String) -> WebSocketEvent? {
+    /// Parse a JSON text message into a typed event. Internal for testability.
+    func parseEvent(_ text: String) -> WebSocketEvent? {
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String else {
@@ -303,7 +317,7 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
 
     private func scheduleReconnect() {
         reconnectAttempt += 1
-        state = .reconnecting(attempt: reconnectAttempt)
+        setState(.reconnecting(attempt: reconnectAttempt))
 
         let delay = min(baseReconnectDelay * pow(2.0, Double(reconnectAttempt - 1)), maxReconnectDelay)
         NSLog("[WebSocketManager] reconnecting in %.1fs (attempt %d)", delay, reconnectAttempt)
@@ -320,7 +334,7 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
         queue.async { [weak self] in
             guard let self = self else { return }
             self.reconnectAttempt = 0
-            self.state = .connected
+            self.setState(.connected)
             self.startPingTimer()
             self.listenForMessages()
         }
@@ -330,7 +344,7 @@ nonisolated class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWeb
         queue.async { [weak self] in
             guard let self = self else { return }
             if self.intentionalDisconnect {
-                self.state = .disconnected
+                self.setState(.disconnected)
             } else {
                 self.handleConnectionLost()
             }
