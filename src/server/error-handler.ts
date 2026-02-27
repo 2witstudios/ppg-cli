@@ -9,14 +9,38 @@ export interface ErrorResponseBody {
   };
 }
 
+const httpStatusByCode: Record<string, number> = {
+  WORKTREE_NOT_FOUND: 404,
+  AGENT_NOT_FOUND: 404,
+  NOT_INITIALIZED: 400,
+  NOT_GIT_REPO: 400,
+  INVALID_ARGS: 400,
+  MANIFEST_LOCK: 409,
+  MERGE_FAILED: 409,
+  AGENTS_RUNNING: 409,
+  TMUX_NOT_FOUND: 500,
+  GH_NOT_FOUND: 500,
+  UNMERGED_WORK: 409,
+  WAIT_TIMEOUT: 504,
+  AGENTS_FAILED: 502,
+  NO_SESSION_ID: 400,
+};
+
+const defaultPpgStatus = 400;
+
+function httpStatusForPpgError(code: string): number {
+  return httpStatusByCode[code] ?? defaultPpgStatus;
+}
+
 function errorHandler(
   error: Error & { statusCode?: number; validation?: unknown },
   request: FastifyRequest,
   reply: FastifyReply,
 ): void {
   if (error instanceof PpgError) {
+    const status = httpStatusForPpgError(error.code);
     request.log.warn({ err: error, code: error.code }, error.message);
-    reply.status(error.exitCode >= 400 ? error.exitCode : 400).send({
+    reply.status(status).send({
       error: { code: error.code, message: error.message },
     } satisfies ErrorResponseBody);
     return;
@@ -53,4 +77,4 @@ export default fp(
   { name: 'ppg-error-handler' },
 );
 
-export { errorHandler };
+export { errorHandler, httpStatusForPpgError };
