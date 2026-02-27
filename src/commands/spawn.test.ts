@@ -6,9 +6,8 @@ import { readManifest, resolveWorktree, updateManifest } from '../core/manifest.
 import { spawnAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { agentId, sessionId } from '../lib/id.js';
-import type { Manifest } from '../types/manifest.js';
 import * as tmux from '../core/tmux.js';
-import type { Manifest } from '../types/manifest.js';
+import type { AgentEntry, Manifest } from '../types/manifest.js';
 
 vi.mock('node:fs/promises', async () => {
   const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
@@ -95,7 +94,7 @@ function createManifest(tmuxWindow = ''): Manifest {
         baseBranch: 'main',
         status: 'active',
         tmuxWindow,
-        agents: {},
+        agents: {} as Record<string, AgentEntry>,
         createdAt: '2026-02-27T00:00:00.000Z',
       },
     },
