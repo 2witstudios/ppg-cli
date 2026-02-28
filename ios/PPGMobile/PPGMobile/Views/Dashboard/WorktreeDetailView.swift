@@ -3,12 +3,25 @@ import SwiftUI
 struct WorktreeDetailView: View {
     let worktreeId: String
     @Environment(AppState.self) private var appState
+    @Environment(NavigationRouter.self) private var router
 
     @State private var confirmingMerge = false
     @State private var confirmingKill = false
+    @State private var diffFiles: [DiffFile] = []
+    @State private var loadingDiff = false
 
     private var worktree: WorktreeEntry? {
-        appState.manifest?.worktrees[worktreeId]
+        // Single-project manifest
+        if let found = appState.manifest?.worktrees[worktreeId] {
+            return found
+        }
+        // Multi-project: search all project manifests
+        for project in (appState.projects ?? []) {
+            if let found = project.manifest.worktrees[worktreeId] {
+                return found
+            }
+        }
+        return nil
     }
 
     var body: some View {
@@ -16,12 +29,13 @@ struct WorktreeDetailView: View {
             if let worktree {
                 List {
                     infoSection(worktree)
+                    diffSection(worktree)
                     agentsSection(worktree)
                     actionsSection(worktree)
                 }
                 .listStyle(.insetGrouped)
                 .navigationTitle(worktree.name)
-                .navigationBarTitleDisplayMode(.large)
+                .navigationBarTitleDisplayMode(.inline)
                 .confirmationDialog("Merge Worktree", isPresented: $confirmingMerge) {
                     Button("Squash Merge") {
                         Task {
@@ -94,6 +108,58 @@ struct WorktreeDetailView: View {
         }
     }
 
+    // MARK: - Diff Section
+
+    private func diffSection(_ worktree: WorktreeEntry) -> some View {
+        Section {
+            if loadingDiff {
+                ProgressView()
+            } else if diffFiles.isEmpty {
+                Text("No changes")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(diffFiles) { file in
+                    HStack {
+                        Text(file.file)
+                            .font(.footnote.monospaced())
+                            .lineLimit(1)
+                        Spacer()
+                        Text("+\(file.added)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.green)
+                        Text("-\(file.removed)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+        } header: {
+            HStack {
+                Text("Changes")
+                Spacer()
+                if !diffFiles.isEmpty {
+                    Text("\(diffFiles.count) files")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .task {
+            await loadDiff()
+        }
+    }
+
+    private func loadDiff() async {
+        loadingDiff = true
+        defer { loadingDiff = false }
+        do {
+            let response = try await appState.client.fetchDiff(worktreeId: worktreeId)
+            diffFiles = response.files
+        } catch {
+            diffFiles = []
+        }
+    }
+
     // MARK: - Agents Section
 
     private func agentsSection(_ worktree: WorktreeEntry) -> some View {
@@ -103,18 +169,23 @@ struct WorktreeDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(worktree.sortedAgents) { agent in
-                    AgentRow(
-                        agent: agent,
-                        onKill: {
-                            Task { await appState.killAgent(agent.id) }
-                        },
-                        onRestart: {
-                            Task {
-                                try? await appState.client.restartAgent(agentId: agent.id)
-                                await appState.manifestStore.refresh()
+                    Button {
+                        router.navigateToAgent(agentId: agent.id, agentName: agent.name)
+                    } label: {
+                        AgentRow(
+                            agent: agent,
+                            onKill: {
+                                Task { await appState.killAgent(agent.id) }
+                            },
+                            onRestart: {
+                                Task {
+                                    try? await appState.client.restartAgent(agentId: agent.id)
+                                    await appState.manifestStore.refresh()
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         } header: {
@@ -132,6 +203,14 @@ struct WorktreeDetailView: View {
 
     private func actionsSection(_ worktree: WorktreeEntry) -> some View {
         Section {
+            if !worktree.agents.isEmpty {
+                Button {
+                    router.navigateToPaneGrid(worktreeId: worktreeId)
+                } label: {
+                    Label("Terminal Grid", systemImage: "rectangle.split.2x2")
+                }
+            }
+
             if worktree.status == .active || worktree.status == .running {
                 Button {
                     confirmingMerge = true

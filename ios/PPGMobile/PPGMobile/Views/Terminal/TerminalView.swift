@@ -167,7 +167,7 @@ final class TerminalViewModel {
 // MARK: - Terminal Message Router
 
 /// Multiplexes WebSocket messages so multiple terminal views can subscribe safely.
-private final class TerminalMessageRouter {
+final class TerminalMessageRouter: @unchecked Sendable {
     static let shared = TerminalMessageRouter()
 
     private struct State {

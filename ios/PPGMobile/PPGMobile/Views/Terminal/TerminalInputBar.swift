@@ -22,6 +22,6 @@ struct TerminalInputBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.bar)
+        .glassEffect(.regular, in: .rect(cornerRadius: 0))
     }
 }

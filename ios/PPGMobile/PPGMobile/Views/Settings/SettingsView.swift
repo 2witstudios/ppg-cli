@@ -18,42 +18,40 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                currentConnectionSection
-                savedServersSection
-                addServerSection
-                aboutSection
+        List {
+            currentConnectionSection
+            savedServersSection
+            addServerSection
+            aboutSection
+        }
+        .navigationTitle("Settings")
+        .sheet(isPresented: $showQRScanner) {
+            QRScannerView { connection in
+                handleQRScan(connection)
             }
-            .navigationTitle("Settings")
-            .sheet(isPresented: $showQRScanner) {
-                QRScannerView { connection in
-                    handleQRScan(connection)
-                }
+        }
+        .sheet(isPresented: $showAddManual) {
+            AddServerView()
+        }
+        .confirmationDialog(
+            "Delete Server",
+            isPresented: .init(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ),
+            presenting: deleteTarget
+        ) { server in
+            Button("Delete \"\(server.name)\"", role: .destructive) {
+                appState.removeConnection(server)
+                deleteTarget = nil
             }
-            .sheet(isPresented: $showAddManual) {
-                AddServerView()
-            }
-            .confirmationDialog(
-                "Delete Server",
-                isPresented: .init(
-                    get: { deleteTarget != nil },
-                    set: { if !$0 { deleteTarget = nil } }
-                ),
-                presenting: deleteTarget
-            ) { server in
-                Button("Delete \"\(server.name)\"", role: .destructive) {
-                    appState.removeConnection(server)
-                    deleteTarget = nil
-                }
-            } message: { server in
-                Text("Remove \(server.name) (\(server.host):\(server.port))? This cannot be undone.")
-            }
-            .alert("Invalid QR Code", isPresented: $showQRError) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("The scanned code is not a valid ppg server. Expected format: ppg://connect?host=...&port=...&token=...")
-            }
+        } message: { server in
+            Text("Remove \(server.name) (\(server.host):\(server.port))? This cannot be undone.")
+        }
+        .alert("Invalid QR Code", isPresented: $showQRError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The scanned code is not a valid ppg server. Expected format: ppg://connect?host=...&port=...&token=...")
         }
     }
 

@@ -13,7 +13,7 @@ struct ServerConnection: Codable, Identifiable, Hashable {
     var caCertificate: String?
     var isDefault: Bool
 
-    init(id: UUID = UUID(), name: String = "My Mac", host: String, port: Int = 7700, token: String, caCertificate: String? = nil, isDefault: Bool = false) {
+    init(id: UUID = UUID(), name: String = "My Mac", host: String, port: Int = 3100, token: String, caCertificate: String? = nil, isDefault: Bool = false) {
         self.id = id
         self.name = name
         self.host = host
@@ -23,7 +23,7 @@ struct ServerConnection: Codable, Identifiable, Hashable {
         self.isDefault = isDefault
     }
 
-    /// Human-readable label (e.g. "192.168.1.5:7700").
+    /// Human-readable label (e.g. "192.168.1.5:3100").
     var displayName: String {
         "\(host):\(port)"
     }
@@ -42,7 +42,7 @@ struct ServerConnection: Codable, Identifiable, Hashable {
         usesTLS ? "wss" : "ws"
     }
 
-    /// Base URL for REST API requests (e.g. `http://192.168.1.5:7700`).
+    /// Base URL for REST API requests (e.g. `http://192.168.1.5:3100`).
     /// Returns `nil` if the host is malformed.
     var baseURL: URL? {
         makeURL(scheme: scheme)
@@ -65,7 +65,7 @@ struct ServerConnection: Codable, Identifiable, Hashable {
     /// WebSocket URL with auth token in query string.
     /// Returns `nil` if the host is malformed.
     ///
-    ///     connection.webSocketURL  // ws://192.168.1.5:7700/ws?token=abc123
+    ///     connection.webSocketURL  // ws://192.168.1.5:3100/ws?token=abc123
     var webSocketURL: URL? {
         makeURL(
             scheme: wsScheme,
@@ -78,8 +78,8 @@ struct ServerConnection: Codable, Identifiable, Hashable {
 
     /// Generates the QR code string for this connection.
     ///
-    ///     ppg://connect?host=192.168.1.5&port=7700&token=abc123
-    ///     ppg://connect?host=192.168.1.5&port=7700&ca=BASE64...&token=abc123
+    ///     ppg://connect?host=192.168.1.5&port=3100&token=abc123
+    ///     ppg://connect?host=192.168.1.5&port=3100&ca=BASE64...&token=abc123
     var qrCodeString: String {
         var components = URLComponents()
         components.scheme = "ppg"
@@ -119,7 +119,7 @@ struct ServerConnection: Codable, Identifiable, Hashable {
             return nil
         }
 
-        let port = params["port"].flatMap(Int.init) ?? 7700
+        let port = params["port"].flatMap(Int.init) ?? 3100
         guard (1...65_535).contains(port) else { return nil }
         let ca = params["ca"].flatMap { Data(base64Encoded: $0) != nil ? $0 : nil }
 

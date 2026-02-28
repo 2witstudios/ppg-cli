@@ -173,6 +173,21 @@ struct WorktreeEntry: Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Untracked Window
+
+/// A tmux window in the ppg session that is not tracked in the manifest.
+/// These are created manually (Cmd+D/Cmd+N, tmux new-window, etc.) and can
+/// run any process — claude, codex, opencode, shells, scripts.
+struct UntrackedWindow: Codable, Identifiable {
+    let tmuxTarget: String
+    let windowName: String
+    let windowIndex: Int
+    let currentCommand: String
+    let isDead: Bool
+
+    var id: String { tmuxTarget }
+}
+
 // MARK: - Manifest
 
 /// Top-level runtime state persisted in `.ppg/manifest.json`.
@@ -180,17 +195,44 @@ struct Manifest: Codable {
     let version: Int
     let projectRoot: String
     let sessionName: String
+    var agents: [String: AgentEntry]
     var worktrees: [String: WorktreeEntry]
+    var untrackedWindows: [UntrackedWindow]
     let createdAt: String
     var updatedAt: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        projectRoot = try container.decode(String.self, forKey: .projectRoot)
+        sessionName = try container.decode(String.self, forKey: .sessionName)
+        agents = try container.decodeIfPresent([String: AgentEntry].self, forKey: .agents) ?? [:]
+        worktrees = try container.decode([String: WorktreeEntry].self, forKey: .worktrees)
+        untrackedWindows = try container.decodeIfPresent([UntrackedWindow].self, forKey: .untrackedWindows) ?? []
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+    }
+}
+
+/// Summary of a registered ppg project for multi-project serve.
+struct ProjectInfo: Codable, Identifiable {
+    let projectRoot: String
+    let sessionName: String
+    let manifest: Manifest
+    var id: String { sessionName }
 }
 
 // MARK: - Convenience
 
 extension Manifest {
-    /// All agents across all worktrees, flattened.
+    /// Master (project-level) agents sorted by start date (newest first).
+    var sortedMasterAgents: [AgentEntry] {
+        agents.values.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    /// All agents across master + all worktrees, flattened.
     var allAgents: [AgentEntry] {
-        worktrees.values.flatMap { $0.agents.values }
+        agents.values + worktrees.values.flatMap { $0.agents.values }
     }
 
     /// Worktrees sorted by creation date (newest first).

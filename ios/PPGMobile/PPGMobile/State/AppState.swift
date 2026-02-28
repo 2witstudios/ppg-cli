@@ -84,10 +84,16 @@ final class AppState {
 
     private let tokenStorage = TokenStorage()
 
+    // MARK: - Cached Data for Content Views
+
+    private(set) var prompts: [String] = []
+    private(set) var templates: [String] = []
+    private(set) var swarms: [String] = []
+    private(set) var projects: [ProjectInfo]?
+
     // MARK: - Computed
 
     var manifest: Manifest? { manifestStore.manifest }
-    var templates: [String] { [] }
 
     // MARK: - Init
 
@@ -134,7 +140,7 @@ final class AppState {
         UserDefaults.standard.set(connection.id.uuidString, forKey: DefaultsKey.lastConnectionId)
 
         startWebSocket(for: connection)
-        await manifestStore.refresh()
+        await refreshAll()
 
         isConnecting = false
     }
@@ -203,6 +209,64 @@ final class AppState {
         }
     }
 
+    // MARK: - Data Fetching
+
+    func fetchPrompts() async {
+        do {
+            let response = try await client.fetchPrompts()
+            prompts = response.prompts
+        } catch {
+            // Silently fail — prompts are supplementary data
+        }
+    }
+
+    func fetchTemplates() async {
+        do {
+            let response = try await client.fetchTemplates()
+            templates = response.templates
+        } catch {
+            // Silently fail
+        }
+    }
+
+    func fetchSwarms() async {
+        do {
+            let response = try await client.fetchSwarms()
+            swarms = response.swarms
+        } catch {
+            // Silently fail
+        }
+    }
+
+    func fetchProjects() async {
+        do {
+            let fetched = try await client.fetchProjects()
+            projects = fetched
+        } catch {
+            // Projects endpoint may not exist on older servers — fall back to nil
+            projects = nil
+        }
+    }
+
+    /// Refreshes manifest + supplementary data in parallel.
+    func refreshAll() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.manifestStore.refresh() }
+            group.addTask { await self.fetchProjects() }
+            group.addTask { await self.fetchPrompts() }
+            group.addTask { await self.fetchTemplates() }
+            group.addTask { await self.fetchSwarms() }
+        }
+
+        // Multi-project fallback: if single-project status failed but we have
+        // projects, populate manifest from the first project so views that
+        // reference appState.manifest still work.
+        if manifestStore.manifest == nil,
+           let firstProject = projects?.first {
+            manifestStore.applyManifest(firstProject.manifest)
+        }
+    }
+
     // MARK: - Error Handling
 
     func clearError() {
@@ -242,11 +306,6 @@ final class AppState {
 
         case .agentStatusChanged(let agentId, let status):
             manifestStore.updateAgentStatus(agentId: agentId, status: status)
-
-        case .worktreeStatusChanged(let worktreeId, let statusRaw):
-            if let status = WorktreeStatus(rawValue: statusRaw) {
-                manifestStore.updateWorktreeStatus(worktreeId: worktreeId, status: status)
-            }
 
         case .pong:
             break

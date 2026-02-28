@@ -21,7 +21,6 @@ enum WebSocketConnectionState: Equatable, Sendable {
 enum WebSocketEvent: Sendable {
     case manifestUpdated(Manifest)
     case agentStatusChanged(agentId: String, status: AgentStatus)
-    case worktreeStatusChanged(worktreeId: String, status: String)
     case pong
     case unknown(type: String, payload: String)
 }
@@ -105,7 +104,16 @@ final class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWebSocket
     }
 
     func sendTerminalInput(agentId: String, text: String) {
-        let dict: [String: String] = ["type": "terminal_input", "agentId": agentId, "data": text]
+        let dict: [String: String] = ["type": "terminal:input", "agentId": agentId, "data": text]
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else { return }
+        queue.async { [weak self] in
+            self?.doSend(str)
+        }
+    }
+
+    func sendTerminalResize(agentId: String, cols: Int, rows: Int) {
+        let dict: [String: Any] = ["type": "terminal:resize", "agentId": agentId, "cols": cols, "rows": rows]
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
               let str = String(data: data, encoding: .utf8) else { return }
         queue.async { [weak self] in
@@ -114,7 +122,7 @@ final class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWebSocket
     }
 
     func subscribeTerminal(agentId: String) {
-        let dict: [String: String] = ["type": "subscribe", "channel": "terminal:\(agentId)"]
+        let dict: [String: String] = ["type": "terminal:subscribe", "agentId": agentId]
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
               let str = String(data: data, encoding: .utf8) else { return }
         queue.async { [weak self] in
@@ -123,7 +131,7 @@ final class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWebSocket
     }
 
     func unsubscribeTerminal(agentId: String) {
-        let dict: [String: String] = ["type": "unsubscribe", "channel": "terminal:\(agentId)"]
+        let dict: [String: String] = ["type": "terminal:unsubscribe", "agentId": agentId]
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
               let str = String(data: data, encoding: .utf8) else { return }
         queue.async { [weak self] in
@@ -264,7 +272,7 @@ final class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWebSocket
         }
 
         switch type {
-        case "manifest_updated":
+        case "manifest:updated":
             if let payloadData = json["manifest"],
                let payloadJSON = try? JSONSerialization.data(withJSONObject: payloadData),
                let manifest = try? JSONDecoder().decode(Manifest.self, from: payloadJSON) {
@@ -272,18 +280,11 @@ final class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWebSocket
             }
             return .unknown(type: type, payload: text)
 
-        case "agent_status_changed":
+        case "agent:status":
             if let agentId = json["agentId"] as? String,
                let statusRaw = json["status"] as? String,
                let status = AgentStatus(rawValue: statusRaw) {
                 return .agentStatusChanged(agentId: agentId, status: status)
-            }
-            return .unknown(type: type, payload: text)
-
-        case "worktree_status_changed":
-            if let worktreeId = json["worktreeId"] as? String,
-               let status = json["status"] as? String {
-                return .worktreeStatusChanged(worktreeId: worktreeId, status: status)
             }
             return .unknown(type: type, payload: text)
 

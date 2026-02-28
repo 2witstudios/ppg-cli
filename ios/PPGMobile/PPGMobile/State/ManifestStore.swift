@@ -64,6 +64,18 @@ final class ManifestStore {
     /// Updates a single agent's status in the cached manifest.
     func updateAgentStatus(agentId: String, status: AgentStatus) {
         guard var m = manifest else { return }
+
+        // Check root-level (master) agents first
+        if var agent = m.agents[agentId] {
+            agent.status = status
+            m.agents[agentId] = agent
+            manifest = m
+            lastRefreshed = Date()
+            error = nil
+            return
+        }
+
+        // Then check worktree agents
         for (wtId, var worktree) in m.worktrees {
             if var agent = worktree.agents[agentId] {
                 agent.status = status
@@ -105,7 +117,12 @@ final class ManifestStore {
         manifest?.sortedWorktrees ?? []
     }
 
-    /// All agents across all worktrees.
+    /// Project-level (master) agents sorted by start date (newest first).
+    var sortedMasterAgents: [AgentEntry] {
+        manifest?.sortedMasterAgents ?? []
+    }
+
+    /// All agents across master + all worktrees.
     var allAgents: [AgentEntry] {
         manifest?.allAgents ?? []
     }

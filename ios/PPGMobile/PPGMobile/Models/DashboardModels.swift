@@ -9,23 +9,20 @@ enum ConnectionState {
     case error(String)
 }
 
-// MARK: - Diff Stats
-
-struct DiffStats {
-    let filesChanged: Int
-    let insertions: Int
-    let deletions: Int
-}
+// MARK: - Diff
 
 struct DiffResponse: Codable {
-    let diff: String?
-    let stats: DiffStatsResponse?
+    let worktreeId: String
+    let branch: String
+    let baseBranch: String
+    let files: [DiffFile]
 }
 
-struct DiffStatsResponse: Codable {
-    let filesChanged: Int
-    let insertions: Int
-    let deletions: Int
+struct DiffFile: Codable, Identifiable {
+    let file: String
+    let added: Int
+    let removed: Int
+    var id: String { file }
 }
 
 // MARK: - API Response Types

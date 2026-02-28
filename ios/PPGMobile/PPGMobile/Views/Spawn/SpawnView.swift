@@ -14,6 +14,7 @@ struct SpawnView: View {
     @State private var isSpawning = false
     @State private var errorMessage: String?
     @State private var spawnedWorktreeId: String?
+    @Environment(\.dismiss) private var dismiss
 
     private static let namePattern = /^[a-zA-Z0-9][a-zA-Z0-9\-]*$/
 
@@ -54,13 +55,14 @@ struct SpawnView: View {
             .scrollDismissesKeyboard(.interactively)
             .disabled(isSpawning)
             .navigationTitle("Spawn")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
                     spawnButton
                 }
-            }
-            .navigationDestination(for: String.self) { worktreeId in
-                WorktreeDetailView(worktreeId: worktreeId)
             }
         }
     }
@@ -167,6 +169,7 @@ struct SpawnView: View {
             await appState.manifestStore.refresh()
             clearForm()
             spawnedWorktreeId = response.worktreeId
+            dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }

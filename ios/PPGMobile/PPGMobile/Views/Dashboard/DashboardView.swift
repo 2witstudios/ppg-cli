@@ -3,34 +3,34 @@ import SwiftUI
 struct DashboardView: View {
     @Environment(AppState.self) private var appState
 
+    @Environment(NavigationRouter.self) private var router
+
     var body: some View {
-        NavigationStack {
-            Group {
-                switch appState.connectionStatus {
-                case .disconnected:
-                    disconnectedView
-                case .connecting:
-                    ProgressView("Connecting...")
-                case .connected:
-                    if appState.manifestStore.sortedWorktrees.isEmpty {
-                        emptyStateView
-                    } else {
-                        worktreeList
-                    }
-                case .error(let message):
-                    errorView(message)
+        Group {
+            switch appState.connectionStatus {
+            case .disconnected:
+                disconnectedView
+            case .connecting:
+                ProgressView("Connecting...")
+            case .connected:
+                if appState.manifestStore.sortedWorktrees.isEmpty && appState.manifestStore.sortedMasterAgents.isEmpty {
+                    emptyStateView
+                } else {
+                    worktreeList
                 }
+            case .error(let message):
+                errorView(message)
             }
-            .navigationTitle(appState.manifest?.sessionName ?? "PPG")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await appState.manifestStore.refresh() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .disabled(appState.activeConnection == nil)
+        }
+        .navigationTitle(appState.manifest?.sessionName ?? "PPG")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await appState.manifestStore.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
+                .disabled(appState.activeConnection == nil)
             }
         }
     }
@@ -39,17 +39,64 @@ struct DashboardView: View {
 
     private var worktreeList: some View {
         let worktrees = appState.manifestStore.sortedWorktrees
+        let masterAgents = appState.manifestStore.sortedMasterAgents
 
         return List {
+            // Project-level agents (point guards, conductors, etc.)
+            if !masterAgents.isEmpty {
+                let activeMaster = masterAgents.filter { $0.status.isActive }
+                let inactiveMaster = masterAgents.filter { !$0.status.isActive }
+
+                if !activeMaster.isEmpty {
+                    Section("Project Agents") {
+                        ForEach(activeMaster) { agent in
+                            Button {
+                                router.navigateToAgent(agentId: agent.id, agentName: agent.name)
+                            } label: {
+                                AgentRow(
+                                    agent: agent,
+                                    onKill: {
+                                        Task { await appState.killAgent(agent.id) }
+                                    },
+                                    onRestart: {
+                                        Task {
+                                            try? await appState.client.restartAgent(agentId: agent.id)
+                                            await appState.manifestStore.refresh()
+                                        }
+                                    }
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                if !inactiveMaster.isEmpty {
+                    Section("Project Agents — Finished") {
+                        ForEach(inactiveMaster) { agent in
+                            Button {
+                                router.navigateToAgent(agentId: agent.id, agentName: agent.name)
+                            } label: {
+                                AgentRow(agent: agent)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
             let active = worktrees.filter { !$0.status.isTerminal }
             let completed = worktrees.filter { $0.status.isTerminal }
 
             if !active.isEmpty {
                 Section("Active") {
                     ForEach(active) { worktree in
-                        NavigationLink(value: worktree.id) {
+                        Button {
+                            router.navigateToWorktree(worktree.id)
+                        } label: {
                             WorktreeCard(worktree: worktree)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -57,9 +104,12 @@ struct DashboardView: View {
             if !completed.isEmpty {
                 Section("Completed") {
                     ForEach(completed) { worktree in
-                        NavigationLink(value: worktree.id) {
+                        Button {
+                            router.navigateToWorktree(worktree.id)
+                        } label: {
                             WorktreeCard(worktree: worktree)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -68,26 +118,15 @@ struct DashboardView: View {
         .refreshable {
             await appState.manifestStore.refresh()
         }
-        .navigationDestination(for: String.self) { worktreeId in
-            if appState.manifest?.worktrees[worktreeId] != nil {
-                WorktreeDetailView(worktreeId: worktreeId)
-            } else {
-                ContentUnavailableView(
-                    "Worktree Not Found",
-                    systemImage: "questionmark.folder",
-                    description: Text("This worktree may have been removed.")
-                )
-            }
-        }
     }
 
     // MARK: - Empty State
 
     private var emptyStateView: some View {
         ContentUnavailableView {
-            Label("No Worktrees", systemImage: "arrow.triangle.branch")
+            Label("No Agents", systemImage: "person.2.slash")
         } description: {
-            Text("Spawn agents from the CLI to see them here.")
+            Text("Spawn agents from the CLI or dashboard to see them here.")
         } actions: {
             Button("Refresh") {
                 Task { await appState.manifestStore.refresh() }

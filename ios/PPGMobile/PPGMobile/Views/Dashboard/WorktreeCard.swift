@@ -4,14 +4,15 @@ struct WorktreeCard: View {
     let worktree: WorktreeEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(worktree.name)
-                        .font(.headline)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
 
                     Text(worktree.branch)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -21,20 +22,20 @@ struct WorktreeCard: View {
                 statusBadge
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Label("\(worktree.agents.count)", systemImage: "person.2")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if !activeAgents.isEmpty {
                     Label("\(activeAgents.count) active", systemImage: "bolt.fill")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.green)
                 }
 
                 if !failedAgents.isEmpty {
                     Label("\(failedAgents.count) failed", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.red)
                 }
 
@@ -47,7 +48,8 @@ struct WorktreeCard: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
+        .glassCard(padding: 0)
     }
 
     // MARK: - Status Badge

@@ -102,11 +102,13 @@ actor PPGClient {
 
     // MARK: - Connection Test
 
-    /// Verifies reachability and auth by hitting the status endpoint.
+    /// Verifies reachability and auth by hitting the projects endpoint.
     /// Returns `true` on success, throws on failure.
     @discardableResult
     func testConnection() async throws -> Bool {
-        let _: Manifest = try await get("/api/status")
+        // Use /api/projects — always works regardless of single vs multi-project serve.
+        // /api/status returns an error when multiple projects are registered.
+        _ = try await fetchProjects()
         return true
     }
 
@@ -142,6 +144,17 @@ actor PPGClient {
 
     func fetchSwarms() async throws -> SwarmsResponse {
         return try await get("/api/swarms")
+    }
+
+    func fetchProjects() async throws -> [ProjectInfo] {
+        let response: ProjectsResponse = try await get("/api/projects")
+        return response.projects
+    }
+
+    func spawnMasterAgent(name: String = "master", agent: String? = nil, prompt: String) async throws -> MasterAgentResponse {
+        var body: [String: Any] = ["prompt": prompt, "name": name]
+        if let agent { body["agent"] = agent }
+        return try await post("/api/agents/master", body: body)
     }
 
     // MARK: - Write API
@@ -289,4 +302,19 @@ struct PRResponse: Codable {
     let success: Bool
     let worktreeId: String
     let prUrl: String
+}
+
+private struct ProjectsResponse: Decodable {
+    let projects: [ProjectInfo]
+}
+
+struct MasterAgentResponse: Decodable {
+    let success: Bool
+    let agent: MasterAgentInfo
+
+    struct MasterAgentInfo: Decodable {
+        let agentId: String
+        let tmuxTarget: String
+        let sessionId: String
+    }
 }
