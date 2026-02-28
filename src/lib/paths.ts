@@ -130,3 +130,25 @@ export function serveStatePath(projectRoot: string): string {
 export function authPath(projectRoot: string): string {
   return path.join(serveDir(projectRoot), 'auth.json');
 }
+
+// Global serve paths (used when serve is run globally, not per-project)
+
+export function globalServeDir(): string {
+  return path.join(globalPpgDir(), 'serve');
+}
+
+export function globalServePidPath(): string {
+  return path.join(globalPpgDir(), 'serve.pid');
+}
+
+export function globalServeJsonPath(): string {
+  return path.join(globalPpgDir(), 'serve.json');
+}
+
+export function globalServeLogPath(): string {
+  return path.join(globalPpgDir(), 'logs', 'serve.log');
+}
+
+export function projectsRegistryPath(): string {
+  return path.join(globalPpgDir(), 'projects.json');
+}

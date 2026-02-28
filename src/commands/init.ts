@@ -155,6 +155,11 @@ export async function initCommand(options: { json?: boolean }): Promise<void> {
   await fs.writeFile(conductorPath, CONDUCTOR_CONTEXT, 'utf-8');
   info('Wrote conductor-context.md');
 
+  // 10b. Register project in global registry (for ppg serve)
+  const { registerProject } = await import('../core/projects.js');
+  await registerProject(projectRoot);
+  info('Registered project in global registry');
+
   // 11. Register Claude Code plugin
   const pluginRegistered = await registerClaudePlugin();
   if (pluginRegistered) {
