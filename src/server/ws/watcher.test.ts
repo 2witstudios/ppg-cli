@@ -172,6 +172,7 @@ describe('startManifestWatcher', () => {
           worktreeId: 'wt-abc123',
           status: 'idle',
           previousStatus: 'running',
+          worktreeStatus: 'active',
         },
       });
 
@@ -219,12 +220,14 @@ describe('startManifestWatcher', () => {
         worktreeId: 'wt-aaa111',
         status: 'idle',
         previousStatus: 'running',
+        worktreeStatus: 'active',
       });
       expect(payloads).toContainEqual({
         agentId: 'ag-bbb22222',
         worktreeId: 'wt-bbb222',
         status: 'gone',
         previousStatus: 'running',
+        worktreeStatus: 'active',
       });
 
       watcher.stop();

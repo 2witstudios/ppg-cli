@@ -22,11 +22,19 @@ export interface TerminalInputCommand {
   data: string;
 }
 
+export interface TerminalResizeCommand {
+  type: 'terminal:resize';
+  agentId: string;
+  cols: number;
+  rows: number;
+}
+
 export type ClientCommand =
   | PingCommand
   | TerminalSubscribeCommand
   | TerminalUnsubscribeCommand
-  | TerminalInputCommand;
+  | TerminalInputCommand
+  | TerminalResizeCommand;
 
 // --- Outbound Events (server → client) ---
 
@@ -73,6 +81,7 @@ const VALID_COMMAND_TYPES = new Set([
   'terminal:subscribe',
   'terminal:unsubscribe',
   'terminal:input',
+  'terminal:resize',
 ]);
 
 export function parseCommand(raw: string): ClientCommand | null {
@@ -100,6 +109,11 @@ export function parseCommand(raw: string): ClientCommand | null {
   if (obj.type === 'terminal:input') {
     if (typeof obj.agentId !== 'string' || typeof obj.data !== 'string') return null;
     return { type: 'terminal:input', agentId: obj.agentId, data: obj.data };
+  }
+
+  if (obj.type === 'terminal:resize') {
+    if (typeof obj.agentId !== 'string' || typeof obj.cols !== 'number' || typeof obj.rows !== 'number') return null;
+    return { type: 'terminal:resize', agentId: obj.agentId, cols: obj.cols, rows: obj.rows };
   }
 
   return null;

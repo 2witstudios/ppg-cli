@@ -4,11 +4,11 @@ import { readManifest } from '../../core/manifest.js';
 import { checkAgentStatus } from '../../core/agent.js';
 import { listSessionPanes, type PaneInfo } from '../../core/tmux.js';
 import { manifestPath, ppgDir } from '../../lib/paths.js';
-import type { AgentStatus, Manifest } from '../../types/manifest.js';
+import type { AgentStatus, Manifest, WorktreeStatus } from '../../types/manifest.js';
 
 export type WsEvent =
   | { type: 'manifest:updated'; payload: Manifest }
-  | { type: 'agent:status'; payload: { agentId: string; worktreeId: string; status: AgentStatus; previousStatus: AgentStatus } };
+  | { type: 'agent:status'; payload: { agentId: string; worktreeId: string; status: AgentStatus; previousStatus: AgentStatus; worktreeStatus: WorktreeStatus } };
 
 export type BroadcastFn = (event: WsEvent) => void;
 
@@ -128,7 +128,7 @@ export function startManifestWatcher(
 
       // Collect all agents with their worktree context
       const agents = Object.values(manifest.worktrees).flatMap((wt) =>
-        Object.values(wt.agents).map((agent) => ({ agent, worktreeId: wt.id })),
+        Object.values(wt.agents).map((agent) => ({ agent, worktreeId: wt.id, worktreeStatus: wt.status })),
       );
 
       // Check statuses in parallel (checkAgentStatus does no I/O when paneMap is provided)
@@ -143,14 +143,14 @@ export function startManifestWatcher(
         const result = results[i];
         if (!result) continue;
 
-        const { agent, worktreeId } = agents[i];
+        const { agent, worktreeId, worktreeStatus } = agents[i];
         nextStatuses.set(agent.id, result.status);
 
         const prev = previousStatuses.get(agent.id);
         if (prev !== undefined && prev !== result.status) {
           broadcast({
             type: 'agent:status',
-            payload: { agentId: agent.id, worktreeId, status: result.status, previousStatus: prev },
+            payload: { agentId: agent.id, worktreeId, status: result.status, previousStatus: prev, worktreeStatus },
           });
         }
       }

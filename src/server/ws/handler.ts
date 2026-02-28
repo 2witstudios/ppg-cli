@@ -23,6 +23,9 @@ export interface WsHandlerOptions {
   server: HttpServer;
   validateToken: (token: string) => boolean | Promise<boolean>;
   onTerminalInput?: (agentId: string, data: string) => void | Promise<void>;
+  onTerminalResize?: (agentId: string, cols: number, rows: number) => void | Promise<void>;
+  onTerminalSubscribe?: (client: ClientState, agentId: string) => void;
+  onTerminalUnsubscribe?: (client: ClientState, agentId: string) => void;
 }
 
 // --- WebSocket Handler ---
@@ -38,7 +41,7 @@ export interface WsHandler {
 const MAX_PAYLOAD = 65_536; // 64 KB
 
 export function createWsHandler(options: WsHandlerOptions): WsHandler {
-  const { server, validateToken, onTerminalInput } = options;
+  const { server, validateToken, onTerminalInput, onTerminalResize, onTerminalSubscribe, onTerminalUnsubscribe } = options;
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
   const clients = new Set<ClientState>();
@@ -95,10 +98,12 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
 
       case 'terminal:subscribe':
         client.subscribedAgents.add(command.agentId);
+        onTerminalSubscribe?.(client, command.agentId);
         break;
 
       case 'terminal:unsubscribe':
         client.subscribedAgents.delete(command.agentId);
+        onTerminalUnsubscribe?.(client, command.agentId);
         break;
 
       case 'terminal:input':
@@ -117,6 +122,16 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
               code: 'TERMINAL_INPUT_FAILED',
               message: `Failed to send input to agent ${command.agentId}`,
             });
+          }
+        }
+        break;
+
+      case 'terminal:resize':
+        if (onTerminalResize) {
+          try {
+            Promise.resolve(onTerminalResize(command.agentId, command.cols, command.rows)).catch(() => {});
+          } catch {
+            // Best-effort resize, no error sent to client
           }
         }
         break;
@@ -191,6 +206,11 @@ export function createWsHandler(options: WsHandlerOptions): WsHandler {
     });
 
     ws.on('close', () => {
+      if (onTerminalUnsubscribe) {
+        for (const agentId of client.subscribedAgents) {
+          onTerminalUnsubscribe(client, agentId);
+        }
+      }
       clients.delete(client);
     });
 
