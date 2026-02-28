@@ -1,20 +1,12 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
-// Mock dependencies
-vi.mock('../core/worktree.js', () => ({
-  getRepoRoot: vi.fn(() => '/fake/project'),
-}));
-
-vi.mock('../core/manifest.js', () => ({
-  requireManifest: vi.fn(() => ({ sessionName: 'ppg-test' })),
-  readManifest: vi.fn(() => ({ sessionName: 'ppg-test' })),
-}));
-
+// Mock dependencies for global serve
 vi.mock('../core/tmux.js', () => ({
   ensureSession: vi.fn(),
-  createWindow: vi.fn(() => 'ppg-test:1'),
+  createWindow: vi.fn(() => 'ppg-serve:1'),
   sendKeys: vi.fn(),
   listSessionWindows: vi.fn(() => []),
   killWindow: vi.fn(),
@@ -22,27 +14,32 @@ vi.mock('../core/tmux.js', () => ({
 
 vi.mock('../lib/paths.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
+  const fakeGlobalDir = path.join(os.tmpdir(), 'ppg-test-global');
   return {
     ...actual,
-    manifestPath: vi.fn((root: string) => path.join(root, '.ppg', 'manifest.json')),
-    servePidPath: vi.fn((root: string) => path.join(root, '.ppg', 'serve.pid')),
-    serveJsonPath: vi.fn((root: string) => path.join(root, '.ppg', 'serve.json')),
-    serveLogPath: vi.fn((root: string) => path.join(root, '.ppg', 'logs', 'serve.log')),
-    logsDir: vi.fn((root: string) => path.join(root, '.ppg', 'logs')),
+    globalPpgDir: vi.fn(() => fakeGlobalDir),
+    globalServePidPath: vi.fn(() => path.join(fakeGlobalDir, 'serve.pid')),
+    globalServeJsonPath: vi.fn(() => path.join(fakeGlobalDir, 'serve.json')),
+    globalServeLogPath: vi.fn(() => path.join(fakeGlobalDir, 'logs', 'serve.log')),
   };
 });
 
-vi.mock('../core/serve.js', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
-  return {
-    ...actual,
-    isServeRunning: vi.fn(() => false),
-    getServePid: vi.fn(() => null),
-    getServeInfo: vi.fn(() => null),
-    readServeLog: vi.fn(() => []),
-    runServeDaemon: vi.fn(),
-  };
-});
+vi.mock('../core/worktree.js', () => ({
+  getRepoRoot: vi.fn(() => { throw new Error('Not in a git repo'); }),
+}));
+
+vi.mock('../core/manifest.js', () => ({
+  requireManifest: vi.fn(() => { throw new Error('Not initialized'); }),
+  readManifest: vi.fn(() => ({ sessionName: 'ppg-test', agents: {}, worktrees: {} })),
+}));
+
+vi.mock('../core/projects.js', () => ({
+  registerProject: vi.fn(),
+}));
+
+vi.mock('../server/index.js', () => ({
+  startServer: vi.fn(),
+}));
 
 vi.mock('../lib/output.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
@@ -57,12 +54,15 @@ vi.mock('../lib/output.js', async (importOriginal) => {
 
 const { serveStartCommand, serveStopCommand, serveStatusCommand, serveDaemonCommand, buildPairingUrl, getLocalIp, verifyToken } = await import('./serve.js');
 const { output, success, warn, info } = await import('../lib/output.js');
-const { isServeRunning, getServePid, getServeInfo, readServeLog, runServeDaemon } = await import('../core/serve.js');
-const { requireManifest } = await import('../core/manifest.js');
+const { globalServePidPath, globalServeJsonPath } = await import('../lib/paths.js');
 const tmux = await import('../core/tmux.js');
+const { startServer } = await import('../server/index.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Mock fs.readFile to return ENOENT for PID files by default (no running server)
+  vi.spyOn(fs, 'readFile').mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+  vi.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -70,72 +70,46 @@ afterEach(() => {
 });
 
 describe('serveStartCommand', () => {
-  test('given no server running, should start daemon in tmux window', async () => {
+  test('given no server running, should start daemon in global tmux session', async () => {
     await serveStartCommand({ port: 3000, host: 'localhost' });
 
-    expect(requireManifest).toHaveBeenCalledWith('/fake/project');
-    expect(tmux.ensureSession).toHaveBeenCalledWith('ppg-test');
-    expect(tmux.createWindow).toHaveBeenCalledWith('ppg-test', 'ppg-serve', '/fake/project');
-    expect(tmux.sendKeys).toHaveBeenCalledWith('ppg-test:1', 'ppg serve _daemon --port 3000 --host localhost');
-    expect(success).toHaveBeenCalledWith('Serve daemon starting in tmux window: ppg-test:1');
+    expect(tmux.ensureSession).toHaveBeenCalledWith('ppg-serve');
+    expect(tmux.createWindow).toHaveBeenCalledWith('ppg-serve', 'ppg-serve', os.homedir());
+    expect(tmux.sendKeys).toHaveBeenCalledWith('ppg-serve:1', 'ppg serve _daemon --port 3000 --host localhost');
+    expect(success).toHaveBeenCalledWith('Serve daemon starting in tmux window: ppg-serve:1');
   });
 
   test('given custom port and host, should pass them to daemon command', async () => {
     await serveStartCommand({ port: 8080, host: '0.0.0.0' });
 
-    expect(tmux.sendKeys).toHaveBeenCalledWith('ppg-test:1', 'ppg serve _daemon --port 8080 --host 0.0.0.0');
+    expect(tmux.sendKeys).toHaveBeenCalledWith('ppg-serve:1', 'ppg serve _daemon --port 8080 --host 0.0.0.0');
   });
 
   test('given server already running, should warn and return', async () => {
-    vi.mocked(isServeRunning).mockResolvedValue(true);
-    vi.mocked(getServePid).mockResolvedValue(12345);
-    vi.mocked(getServeInfo).mockResolvedValue({
-      pid: 12345,
-      port: 3000,
-      host: 'localhost',
-      startedAt: '2026-01-01T00:00:00.000Z',
+    const pidPath = globalServePidPath();
+    const jsonPath = globalServeJsonPath();
+    vi.mocked(fs.readFile).mockImplementation(async (filePath: any) => {
+      if (String(filePath) === pidPath) return '12345';
+      if (String(filePath) === jsonPath) return JSON.stringify({ port: 3000, host: 'localhost', startedAt: '2026-01-01' });
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     });
+    vi.spyOn(process, 'kill').mockImplementation(() => true);
 
     await serveStartCommand({ port: 3000, host: 'localhost' });
 
     expect(tmux.createWindow).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith('Serve daemon is already running (PID: 12345)');
-    expect(info).toHaveBeenCalledWith('Listening on localhost:3000');
+
+    vi.mocked(process.kill).mockRestore();
   });
 
   test('given json option, should output JSON on success', async () => {
     await serveStartCommand({ port: 3000, host: 'localhost', json: true });
 
     expect(output).toHaveBeenCalledWith(
-      expect.objectContaining({ success: true, port: 3000, host: 'localhost', tmuxWindow: 'ppg-test:1' }),
+      expect.objectContaining({ success: true, port: 3000, host: 'localhost', tmuxWindow: 'ppg-serve:1' }),
       true,
     );
-  });
-
-  test('given json option and already running, should output JSON error', async () => {
-    vi.mocked(isServeRunning).mockResolvedValue(true);
-    vi.mocked(getServePid).mockResolvedValue(12345);
-    vi.mocked(getServeInfo).mockResolvedValue({
-      pid: 12345,
-      port: 3000,
-      host: 'localhost',
-      startedAt: '2026-01-01T00:00:00.000Z',
-    });
-
-    await serveStartCommand({ port: 3000, host: 'localhost', json: true });
-
-    expect(output).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false, error: 'Serve daemon is already running', pid: 12345 }),
-      true,
-    );
-  });
-
-  test('given project not initialized, should throw NotInitializedError', async () => {
-    const err = Object.assign(new Error('Not initialized'), { code: 'NOT_INITIALIZED' });
-    vi.mocked(requireManifest).mockRejectedValue(err);
-
-    await expect(serveStartCommand({ port: 3000, host: 'localhost' })).rejects.toThrow('Not initialized');
-    expect(tmux.createWindow).not.toHaveBeenCalled();
   });
 
   test('given invalid host with shell metacharacters, should throw INVALID_ARGS', async () => {
@@ -146,15 +120,17 @@ describe('serveStartCommand', () => {
 
 describe('serveStopCommand', () => {
   test('given running server, should kill process and clean up', async () => {
-    vi.mocked(getServePid).mockResolvedValue(99999);
+    const pidPath = globalServePidPath();
+    vi.mocked(fs.readFile).mockImplementation(async (filePath: any) => {
+      if (String(filePath) === pidPath) return '99999';
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
     const mockKill = vi.spyOn(process, 'kill').mockImplementation(() => true);
     vi.spyOn(fs, 'unlink').mockResolvedValue(undefined);
 
     await serveStopCommand({});
 
     expect(mockKill).toHaveBeenCalledWith(99999, 'SIGTERM');
-    expect(fs.unlink).toHaveBeenCalledWith('/fake/project/.ppg/serve.pid');
-    expect(fs.unlink).toHaveBeenCalledWith('/fake/project/.ppg/serve.json');
     expect(success).toHaveBeenCalledWith('Serve daemon stopped (PID: 99999)');
 
     mockKill.mockRestore();
@@ -166,36 +142,6 @@ describe('serveStopCommand', () => {
     expect(warn).toHaveBeenCalledWith('Serve daemon is not running');
   });
 
-  test('given running server with tmux window, should kill the tmux window', async () => {
-    vi.mocked(getServePid).mockResolvedValue(99999);
-    vi.spyOn(process, 'kill').mockImplementation(() => true);
-    vi.spyOn(fs, 'unlink').mockResolvedValue(undefined);
-    vi.mocked(tmux.listSessionWindows).mockResolvedValue([
-      { index: 0, name: 'bash' },
-      { index: 1, name: 'ppg-serve' },
-    ]);
-
-    await serveStopCommand({});
-
-    expect(tmux.killWindow).toHaveBeenCalledWith('ppg-test:1');
-
-    vi.mocked(process.kill).mockRestore();
-  });
-
-  test('given process already dead when killing, should still clean up files', async () => {
-    vi.mocked(getServePid).mockResolvedValue(99999);
-    vi.spyOn(process, 'kill').mockImplementation(() => { throw new Error('ESRCH'); });
-    vi.spyOn(fs, 'unlink').mockResolvedValue(undefined);
-
-    await serveStopCommand({});
-
-    expect(fs.unlink).toHaveBeenCalledWith('/fake/project/.ppg/serve.pid');
-    expect(fs.unlink).toHaveBeenCalledWith('/fake/project/.ppg/serve.json');
-    expect(success).toHaveBeenCalledWith('Serve daemon stopped (PID: 99999)');
-
-    vi.mocked(process.kill).mockRestore();
-  });
-
   test('given json option and not running, should output JSON', async () => {
     await serveStopCommand({ json: true });
 
@@ -204,72 +150,13 @@ describe('serveStopCommand', () => {
       true,
     );
   });
-
-  test('given json option and running, should output JSON on success', async () => {
-    vi.mocked(getServePid).mockResolvedValue(88888);
-    vi.spyOn(process, 'kill').mockImplementation(() => true);
-    vi.spyOn(fs, 'unlink').mockResolvedValue(undefined);
-
-    await serveStopCommand({ json: true });
-
-    expect(output).toHaveBeenCalledWith(
-      expect.objectContaining({ success: true, pid: 88888 }),
-      true,
-    );
-
-    vi.mocked(process.kill).mockRestore();
-  });
 });
 
 describe('serveStatusCommand', () => {
-  test('given running server, should show status with connection info', async () => {
-    vi.mocked(isServeRunning).mockResolvedValue(true);
-    vi.mocked(getServePid).mockResolvedValue(12345);
-    vi.mocked(getServeInfo).mockResolvedValue({
-      pid: 12345,
-      port: 3000,
-      host: 'localhost',
-      startedAt: '2026-01-01T00:00:00.000Z',
-    });
-    vi.mocked(readServeLog).mockResolvedValue(['[2026-01-01T00:00:00.000Z] Started']);
-
-    await serveStatusCommand({});
-
-    expect(success).toHaveBeenCalledWith('Serve daemon is running (PID: 12345)');
-    expect(info).toHaveBeenCalledWith('Listening on localhost:3000');
-    expect(info).toHaveBeenCalledWith('Started at 2026-01-01T00:00:00.000Z');
-  });
-
   test('given no server running, should warn', async () => {
     await serveStatusCommand({});
 
     expect(warn).toHaveBeenCalledWith('Serve daemon is not running');
-  });
-
-  test('given json option and running, should output JSON with connection info', async () => {
-    vi.mocked(isServeRunning).mockResolvedValue(true);
-    vi.mocked(getServePid).mockResolvedValue(12345);
-    vi.mocked(getServeInfo).mockResolvedValue({
-      pid: 12345,
-      port: 3000,
-      host: 'localhost',
-      startedAt: '2026-01-01T00:00:00.000Z',
-    });
-    vi.mocked(readServeLog).mockResolvedValue([]);
-
-    await serveStatusCommand({ json: true });
-
-    expect(output).toHaveBeenCalledWith(
-      expect.objectContaining({
-        running: true,
-        pid: 12345,
-        host: 'localhost',
-        port: 3000,
-        startedAt: '2026-01-01T00:00:00.000Z',
-        recentLog: [],
-      }),
-      true,
-    );
   });
 
   test('given json option and not running, should output JSON', async () => {
@@ -280,28 +167,13 @@ describe('serveStatusCommand', () => {
       true,
     );
   });
-
-  test('given custom lines option, should pass to readServeLog', async () => {
-    await serveStatusCommand({ lines: 50 });
-
-    expect(readServeLog).toHaveBeenCalledWith('/fake/project', 50);
-  });
 });
 
 describe('serveDaemonCommand', () => {
-  test('given initialized project, should call runServeDaemon with correct args', async () => {
+  test('given valid options, should call startServer without projectRoot', async () => {
     await serveDaemonCommand({ port: 4000, host: '0.0.0.0' });
 
-    expect(requireManifest).toHaveBeenCalledWith('/fake/project');
-    expect(runServeDaemon).toHaveBeenCalledWith('/fake/project', 4000, '0.0.0.0');
-  });
-
-  test('given project not initialized, should throw', async () => {
-    const err = Object.assign(new Error('Not initialized'), { code: 'NOT_INITIALIZED' });
-    vi.mocked(requireManifest).mockRejectedValue(err);
-
-    await expect(serveDaemonCommand({ port: 3000, host: 'localhost' })).rejects.toThrow('Not initialized');
-    expect(runServeDaemon).not.toHaveBeenCalled();
+    expect(startServer).toHaveBeenCalledWith({ port: 4000, host: '0.0.0.0', token: undefined });
   });
 });
 

@@ -36,6 +36,7 @@ program
   .option('--branch <name>', 'Check out an existing branch into a new worktree')
   .option('-w, --worktree <id>', 'Add agent to existing worktree')
   .option('-c, --count <n>', 'Number of agents to spawn', parsePositiveInt('count'), 1)
+  .option('--master', 'Spawn a master (project-level) agent without a worktree')
   .option('--split', 'Put all agents in one window as split panes')
   .option('--open', 'Open a Terminal window for the spawned agents')
   .option('--json', 'Output as JSON')
@@ -269,7 +270,7 @@ serveCmd
   .command('start')
   .description('Start the serve daemon in a tmux window')
   .option('-p, --port <port>', 'Port to listen on', parsePort, 3100)
-  .option('-H, --host <host>', 'Host to bind to', '127.0.0.1')
+  .option('-H, --host <host>', 'Host to bind to', '0.0.0.0')
   .option('--token <secret>', 'Bearer token for authentication')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
@@ -297,10 +298,30 @@ serveCmd
   });
 
 serveCmd
+  .command('register')
+  .description('Register a ppg project for global serve')
+  .argument('[path]', 'Project path (defaults to CWD)')
+  .option('--json', 'Output as JSON')
+  .action(async (pathArg, options) => {
+    const { serveRegisterCommand } = await import('./commands/serve.js');
+    await serveRegisterCommand(pathArg, options);
+  });
+
+serveCmd
+  .command('unregister')
+  .description('Unregister a ppg project from global serve')
+  .argument('[path]', 'Project path (defaults to CWD)')
+  .option('--json', 'Output as JSON')
+  .action(async (pathArg, options) => {
+    const { serveUnregisterCommand } = await import('./commands/serve.js');
+    await serveUnregisterCommand(pathArg, options);
+  });
+
+serveCmd
   .command('_daemon', { hidden: true })
   .description('Internal: run the serve daemon (called by ppg serve start)')
   .option('-p, --port <port>', 'Port to listen on', parsePort, 3100)
-  .option('-H, --host <host>', 'Host to bind to', '127.0.0.1')
+  .option('-H, --host <host>', 'Host to bind to', '0.0.0.0')
   .option('--token <secret>', 'Bearer token for authentication')
   .action(async (options) => {
     const { serveDaemonCommand } = await import('./commands/serve.js');

@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { updateManifest, resolveWorktree } from '../../core/manifest.js';
 import { refreshAllAgentStatuses } from '../../core/agent.js';
 import { mergeWorktree } from '../../core/merge.js';
@@ -13,6 +13,7 @@ import { PpgError, WorktreeNotFoundError } from '../../lib/errors.js';
 declare module 'fastify' {
   interface FastifyInstance {
     projectRoot: string;
+    getProjectRoot: (request: FastifyRequest) => Promise<string>;
   }
 }
 
@@ -64,7 +65,12 @@ async function resolveWorktreeFromRequest(
 }
 
 export async function worktreeRoutes(app: FastifyInstance): Promise<void> {
-  const { projectRoot } = app;
+  const resolveRoot = async (request: FastifyRequest): Promise<string> => {
+    if (app.getProjectRoot) {
+      try { return await app.getProjectRoot(request); } catch { /* fall through */ }
+    }
+    return app.projectRoot;
+  };
 
   // ----------------------------------------------------------------
   // POST /api/worktrees/:id/merge
@@ -73,6 +79,7 @@ export async function worktreeRoutes(app: FastifyInstance): Promise<void> {
     '/worktrees/:id/merge',
     async (request, reply) => {
       try {
+        const projectRoot = await resolveRoot(request);
         const wt = await resolveWorktreeFromRequest(projectRoot, request.params.id);
         const { strategy, cleanup, force } = request.body ?? {};
 
@@ -92,6 +99,7 @@ export async function worktreeRoutes(app: FastifyInstance): Promise<void> {
     '/worktrees/:id/kill',
     async (request, reply) => {
       try {
+        const projectRoot = await resolveRoot(request);
         const wt = await resolveWorktreeFromRequest(projectRoot, request.params.id);
 
         const result = await killWorktreeAgents(projectRoot, wt);
@@ -110,6 +118,7 @@ export async function worktreeRoutes(app: FastifyInstance): Promise<void> {
     '/worktrees/:id/pr',
     async (request, reply) => {
       try {
+        const projectRoot = await resolveRoot(request);
         const wt = await resolveWorktreeFromRequest(projectRoot, request.params.id);
         const { title, body, draft } = request.body ?? {};
 

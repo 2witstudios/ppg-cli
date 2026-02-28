@@ -1,12 +1,10 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
+import path from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { getRepoRoot } from '../core/worktree.js';
-import { requireManifest, readManifest } from '../core/manifest.js';
-import { runServeDaemon, isServeRunning, getServePid, getServeInfo, readServeLog } from '../core/serve.js';
 import { startServer } from '../server/index.js';
 import * as tmux from '../core/tmux.js';
-import { servePidPath, serveJsonPath } from '../lib/paths.js';
+import { globalPpgDir, globalServePidPath, globalServeJsonPath, globalServeLogPath } from '../lib/paths.js';
 import { PpgError } from '../lib/errors.js';
 import { output, info, success, warn } from '../lib/output.js';
 
@@ -26,6 +24,7 @@ export interface ServeStatusOptions {
   json?: boolean;
 }
 
+const SERVE_SESSION_NAME = 'ppg-serve';
 const SERVE_WINDOW_NAME = 'ppg-serve';
 const VALID_HOST = /^[\w.:-]+$/;
 
@@ -63,10 +62,42 @@ export function verifyToken(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-export async function serveStartCommand(options: ServeStartOptions): Promise<void> {
-  const projectRoot = await getRepoRoot();
-  await requireManifest(projectRoot);
+async function isGlobalServeRunning(): Promise<boolean> {
+  return (await getGlobalServePid()) !== null;
+}
 
+async function getGlobalServePid(): Promise<number | null> {
+  const pidPath = globalServePidPath();
+  let raw: string;
+  try {
+    raw = await fs.readFile(pidPath, 'utf-8');
+  } catch {
+    return null;
+  }
+  const pid = parseInt(raw.trim(), 10);
+  if (isNaN(pid)) {
+    try { await fs.unlink(pidPath); } catch { /* already gone */ }
+    return null;
+  }
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    try { await fs.unlink(pidPath); } catch { /* already gone */ }
+    return null;
+  }
+}
+
+async function getGlobalServeInfo(): Promise<{ port: number; host: string; startedAt: string } | null> {
+  try {
+    const raw = await fs.readFile(globalServeJsonPath(), 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function serveStartCommand(options: ServeStartOptions): Promise<void> {
   const port = options.port!;
   const host = options.host!;
 
@@ -74,10 +105,22 @@ export async function serveStartCommand(options: ServeStartOptions): Promise<voi
     throw new PpgError(`Invalid host: "${host}"`, 'INVALID_ARGS');
   }
 
+  // Auto-register current project if inside one
+  try {
+    const { getRepoRoot } = await import('../core/worktree.js');
+    const { requireManifest } = await import('../core/manifest.js');
+    const projectRoot = await getRepoRoot();
+    await requireManifest(projectRoot);
+    const { registerProject } = await import('../core/projects.js');
+    await registerProject(projectRoot);
+  } catch {
+    // Not inside a ppg project — that's fine for global serve
+  }
+
   // Check if already running
-  if (await isServeRunning(projectRoot)) {
-    const pid = await getServePid(projectRoot);
-    const serveInfo = await getServeInfo(projectRoot);
+  if (await isGlobalServeRunning()) {
+    const pid = await getGlobalServePid();
+    const serveInfo = await getGlobalServeInfo();
     if (options.json) {
       output({ success: false, error: 'Serve daemon is already running', pid, ...serveInfo }, true);
     } else {
@@ -89,12 +132,12 @@ export async function serveStartCommand(options: ServeStartOptions): Promise<voi
     return;
   }
 
-  // Start daemon in a tmux window
-  const manifest = await readManifest(projectRoot);
-  const sessionName = manifest.sessionName;
-  await tmux.ensureSession(sessionName);
+  // Ensure global ppg dir exists
+  await fs.mkdir(globalPpgDir(), { recursive: true });
 
-  const windowTarget = await tmux.createWindow(sessionName, SERVE_WINDOW_NAME, projectRoot);
+  // Start daemon in a global tmux session
+  await tmux.ensureSession(SERVE_SESSION_NAME);
+  const windowTarget = await tmux.createWindow(SERVE_SESSION_NAME, SERVE_WINDOW_NAME, os.homedir());
   let command = `ppg serve _daemon --port ${port} --host ${host}`;
   if (options.token) {
     command += ` --token ${options.token}`;
@@ -116,9 +159,7 @@ export async function serveStartCommand(options: ServeStartOptions): Promise<voi
 }
 
 export async function serveStopCommand(options: ServeOptions): Promise<void> {
-  const projectRoot = await getRepoRoot();
-
-  const pid = await getServePid(projectRoot);
+  const pid = await getGlobalServePid();
   if (!pid) {
     if (options.json) {
       output({ success: false, error: 'Serve daemon is not running' }, true);
@@ -135,17 +176,16 @@ export async function serveStopCommand(options: ServeOptions): Promise<void> {
     // Already dead
   }
 
-  // Clean up PID and JSON files (daemon cleanup handler may not have run yet)
-  try { await fs.unlink(servePidPath(projectRoot)); } catch { /* already gone */ }
-  try { await fs.unlink(serveJsonPath(projectRoot)); } catch { /* already gone */ }
+  // Clean up PID and JSON files
+  try { await fs.unlink(globalServePidPath()); } catch { /* already gone */ }
+  try { await fs.unlink(globalServeJsonPath()); } catch { /* already gone */ }
 
   // Try to kill the tmux window too
   try {
-    const manifest = await readManifest(projectRoot);
-    const windows = await tmux.listSessionWindows(manifest.sessionName);
+    const windows = await tmux.listSessionWindows(SERVE_SESSION_NAME);
     const serveWindow = windows.find((w) => w.name === SERVE_WINDOW_NAME);
     if (serveWindow) {
-      await tmux.killWindow(`${manifest.sessionName}:${serveWindow.index}`);
+      await tmux.killWindow(`${SERVE_SESSION_NAME}:${serveWindow.index}`);
     }
   } catch { /* best effort */ }
 
@@ -157,18 +197,37 @@ export async function serveStopCommand(options: ServeOptions): Promise<void> {
 }
 
 export async function serveStatusCommand(options: ServeStatusOptions): Promise<void> {
-  const projectRoot = await getRepoRoot();
+  const running = await isGlobalServeRunning();
+  const pid = running ? await getGlobalServePid() : null;
+  const serveInfo = running ? await getGlobalServeInfo() : null;
 
-  const running = await isServeRunning(projectRoot);
-  const pid = running ? await getServePid(projectRoot) : null;
-  const serveInfo = running ? await getServeInfo(projectRoot) : null;
-  const recentLines = await readServeLog(projectRoot, options.lines ?? 20);
+  // Read global log
+  const logPath = globalServeLogPath();
+  let recentLines: string[] = [];
+  try {
+    const { createReadStream } = await import('node:fs');
+    const readline = await import('node:readline');
+    const rl = readline.createInterface({
+      input: createReadStream(logPath, { encoding: 'utf-8' }),
+      crlfDelay: Infinity,
+    });
+    const lines = options.lines ?? 20;
+    const result: string[] = [];
+    for await (const line of rl) {
+      if (!line) continue;
+      result.push(line);
+      if (result.length > lines) result.shift();
+    }
+    recentLines = result;
+  } catch {
+    // No log file yet
+  }
 
   if (options.json) {
     output({
       running,
       pid,
-      ...(serveInfo ? { host: serveInfo.host, port: serveInfo.port, startedAt: serveInfo.startedAt } : {}),
+      ...(serveInfo ?? {}),
       recentLog: recentLines,
     }, true);
     return;
@@ -194,8 +253,41 @@ export async function serveStatusCommand(options: ServeStatusOptions): Promise<v
   }
 }
 
+export async function serveRegisterCommand(pathArg: string | undefined, options: ServeOptions): Promise<void> {
+  const projectRoot = pathArg ? path.resolve(pathArg) : process.cwd();
+
+  // Verify the path is a ppg project
+  const manifestFile = path.join(projectRoot, '.ppg', 'manifest.json');
+  try {
+    await fs.access(manifestFile);
+  } catch {
+    throw new PpgError(`No ppg project found at ${projectRoot} (missing .ppg/manifest.json)`, 'NOT_INITIALIZED');
+  }
+
+  const { registerProject } = await import('../core/projects.js');
+  await registerProject(projectRoot);
+
+  if (options.json) {
+    output({ success: true, projectRoot, action: 'registered' }, true);
+  } else {
+    success(`Registered project: ${projectRoot}`);
+  }
+}
+
+export async function serveUnregisterCommand(pathArg: string | undefined, options: ServeOptions): Promise<void> {
+  const projectRoot = pathArg ? path.resolve(pathArg) : process.cwd();
+
+  const { unregisterProject } = await import('../core/projects.js');
+  await unregisterProject(projectRoot);
+
+  if (options.json) {
+    output({ success: true, projectRoot, action: 'unregistered' }, true);
+  } else {
+    success(`Unregistered project: ${projectRoot}`);
+  }
+}
+
 export async function serveDaemonCommand(options: { port: number; host: string; token?: string }): Promise<void> {
-  const projectRoot = await getRepoRoot();
-  await requireManifest(projectRoot);
-  await startServer({ projectRoot, port: options.port, host: options.host, token: options.token });
+  // Global daemon — no projectRoot required
+  await startServer({ port: options.port, host: options.host, token: options.token });
 }

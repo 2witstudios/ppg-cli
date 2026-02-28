@@ -1,6 +1,6 @@
-import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
-import { requireManifest, findAgent, updateManifest } from '../../core/manifest.js';
-import { killAgent, checkAgentStatus, restartAgent } from '../../core/agent.js';
+import type { FastifyInstance, FastifyPluginOptions, FastifyRequest } from 'fastify';
+import { requireManifest, readManifest, findAgent, updateManifest } from '../../core/manifest.js';
+import { killAgent, checkAgentStatus, restartAgent, spawnMasterAgent } from '../../core/agent.js';
 import { loadConfig, resolveAgentConfig } from '../../core/config.js';
 import * as tmux from '../../core/tmux.js';
 import { PpgError, AgentNotFoundError } from '../../lib/errors.js';
@@ -40,7 +40,15 @@ export async function agentRoutes(
   app: FastifyInstance,
   opts: AgentRoutesOptions,
 ): Promise<void> {
-  const { projectRoot } = opts;
+  const resolveRoot = async (request: FastifyRequest): Promise<string> => {
+    const getter = (app as any).getProjectRoot as
+      | ((req: FastifyRequest) => Promise<string>)
+      | undefined;
+    if (getter) {
+      try { return await getter(request); } catch { /* fall through */ }
+    }
+    return opts.projectRoot;
+  };
 
   // ---------- GET /api/agents/:id/logs ----------
   app.get<{
@@ -60,6 +68,7 @@ export async function agentRoutes(
     },
   }, async (request, reply) => {
     try {
+      const projectRoot = await resolveRoot(request);
       const { id } = request.params;
       const lines = request.query.lines
         ? Math.min(parseInt(request.query.lines, 10), MAX_LINES)
@@ -71,6 +80,26 @@ export async function agentRoutes(
 
       const manifest = await requireManifest(projectRoot);
       const found = findAgent(manifest, id);
+
+      // If not found in manifest and id looks like a tmux target, treat as untracked window
+      if (!found && id.includes(':')) {
+        let content: string;
+        try {
+          content = await tmux.capturePane(id, lines);
+        } catch {
+          throw new PpgError(
+            `Could not capture pane for target ${id}. Pane may no longer exist.`,
+            'PANE_NOT_FOUND',
+          );
+        }
+        return {
+          agentId: id,
+          tmuxTarget: id,
+          lines,
+          output: content,
+        };
+      }
+
       if (!found) throw new AgentNotFoundError(id);
 
       const { agent } = found;
@@ -120,32 +149,34 @@ export async function agentRoutes(
     },
   }, async (request, reply) => {
     try {
+      const projectRoot = await resolveRoot(request);
       const { id } = request.params;
       const { text, mode = 'with-enter' } = request.body;
 
       const manifest = await requireManifest(projectRoot);
       const found = findAgent(manifest, id);
-      if (!found) throw new AgentNotFoundError(id);
 
-      const { agent } = found;
+      // Resolve tmux target — use id directly if it looks like a tmux target (untracked window)
+      const tmuxTarget = found ? found.agent.tmuxTarget : (id.includes(':') ? id : null);
+      if (!tmuxTarget) throw new AgentNotFoundError(id);
 
       switch (mode) {
         case 'raw':
-          await tmux.sendRawKeys(agent.tmuxTarget, text);
+          await tmux.sendRawKeys(tmuxTarget, text);
           break;
         case 'literal':
-          await tmux.sendLiteral(agent.tmuxTarget, text);
+          await tmux.sendLiteral(tmuxTarget, text);
           break;
         case 'with-enter':
         default:
-          await tmux.sendKeys(agent.tmuxTarget, text);
+          await tmux.sendKeys(tmuxTarget, text);
           break;
       }
 
       return {
         success: true,
-        agentId: agent.id,
-        tmuxTarget: agent.tmuxTarget,
+        agentId: found ? found.agent.id : id,
+        tmuxTarget,
         text,
         mode,
       };
@@ -168,6 +199,7 @@ export async function agentRoutes(
     },
   }, async (request, reply) => {
     try {
+      const projectRoot = await resolveRoot(request);
       const { id } = request.params;
 
       const manifest = await requireManifest(projectRoot);
@@ -208,6 +240,74 @@ export async function agentRoutes(
     }
   });
 
+  // ---------- GET /api/agents ----------
+  app.get('/agents', async (request, reply) => {
+    try {
+      const projectRoot = await resolveRoot(request);
+      const manifest = await requireManifest(projectRoot);
+      const allAgents: Array<{ id: string; name: string; agentType: string; status: string; master: boolean; worktreeId?: string }> = [];
+
+      // Master agents
+      for (const agent of Object.values(manifest.agents ?? {})) {
+        allAgents.push({ ...agent, master: true });
+      }
+
+      // Worktree agents
+      for (const wt of Object.values(manifest.worktrees)) {
+        for (const agent of Object.values(wt.agents)) {
+          allAgents.push({ ...agent, master: false, worktreeId: wt.id });
+        }
+      }
+
+      return { agents: allAgents };
+    } catch (err) {
+      const status = mapErrorToStatus(err);
+      return reply.code(status).send(errorPayload(err));
+    }
+  });
+
+  // ---------- POST /api/agents/master ----------
+  app.post<{
+    Body: { name?: string; agent?: string; prompt: string };
+  }>('/agents/master', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['prompt'],
+        properties: {
+          name: { type: 'string' },
+          agent: { type: 'string' },
+          prompt: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const projectRoot = await resolveRoot(request);
+      const { name = 'master', agent: agentType, prompt } = request.body;
+      const manifest = await readManifest(projectRoot);
+      const config = await loadConfig(projectRoot);
+      const agentConfig = resolveAgentConfig(config, agentType);
+
+      const result = await spawnMasterAgent({
+        projectRoot,
+        name,
+        agentType: agentConfig.name,
+        prompt,
+        agentConfig,
+        sessionName: manifest.sessionName,
+      });
+
+      return {
+        success: true,
+        agent: result,
+      };
+    } catch (err) {
+      const status = mapErrorToStatus(err);
+      return reply.code(status).send(errorPayload(err));
+    }
+  });
+
   // ---------- POST /api/agents/:id/restart ----------
   app.post<{
     Params: { id: string };
@@ -229,6 +329,7 @@ export async function agentRoutes(
     },
   }, async (request, reply) => {
     try {
+      const projectRoot = await resolveRoot(request);
       const { id } = request.params;
       const { prompt: promptOverride, agent: agentType } = request.body ?? {};
 
@@ -239,6 +340,10 @@ export async function agentRoutes(
       if (!found) throw new AgentNotFoundError(id);
 
       const { worktree: wt, agent: oldAgent } = found;
+
+      if (!wt) {
+        throw new PpgError('Master agents cannot be restarted via this endpoint', 'INVALID_ARGS');
+      }
 
       // Read original prompt or use override
       let promptText: string;

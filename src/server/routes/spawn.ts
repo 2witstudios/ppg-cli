@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { spawnNewWorktree, resolvePromptText } from '../../core/spawn.js';
 import { PpgError } from '../../lib/errors.js';
 
+
 export interface SpawnRequestBody {
   name: string;
   agent?: string;
@@ -80,7 +81,15 @@ export default async function spawnRoute(
   app: FastifyInstance,
   opts: SpawnRouteOptions,
 ): Promise<void> {
-  const { projectRoot } = opts;
+  const resolveRoot = async (request: FastifyRequest): Promise<string> => {
+    const getter = (app as any).getProjectRoot as
+      | ((req: FastifyRequest) => Promise<string>)
+      | undefined;
+    if (getter) {
+      try { return await getter(request); } catch { /* fall through */ }
+    }
+    return opts.projectRoot;
+  };
 
   app.post(
     '/api/spawn',
@@ -90,6 +99,7 @@ export default async function spawnRoute(
       reply: FastifyReply,
     ) => {
       try {
+        const projectRoot = await resolveRoot(request);
         const body = request.body;
 
         // Validate vars for shell safety before any side effects

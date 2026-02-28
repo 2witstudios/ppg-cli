@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { loadConfig } from '../../core/config.js';
 import { listTemplatesWithSource } from '../../core/template.js';
 import { listPromptsWithSource, enrichEntryMetadata } from '../../core/prompt.js';
@@ -20,10 +20,19 @@ export async function configRoutes(
   app: FastifyInstance,
   opts: ConfigRouteOptions,
 ): Promise<void> {
-  const { projectRoot } = opts;
+  const resolveRoot = async (request: FastifyRequest): Promise<string> => {
+    const getter = (app as any).getProjectRoot as
+      | ((req: FastifyRequest) => Promise<string>)
+      | undefined;
+    if (getter) {
+      try { return await getter(request); } catch { /* fall through */ }
+    }
+    return opts.projectRoot;
+  };
 
   // GET /api/config — agent configuration from config.yaml
-  app.get('/api/config', async () => {
+  app.get('/api/config', async (request) => {
+    const projectRoot = await resolveRoot(request);
     const config = await loadConfig(projectRoot);
     return {
       sessionName: config.sessionName,
@@ -35,7 +44,8 @@ export async function configRoutes(
   });
 
   // GET /api/templates — templates with source tracking
-  app.get('/api/templates', async () => {
+  app.get('/api/templates', async (request) => {
+    const projectRoot = await resolveRoot(request);
     const entries = await listTemplatesWithSource(projectRoot);
     const templates = await Promise.all(
       entries.map(({ name, source }) =>
@@ -51,7 +61,8 @@ export async function configRoutes(
   });
 
   // GET /api/prompts — prompts with deduplication across local/global
-  app.get('/api/prompts', async () => {
+  app.get('/api/prompts', async (request) => {
+    const projectRoot = await resolveRoot(request);
     const entries = await listPromptsWithSource(projectRoot);
     const prompts = await Promise.all(
       entries.map(({ name, source }) =>
