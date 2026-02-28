@@ -75,7 +75,11 @@ async function killSingleAgent(
     await updateManifest(projectRoot, (m) => {
       const f = findAgent(m, agentId);
       if (f) {
-        delete f.worktree.agents[agentId];
+        if (f.worktree) {
+          delete f.worktree.agents[agentId];
+        } else {
+          delete m.agents[agentId];
+        }
       }
       return m;
     });

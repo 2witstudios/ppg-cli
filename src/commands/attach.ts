@@ -32,7 +32,7 @@ export async function attachCommand(target: string): Promise<void> {
     const found = findAgent(manifest, target);
     if (found) {
       agent = found.agent;
-      worktreeId = found.worktree.id;
+      worktreeId = found.worktree?.id;
       tmuxTarget = found.agent.tmuxTarget;
     }
   }

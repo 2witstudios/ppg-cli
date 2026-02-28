@@ -11,6 +11,7 @@ function makeManifest(overrides?: Partial<Manifest>): Manifest {
     version: 1,
     projectRoot: '/tmp/project',
     sessionName: 'ppg',
+    agents: {},
     worktrees: { 'wt-abc123': makeWorktree({ agents: { 'ag-test1234': makeAgent() } }) },
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

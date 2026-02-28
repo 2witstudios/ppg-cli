@@ -1,15 +1,65 @@
 import fs from 'node:fs/promises';
 import { agentPromptFile, agentPromptsDir } from '../lib/paths.js';
-import { getPaneInfo, listSessionPanes, type PaneInfo } from './tmux.js';
+import { getPaneInfo, listSessionPanes, listSessionWindows, type PaneInfo } from './tmux.js';
 import { updateManifest } from './manifest.js';
 import { PpgError } from '../lib/errors.js';
 import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { renderTemplate, type TemplateContext } from './template.js';
-import type { AgentEntry, AgentStatus, WorktreeEntry } from '../types/manifest.js';
+import type { AgentEntry, AgentStatus, Manifest, WorktreeEntry } from '../types/manifest.js';
 import type { AgentConfig } from '../types/config.js';
 import * as tmux from './tmux.js';
 
 const SHELL_COMMANDS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'tcsh', 'csh']);
+
+export interface SpawnMasterAgentOptions {
+  projectRoot: string;
+  name: string;
+  agentType: string;
+  prompt: string;
+  agentConfig: AgentConfig;
+  sessionName: string;
+}
+
+export interface SpawnMasterAgentResult {
+  agentId: string;
+  tmuxTarget: string;
+  sessionId: string;
+}
+
+/**
+ * Spawn a master (project-level) agent that runs in the project root, not a worktree.
+ */
+export async function spawnMasterAgent(options: SpawnMasterAgentOptions): Promise<SpawnMasterAgentResult> {
+  const { projectRoot, name, agentConfig, prompt, sessionName } = options;
+
+  await tmux.ensureSession(sessionName);
+  const aId = genAgentId();
+  const sId = genSessionId();
+  const windowTarget = await tmux.createWindow(sessionName, `master-${name}`, projectRoot);
+
+  const agentEntry = await spawnAgent({
+    agentId: aId,
+    agentConfig,
+    prompt,
+    worktreePath: projectRoot,
+    tmuxTarget: windowTarget,
+    projectRoot,
+    branch: 'master',
+    sessionId: sId,
+  });
+
+  await updateManifest(projectRoot, (m) => {
+    if (!m.agents) m.agents = {};
+    m.agents[aId] = agentEntry;
+    return m;
+  });
+
+  return {
+    agentId: aId,
+    tmuxTarget: windowTarget,
+    sessionId: sId,
+  };
+}
 
 export interface SpawnAgentOptions {
   agentId: string;
@@ -113,8 +163,14 @@ export async function refreshAllAgentStatuses(
   // Batch-fetch all pane info in a single tmux call
   const paneMap = await listSessionPanes(manifest.sessionName);
 
-  // Collect all agents that need checking
+  // Collect all agents that need checking (master + worktree)
   const checks: Array<{ agent: AgentEntry; promise: Promise<{ status: AgentStatus; exitCode?: number }> }> = [];
+  for (const agent of Object.values(manifest.agents ?? {})) {
+    checks.push({
+      agent,
+      promise: checkAgentStatus(agent, projectRoot, paneMap),
+    });
+  }
   for (const wt of Object.values(manifest.worktrees)) {
     for (const agent of Object.values(wt.agents)) {
       checks.push({
@@ -333,4 +389,60 @@ async function fileExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// MARK: - Untracked tmux windows
+
+export interface UntrackedWindow {
+  tmuxTarget: string;
+  windowName: string;
+  windowIndex: number;
+  currentCommand: string;
+  isDead: boolean;
+}
+
+/**
+ * Parse the window index from a tmux target string.
+ * "ppg-foo:4" → 4, "ppg-foo:4.0" → 4
+ */
+function parseTmuxWindowIndex(target: string): number | null {
+  const match = target.match(/:(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * Discover tmux windows in the ppg session that are NOT tracked in the manifest.
+ * These are windows created manually (Cmd+D/Cmd+N, tmux new-window, etc.).
+ */
+export async function discoverUntrackedWindows(manifest: Manifest): Promise<UntrackedWindow[]> {
+  const [windows, paneMap] = await Promise.all([
+    listSessionWindows(manifest.sessionName),
+    listSessionPanes(manifest.sessionName),
+  ]);
+
+  // Collect all tracked tmux window indices
+  const trackedIndices = new Set<number>();
+  trackedIndices.add(0); // Base shell window, always skip
+  for (const wt of Object.values(manifest.worktrees)) {
+    const idx = parseTmuxWindowIndex(wt.tmuxWindow);
+    if (idx !== null) trackedIndices.add(idx);
+  }
+  for (const agent of Object.values(manifest.agents ?? {})) {
+    const idx = parseTmuxWindowIndex(agent.tmuxTarget);
+    if (idx !== null) trackedIndices.add(idx);
+  }
+
+  return windows
+    .filter(w => !trackedIndices.has(w.index))
+    .map(w => {
+      const target = `${manifest.sessionName}:${w.index}`;
+      const pane = paneMap.get(target);
+      return {
+        tmuxTarget: target,
+        windowName: w.name,
+        windowIndex: w.index,
+        currentCommand: pane?.currentCommand ?? 'unknown',
+        isDead: pane?.isDead ?? false,
+      };
+    });
 }

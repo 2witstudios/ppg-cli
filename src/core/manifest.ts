@@ -10,6 +10,7 @@ export function createEmptyManifest(projectRoot: string, sessionName: string): M
     version: 1,
     projectRoot,
     sessionName,
+    agents: {},
     worktrees: {},
     createdAt: now,
     updatedAt: now,
@@ -19,7 +20,10 @@ export function createEmptyManifest(projectRoot: string, sessionName: string): M
 export async function readManifest(projectRoot: string): Promise<Manifest> {
   const mPath = manifestPath(projectRoot);
   const raw = await fs.readFile(mPath, 'utf-8');
-  return JSON.parse(raw) as Manifest;
+  const manifest = JSON.parse(raw) as Manifest;
+  // Backwards compat: older manifests lack top-level agents
+  if (!manifest.agents) manifest.agents = {};
+  return manifest;
 }
 
 export async function requireManifest(projectRoot: string): Promise<Manifest> {
@@ -90,7 +94,13 @@ export function resolveWorktree(manifest: Manifest, ref: string): WorktreeEntry 
 export function findAgent(
   manifest: Manifest,
   agentId: string,
-): { worktree: WorktreeEntry; agent: AgentEntry } | undefined {
+): { worktree: WorktreeEntry | undefined; agent: AgentEntry } | undefined {
+  // Check master agents first
+  const masterAgent = manifest.agents?.[agentId];
+  if (masterAgent) {
+    return { worktree: undefined, agent: masterAgent };
+  }
+  // Then check worktree agents
   for (const wt of Object.values(manifest.worktrees)) {
     const agent = wt.agents[agentId];
     if (agent) {

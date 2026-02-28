@@ -2,15 +2,60 @@ import { performSpawn, type PerformSpawnOptions, type SpawnResult } from '../cor
 import { output, success, info } from '../lib/output.js';
 
 export interface SpawnOptions extends PerformSpawnOptions {
+  master?: boolean;
   json?: boolean;
 }
 
 export async function spawnCommand(options: SpawnOptions): Promise<void> {
-  const { json, ...spawnOpts } = options;
+  if (options.master) {
+    return spawnMasterCommand(options);
+  }
+
+  const { json, master, ...spawnOpts } = options;
 
   const result = await performSpawn(spawnOpts);
 
   emitSpawnResult(result, options);
+}
+
+async function spawnMasterCommand(options: SpawnOptions): Promise<void> {
+  const { getRepoRoot } = await import('../core/worktree.js');
+  const { loadConfig, resolveAgentConfig } = await import('../core/config.js');
+  const { readManifest } = await import('../core/manifest.js');
+  const { spawnMasterAgent } = await import('../core/agent.js');
+
+  const projectRoot = await getRepoRoot();
+  const config = await loadConfig(projectRoot);
+  const manifest = await readManifest(projectRoot);
+  const agentConfig = resolveAgentConfig(config, options.agent);
+
+  if (!options.prompt) {
+    throw new (await import('../lib/errors.js')).PpgError(
+      '--prompt is required for --master agents',
+      'INVALID_ARGS',
+    );
+  }
+
+  const name = options.name ?? 'master';
+  const result = await spawnMasterAgent({
+    projectRoot,
+    name,
+    agentType: agentConfig.name,
+    prompt: options.prompt,
+    agentConfig,
+    sessionName: manifest.sessionName,
+  });
+
+  if (options.json) {
+    output({
+      success: true,
+      master: true,
+      agent: result,
+    }, true);
+  } else {
+    success(`Spawned master agent ${result.agentId}`);
+    info(`  tmux: ${result.tmuxTarget}`);
+  }
 }
 
 function emitSpawnResult(result: SpawnResult, options: SpawnOptions): void {

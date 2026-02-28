@@ -12,6 +12,7 @@ const mockManifest = (): Manifest => ({
   version: 1,
   projectRoot: '/project',
   sessionName: 'ppg',
+  agents: {},
   worktrees: {
     'wt-abc123': makeWorktree(),
   },

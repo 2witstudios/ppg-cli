@@ -43,6 +43,10 @@ export async function performRestart(params: RestartParams): Promise<RestartResu
 
   const { worktree: wt, agent: oldAgent } = found;
 
+  if (!wt) {
+    throw new AgentNotFoundError(`${agentRef} (master agents cannot be restarted via this path)`);
+  }
+
   // Kill old agent if still running
   let killedOldAgent = false;
   if (oldAgent.status === 'running') {

@@ -104,7 +104,7 @@ export async function sendRawKeys(target: string, keys: string): Promise<void> {
 }
 
 export async function capturePane(target: string, lines?: number): Promise<string> {
-  const args = ['capture-pane', '-t', target, '-p'];
+  const args = ['capture-pane', '-t', target, '-p', '-e'];
   if (lines) {
     args.push('-S', `-${lines}`);
   }
@@ -118,6 +118,14 @@ export async function killPane(target: string): Promise<void> {
   } catch (err) {
     if (isTmuxNotFoundError(err)) return;
     throw err;
+  }
+}
+
+export async function resizePane(target: string, cols: number, rows: number): Promise<void> {
+  try {
+    await execa('tmux', ['resize-pane', '-t', target, '-x', String(cols), '-y', String(rows)], execaEnv);
+  } catch {
+    // Best-effort resize — pane may not exist or may be the only pane in the window
   }
 }
 

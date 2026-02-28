@@ -88,6 +88,7 @@ function makeManifest(overrides?: Partial<Manifest>): Manifest {
     version: 1,
     projectRoot: PROJECT_ROOT,
     sessionName: 'ppg',
+    agents: {},
     worktrees: {},
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

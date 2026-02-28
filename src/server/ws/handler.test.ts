@@ -309,6 +309,7 @@ describe('WebSocket handler', () => {
           version: 1,
           projectRoot: '/tmp',
           sessionName: 'test',
+          agents: {},
           worktrees: {},
           createdAt: '2025-01-01T00:00:00Z',
           updatedAt: '2025-01-01T00:00:00Z',

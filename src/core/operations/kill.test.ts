@@ -84,6 +84,7 @@ function makeManifest(worktrees: Record<string, WorktreeEntry> = {}): Manifest {
     version: 1,
     projectRoot: '/project',
     sessionName: 'ppg',
+    agents: {},
     worktrees,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

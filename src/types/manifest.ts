@@ -41,6 +41,7 @@ export interface Manifest {
   version: 1;
   projectRoot: string;
   sessionName: string;
+  agents: Record<string, AgentEntry>;
   worktrees: Record<string, WorktreeEntry>;
   createdAt: string;
   updatedAt: string;
