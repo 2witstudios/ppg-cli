@@ -4,7 +4,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use crate::api::websocket::WsEvent;
-use crate::state::{ConnectionState, Services};
+use crate::state::{ConnectionState, Services, ToastMessage};
 use crate::ui::command_palette::CommandPalette;
 use crate::ui::home_dashboard::HomeDashboard;
 use crate::ui::pane_grid::PaneGrid;
@@ -17,15 +17,13 @@ use crate::ui::worktree_detail::WorktreeDetail;
 pub struct MainWindow {
     pub window: adw::ApplicationWindow,
     sidebar: SidebarView,
-    #[allow(dead_code)]
     stack: gtk::Stack,
     home_dashboard: HomeDashboard,
     pane_grid: PaneGrid,
-    #[allow(dead_code)]
     worktree_detail: WorktreeDetail,
-    #[allow(dead_code)]
     setup_view: SetupView,
     status_label: gtk::Label,
+    toast_overlay: adw::ToastOverlay,
     services: Services,
 }
 
@@ -98,14 +96,17 @@ impl MainWindow {
             .child(&sidebar.widget())
             .build();
 
+        // Wrap content in a toast overlay for notifications
+        let toast_overlay = adw::ToastOverlay::new();
         let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content_box.append(&header);
         content_box.append(&stack);
         stack.set_vexpand(true);
+        toast_overlay.set_child(Some(&content_box));
 
         let content_page = adw::NavigationPage::builder()
             .title("Dashboard")
-            .child(&content_box)
+            .child(&toast_overlay)
             .build();
 
         let split_view = adw::NavigationSplitView::new();
@@ -143,11 +144,13 @@ impl MainWindow {
         });
         app.add_action(&settings_action);
 
-        // -- Reconnect action --
+        // -- Reconnect action (uses centralized reconnect_ws) --
         let reconnect_action = gio::SimpleAction::new("reconnect", None);
         let services_ra = services.clone();
         reconnect_action.connect_activate(move |_, _| {
-            start_ws_connection(&services_ra);
+            services_ra.state.set_connection_state(ConnectionState::Connecting);
+            services_ra.reconnect_ws();
+            services_ra.toast("Reconnecting...");
         });
         app.add_action(&reconnect_action);
 
@@ -160,6 +163,7 @@ impl MainWindow {
             worktree_detail,
             setup_view,
             status_label,
+            toast_overlay,
             services,
         }
     }
@@ -168,8 +172,127 @@ impl MainWindow {
         self.window.present();
     }
 
+    /// Check prerequisites and show setup view or connect immediately.
+    /// This should be called once after the window is created.
+    pub fn start(&self) {
+        use crate::util::shell::command_exists;
+
+        // Wire the setup view's continue button to switch to dashboard and connect
+        let stack = self.stack.clone();
+        let services_continue = self.services.clone();
+        self.setup_view.connect_continue(move || {
+            stack.set_visible_child_name("dashboard");
+            // Trigger connection when prerequisites are satisfied
+            services_continue.reconnect_ws();
+        });
+
+        // Check if prerequisites are met
+        let ppg_ok = command_exists("ppg");
+        let tmux_ok = command_exists("tmux");
+
+        if ppg_ok && tmux_ok {
+            // Prerequisites met — go straight to dashboard and connect
+            self.stack.set_visible_child_name("dashboard");
+            self.connect();
+        } else {
+            // Show setup view first
+            self.stack.set_visible_child_name("setup");
+            // Still set up the event loops so they're ready when the user continues
+            self.setup_event_loops();
+        }
+    }
+
+    /// Set up event loops for WS and toast receivers.
+    /// Called once — either from connect() or from start() for deferred connect.
+    fn setup_event_loops(&self) {
+        let services = self.services.clone();
+        let status_label = self.status_label.clone();
+        let sidebar = self.sidebar.clone();
+        let home = self.home_dashboard.clone();
+
+        // Take the persistent WS event receiver from Services.
+        if let Some(rx) = services.take_ws_rx() {
+            let services_rx = services.clone();
+            let sidebar_rx = sidebar.clone();
+            let home_rx = home.clone();
+            let status_rx = status_label.clone();
+            glib::spawn_future_local(async move {
+                while let Ok(event) = rx.recv().await {
+                    match event {
+                        WsEvent::Connected => {
+                            services_rx
+                                .state
+                                .set_connection_state(ConnectionState::Connected);
+                            update_status_ui(
+                                &status_rx,
+                                &services_rx.state.connection_state(),
+                            );
+                        }
+                        WsEvent::Disconnected => {
+                            services_rx
+                                .state
+                                .set_connection_state(ConnectionState::Reconnecting);
+                            update_status_ui(
+                                &status_rx,
+                                &services_rx.state.connection_state(),
+                            );
+                        }
+                        WsEvent::ManifestUpdated(manifest) => {
+                            services_rx.state.set_manifest(manifest.clone());
+                            sidebar_rx.update_manifest(&manifest);
+                            home_rx.update_manifest(&manifest);
+                        }
+                        WsEvent::AgentStatusChanged {
+                            worktree_id,
+                            agent_id,
+                            status,
+                            ..
+                        } => {
+                            sidebar_rx.update_agent_status(
+                                &worktree_id,
+                                &agent_id,
+                                status,
+                            );
+                        }
+                        WsEvent::TerminalOutput { .. } => {
+                            // Terminal output handled by subscribed panes
+                        }
+                        WsEvent::Error(msg) => {
+                            services_rx
+                                .state
+                                .set_connection_state(ConnectionState::Error(msg));
+                            update_status_ui(
+                                &status_rx,
+                                &services_rx.state.connection_state(),
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        // Drain toast messages and show them via the toast overlay.
+        if let Some(toast_rx) = services.take_toast_rx() {
+            let overlay = self.toast_overlay.clone();
+            glib::spawn_future_local(async move {
+                while let Ok(msg) = toast_rx.recv().await {
+                    let toast = adw::Toast::new(&msg.text);
+                    if msg.is_error {
+                        toast.set_timeout(5);
+                    } else {
+                        toast.set_timeout(3);
+                    }
+                    overlay.add_toast(toast);
+                }
+            });
+        }
+    }
+
     /// Start WebSocket and initial data fetch.
+    /// Event loops must already be set up via setup_event_loops() or start().
     pub fn connect(&self) {
+        self.setup_event_loops();
+
         self.services
             .state
             .set_connection_state(ConnectionState::Connecting);
@@ -180,55 +303,9 @@ impl MainWindow {
         let sidebar = self.sidebar.clone();
         let home = self.home_dashboard.clone();
 
-        // Create async channel for WS events
-        let (tx, rx) = async_channel::unbounded::<WsEvent>();
-
-        // Handle WS events on GTK main thread using glib::spawn_future_local
-        let services_rx = services.clone();
-        let sidebar_rx = sidebar.clone();
-        let home_rx = home.clone();
-        let status_rx = status_label.clone();
-        glib::spawn_future_local(async move {
-            while let Ok(event) = rx.recv().await {
-                match event {
-                    WsEvent::Connected => {
-                        services_rx.state.set_connection_state(ConnectionState::Connected);
-                        update_status_ui(&status_rx, &services_rx.state.connection_state());
-                    }
-                    WsEvent::Disconnected => {
-                        services_rx.state.set_connection_state(ConnectionState::Reconnecting);
-                        update_status_ui(&status_rx, &services_rx.state.connection_state());
-                    }
-                    WsEvent::ManifestUpdated(manifest) => {
-                        services_rx.state.set_manifest(manifest.clone());
-                        sidebar_rx.update_manifest(&manifest);
-                        home_rx.update_manifest(&manifest);
-                    }
-                    WsEvent::AgentStatusChanged { worktree_id, agent_id, status, .. } => {
-                        sidebar_rx.update_agent_status(&worktree_id, &agent_id, status);
-                    }
-                    WsEvent::TerminalOutput { .. } => {
-                        // Terminal output handled by subscribed panes
-                    }
-                    WsEvent::Error(msg) => {
-                        services_rx.state.set_connection_state(ConnectionState::Error(msg));
-                        update_status_ui(&status_rx, &services_rx.state.connection_state());
-                    }
-                }
-            }
-        });
-
-        // Start WebSocket connection
-        {
-            let ws = services.ws.read().unwrap();
-            let settings = services.state.settings();
-            ws.connect(
-                &settings.server_url,
-                settings.bearer_token.clone(),
-                tx,
-                &services.runtime,
-            );
-        }
+        // Start WebSocket connection using centralized reconnect_ws.
+        // This sends events through the persistent ws_tx → ws_rx pipeline.
+        services.reconnect_ws();
 
         // Initial status fetch via HTTP
         let client = services.client.clone();
@@ -236,6 +313,7 @@ impl MainWindow {
         let sidebar_init = sidebar.clone();
         let home_init = home.clone();
         let status_init = status_label.clone();
+        let toast_tx = services.toast_tx.clone();
         services.runtime.spawn(async move {
             match client.read().unwrap().status().await {
                 Ok(manifest) => {
@@ -250,6 +328,11 @@ impl MainWindow {
                 }
                 Err(e) => {
                     let msg = format!("{}", e);
+                    let toast_msg = msg.clone();
+                    let _ = toast_tx.try_send(ToastMessage {
+                        text: format!("Connection failed: {}", toast_msg),
+                        is_error: true,
+                    });
                     glib::idle_add_once(move || {
                         update_status_ui(&status_init, &ConnectionState::Error(msg));
                     });
@@ -270,19 +353,6 @@ fn update_status_ui(label: &gtk::Label, state: &ConnectionState) {
         label.remove_css_class(cls);
     }
     label.add_css_class(state.css_class());
-}
-
-fn start_ws_connection(services: &Services) {
-    let settings = services.state.settings();
-    let (tx, _rx) = async_channel::unbounded::<WsEvent>();
-    let ws = services.ws.read().unwrap();
-    ws.disconnect();
-    ws.connect(
-        &settings.server_url,
-        settings.bearer_token.clone(),
-        tx,
-        &services.runtime,
-    );
 }
 
 /// Sidebar selection types.

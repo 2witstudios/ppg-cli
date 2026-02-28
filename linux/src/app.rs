@@ -80,7 +80,7 @@ impl PpgApplication {
         self.app.connect_activate(move |app| {
             let main_window = MainWindow::new(app, services_activate.clone());
             main_window.present();
-            main_window.connect();
+            main_window.start();
         });
 
         self.app.run().into()

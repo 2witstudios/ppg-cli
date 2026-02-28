@@ -138,12 +138,15 @@ impl SettingsDialog {
                 s.appearance = appearance;
             });
 
-            // Update client connection
+            // Update client connection and reconnect WebSocket
             services_save
                 .client
                 .write()
                 .unwrap()
                 .update_connection(&url, token);
+
+            services_save.reconnect_ws();
+            services_save.toast("Settings saved — reconnecting...");
 
             // Apply appearance
             let style_manager = adw::StyleManager::default();

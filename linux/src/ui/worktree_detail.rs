@@ -14,6 +14,7 @@ pub struct WorktreeDetail {
     base_label: gtk::Label,
     path_label: gtk::Label,
     created_label: gtk::Label,
+    pr_url_label: gtk::Label,
     agents_list: gtk::ListBox,
     merge_button: gtk::Button,
     kill_button: gtk::Button,
@@ -53,11 +54,13 @@ impl WorktreeDetail {
         let base_label = gtk::Label::new(Some("—"));
         let path_label = gtk::Label::new(Some("—"));
         let created_label = gtk::Label::new(Some("—"));
+        let pr_url_label = gtk::Label::new(Some("—"));
 
         add_info_row(&info_grid, 0, "Branch", &branch_label);
         add_info_row(&info_grid, 1, "Base Branch", &base_label);
         add_info_row(&info_grid, 2, "Path", &path_label);
         add_info_row(&info_grid, 3, "Created", &created_label);
+        add_info_row(&info_grid, 4, "PR URL", &pr_url_label);
 
         container.append(&info_grid);
 
@@ -104,8 +107,22 @@ impl WorktreeDetail {
             if let Some(ref wt_id) = *id_kill.borrow() {
                 let client = services_kill.client.clone();
                 let id = wt_id.clone();
+                let toast_tx = services_kill.toast_tx.clone();
                 services_kill.runtime.spawn(async move {
-                    let _ = client.read().unwrap().kill_worktree(&id).await;
+                    match client.read().unwrap().kill_worktree(&id).await {
+                        Ok(_) => {
+                            let _ = toast_tx.send(crate::state::ToastMessage {
+                                text: format!("Killed worktree {}", id),
+                                is_error: false,
+                            }).await;
+                        }
+                        Err(e) => {
+                            let _ = toast_tx.send(crate::state::ToastMessage {
+                                text: format!("Kill failed: {}", e),
+                                is_error: true,
+                            }).await;
+                        }
+                    }
                 });
             }
         });
@@ -117,13 +134,27 @@ impl WorktreeDetail {
             if let Some(ref wt_id) = *id_merge.borrow() {
                 let client = services_merge.client.clone();
                 let id = wt_id.clone();
+                let toast_tx = services_merge.toast_tx.clone();
                 services_merge.runtime.spawn(async move {
                     let req = MergeRequest {
                         strategy: Some("squash".to_string()),
                         cleanup: Some(true),
                         force: None,
                     };
-                    let _ = client.read().unwrap().merge_worktree(&id, &req).await;
+                    match client.read().unwrap().merge_worktree(&id, &req).await {
+                        Ok(_) => {
+                            let _ = toast_tx.send(crate::state::ToastMessage {
+                                text: format!("Merged worktree {}", id),
+                                is_error: false,
+                            }).await;
+                        }
+                        Err(e) => {
+                            let _ = toast_tx.send(crate::state::ToastMessage {
+                                text: format!("Merge failed: {}", e),
+                                is_error: true,
+                            }).await;
+                        }
+                    }
                 });
             }
         });
@@ -136,6 +167,7 @@ impl WorktreeDetail {
             base_label,
             path_label,
             created_label,
+            pr_url_label,
             agents_list,
             merge_button,
             kill_button,
@@ -180,6 +212,9 @@ impl WorktreeDetail {
         self.base_label.set_text(&wt.base_branch);
         self.path_label.set_text(&wt.path);
         self.created_label.set_text(&wt.created_at);
+        self.pr_url_label.set_text(
+            wt.pr_url.as_deref().unwrap_or("—"),
+        );
 
         // Rebuild agents list
         while let Some(row) = self.agents_list.row_at_index(0) {

@@ -180,6 +180,7 @@ impl CommandPalette {
             let client = services_spawn.client.clone();
             let variant = variant_id.clone();
             let prompt_text = prompt.clone();
+            let toast_tx = services_spawn.toast_tx.clone();
             services_spawn.runtime.spawn(async move {
                 let req = SpawnRequest {
                     name: variant.clone(),
@@ -194,9 +195,17 @@ impl CommandPalette {
                 match client.read().unwrap().spawn(&req).await {
                     Ok(resp) => {
                         log::info!("Spawned: {} in {}", resp.name, resp.worktree_id);
+                        let _ = toast_tx.send(crate::state::ToastMessage {
+                            text: format!("Spawned {} in {}", resp.name, resp.worktree_id),
+                            is_error: false,
+                        }).await;
                     }
                     Err(e) => {
                         log::error!("Spawn failed: {}", e);
+                        let _ = toast_tx.send(crate::state::ToastMessage {
+                            text: format!("Spawn failed: {}", e),
+                            is_error: true,
+                        }).await;
                     }
                 }
             });
@@ -209,16 +218,27 @@ impl CommandPalette {
             do_spawn_btn();
         });
 
-        // Check the Enter key trigger on idle
+        // Check the Enter key trigger on idle.
+        // Store the source ID so we can cancel it when the dialog closes.
         let do_spawn_key = do_spawn.clone();
         let spawn_trigger_check = spawn_trigger.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-            if spawn_trigger_check.get() {
-                spawn_trigger_check.set(false);
-                do_spawn_key();
-                return glib::ControlFlow::Break;
+        let timer_id = std::rc::Rc::new(std::cell::RefCell::new(Some(
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                if spawn_trigger_check.get() {
+                    spawn_trigger_check.set(false);
+                    do_spawn_key();
+                    return glib::ControlFlow::Break;
+                }
+                glib::ControlFlow::Continue
+            }),
+        )));
+
+        // Cancel the timer when the dialog is closed without spawning
+        let timer_id_close = timer_id.clone();
+        dialog.connect_closed(move |_| {
+            if let Some(id) = timer_id_close.borrow_mut().take() {
+                id.remove();
             }
-            glib::ControlFlow::Continue
         });
 
         Self { dialog, services }

@@ -23,36 +23,6 @@
     font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
 }
 
-/* Terminal pane container */
-.terminal-pane {
-    background-color: #1e1e2e;
-    border-radius: 8px;
-    padding: 2px;
-}
-
-/* Command palette overlay */
-.command-palette {
-    background-color: alpha(@window_bg_color, 0.98);
-    border-radius: 12px;
-}
-
-/* Status badge pills */
-.status-badge {
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.8em;
-}
-
-/* Heatmap container */
-.heatmap {
-    padding: 8px;
-}
-
-/* Commit list rows */
-.commit-row {
-    padding: 4px 8px;
-}
-
 /* Navigation sidebar selection */
 .navigation-sidebar row:selected {
     border-radius: 8px;

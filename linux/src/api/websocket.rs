@@ -5,6 +5,7 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::models::manifest::{AgentStatus, Manifest, WorktreeStatus};
@@ -52,7 +53,6 @@ enum ServerEvent {
 /// Outbound client commands (JSON).
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
-#[allow(dead_code)]
 enum ClientCommand {
     #[serde(rename = "ping")]
     Ping,
@@ -108,20 +108,28 @@ impl WsManager {
 
                 match connect_async(&url).await {
                     Ok((ws_stream, _)) => {
-                        backoff_ms = 1000; // Reset on success
+                        backoff_ms = 1000;
                         let _ = tx.send(WsEvent::Connected).await;
                         info!("WebSocket connected");
 
-                        let (mut write, mut read) = ws_stream.split();
+                        let (write, mut read) = ws_stream.split();
+                        let write = Arc::new(Mutex::new(write));
 
-                        // Ping keepalive every 30s
+                        // Ping keepalive every 30s — actually sends a JSON ping command
                         let running_ping = running.clone();
+                        let write_ping = write.clone();
                         let ping_handle = tokio::spawn(async move {
                             let mut interval =
                                 tokio::time::interval(std::time::Duration::from_secs(30));
                             loop {
                                 interval.tick().await;
                                 if !running_ping.load(Ordering::SeqCst) {
+                                    break;
+                                }
+                                let ping_msg = serde_json::to_string(&ClientCommand::Ping)
+                                    .unwrap_or_default();
+                                let mut w = write_ping.lock().await;
+                                if w.send(Message::Text(ping_msg.into())).await.is_err() {
                                     break;
                                 }
                             }
@@ -138,7 +146,8 @@ impl WsManager {
                                     }
                                 }
                                 Ok(Message::Ping(data)) => {
-                                    let _ = write.send(Message::Pong(data)).await;
+                                    let mut w = write.lock().await;
+                                    let _ = w.send(Message::Pong(data)).await;
                                 }
                                 Ok(Message::Close(_)) => {
                                     info!("WebSocket closed by server");
@@ -157,7 +166,9 @@ impl WsManager {
                     }
                     Err(e) => {
                         error!("WebSocket connection failed: {}", e);
-                        let _ = tx.send(WsEvent::Error(format!("Connection failed: {}", e))).await;
+                        let _ = tx
+                            .send(WsEvent::Error(format!("Connection failed: {}", e)))
+                            .await;
                     }
                 }
 
@@ -178,11 +189,6 @@ impl WsManager {
     pub fn disconnect(&self) {
         self.running.store(false, Ordering::SeqCst);
     }
-
-    #[allow(dead_code)]
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::SeqCst)
-    }
 }
 
 async fn handle_message(text: &str, tx: &Sender<WsEvent>) -> Result<()> {
@@ -198,18 +204,22 @@ async fn handle_message(text: &str, tx: &Sender<WsEvent>) -> Result<()> {
             status,
             worktree_status,
         } => {
-            let _ = tx.send(WsEvent::AgentStatusChanged {
-                worktree_id,
-                agent_id,
-                status,
-                worktree_status,
-            }).await;
+            let _ = tx
+                .send(WsEvent::AgentStatusChanged {
+                    worktree_id,
+                    agent_id,
+                    status,
+                    worktree_status,
+                })
+                .await;
         }
         ServerEvent::TerminalOutput { agent_id, data } => {
             let _ = tx.send(WsEvent::TerminalOutput { agent_id, data }).await;
         }
         ServerEvent::Error { code, message } => {
-            let _ = tx.send(WsEvent::Error(format!("{}: {}", code, message))).await;
+            let _ = tx
+                .send(WsEvent::Error(format!("{}: {}", code, message)))
+                .await;
         }
     }
     Ok(())
