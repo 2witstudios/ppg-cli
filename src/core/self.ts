@@ -1,4 +1,4 @@
-import type { PaneInfo } from './tmux.js';
+import type { PaneInfo } from './process-manager.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
 
 /**

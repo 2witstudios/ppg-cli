@@ -1,5 +1,5 @@
-import type { AgentEntry, WorktreeEntry } from './types/manifest.js';
-import type { PaneInfo } from './core/tmux.js';
+import type { AgentEntry, Manifest, WorktreeEntry } from './types/manifest.js';
+import type { PaneInfo } from './core/process-manager.js';
 
 export function makeAgent(overrides?: Partial<AgentEntry>): AgentEntry {
   return {
@@ -35,6 +35,18 @@ export function makePaneInfo(overrides?: Partial<PaneInfo>): PaneInfo {
     panePid: '12345',
     currentCommand: 'claude',
     isDead: false,
+    ...overrides,
+  };
+}
+
+export function makeManifest(overrides?: Partial<Manifest>): Manifest {
+  return {
+    version: 1,
+    projectRoot: '/tmp/project',
+    sessionName: 'ppg',
+    worktrees: {},
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }

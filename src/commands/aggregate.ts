@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { requireManifest, resolveWorktree, updateManifest } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import * as tmux from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { resultFile } from '../lib/paths.js';
 import { WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success } from '../lib/output.js';
@@ -108,7 +108,7 @@ async function collectAgentResult(
 ): Promise<string> {
   // Primary: capture pane content
   try {
-    const paneContent = await tmux.capturePane(agent.tmuxTarget, 500);
+    const paneContent = await getBackend().capturePane(agent.tmuxTarget, 500);
     return `\`\`\`\n${paneContent}\n\`\`\``;
   } catch {
     // Pane not available

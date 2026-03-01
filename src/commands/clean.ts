@@ -3,7 +3,8 @@ import { checkPrState } from '../core/pr.js';
 import { getRepoRoot, pruneWorktrees } from '../core/worktree.js';
 import { cleanupWorktree } from '../core/cleanup.js';
 import { getCurrentPaneId, wouldCleanupAffectSelf } from '../core/self.js';
-import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
+import type { PaneInfo } from '../core/process-manager.js';
 import { output, success, info, warn } from '../lib/output.js';
 import type { WorktreeEntry } from '../types/manifest.js';
 
@@ -24,7 +25,7 @@ export async function cleanCommand(options: CleanOptions): Promise<void> {
   const selfPaneId = getCurrentPaneId();
   let paneMap: Map<string, PaneInfo> | undefined;
   if (selfPaneId) {
-    paneMap = await listSessionPanes(manifest.sessionName);
+    paneMap = await getBackend().listSessionPanes(manifest.sessionName);
   }
 
   // Find worktrees in terminal states

@@ -7,7 +7,7 @@ import { setupWorktreeEnv } from '../core/env.js';
 import { renderTemplate, type TemplateContext } from '../core/template.js';
 import { loadSwarm, type SwarmAgentEntry, type SwarmTemplate } from '../core/swarm.js';
 import { spawnAgent } from '../core/agent.js';
-import * as tmux from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { openTerminalWindow } from '../core/terminal.js';
 import { worktreeId as genWorktreeId, agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { promptsDir, globalPromptsDir, manifestPath } from '../lib/paths.js';
@@ -134,8 +134,8 @@ async function swarmShared(
 
   const manifest = await readManifest(projectRoot);
   const sessionName = manifest.sessionName;
-  await tmux.ensureSession(sessionName);
-  const windowTarget = await tmux.createWindow(sessionName, name, wtPath);
+  await getBackend().ensureSession(sessionName);
+  const windowTarget = await getBackend().createWindow(sessionName, name, wtPath);
 
   // Register worktree in manifest before spawning agents so partial failures are tracked
   await updateManifest(projectRoot, (m) => {
@@ -157,7 +157,7 @@ async function swarmShared(
   for (let i = 0; i < swarm.agents.length; i++) {
     const target = i === 0
       ? windowTarget
-      : await tmux.createWindow(sessionName, `${name}-${i}`, wtPath);
+      : await getBackend().createWindow(sessionName, `${name}-${i}`, wtPath);
 
     const agentEntry = await spawnSwarmAgent({
       projectRoot, config, swarmAgent: swarm.agents[i],
@@ -189,7 +189,7 @@ async function swarmIsolated(
   const baseName = options.name ? normalizeName(options.name, swarm.name) : swarm.name;
   const manifest = await readManifest(projectRoot);
   const sessionName = manifest.sessionName;
-  await tmux.ensureSession(sessionName);
+  await getBackend().ensureSession(sessionName);
 
   const worktrees: Array<{ id: string; name: string; branch: string; path: string; tmuxWindow: string }> = [];
   const allAgents: AgentEntry[] = [];
@@ -213,7 +213,7 @@ async function swarmIsolated(
     });
 
     await setupWorktreeEnv(projectRoot, wtPath, config);
-    const windowTarget = await tmux.createWindow(sessionName, wtName, wtPath);
+    const windowTarget = await getBackend().createWindow(sessionName, wtName, wtPath);
 
     const agentEntry = await spawnSwarmAgent({
       projectRoot, config, swarmAgent,
@@ -280,8 +280,8 @@ async function swarmIntoExistingWorktree(
   // Lazily create tmux window if worktree has none
   let windowTarget = wt.tmuxWindow;
   if (!windowTarget) {
-    await tmux.ensureSession(sessionName);
-    windowTarget = await tmux.createWindow(sessionName, wt.name, wt.path);
+    await getBackend().ensureSession(sessionName);
+    windowTarget = await getBackend().createWindow(sessionName, wt.name, wt.path);
   }
 
   // Update tmux window before spawning so partial failures are tracked
@@ -296,7 +296,7 @@ async function swarmIntoExistingWorktree(
   for (let i = 0; i < swarm.agents.length; i++) {
     const target = i === 0
       ? windowTarget
-      : await tmux.createWindow(sessionName, `${wt.name}-${swarm.name}-${i}`, wt.path);
+      : await getBackend().createWindow(sessionName, `${wt.name}-${swarm.name}-${i}`, wt.path);
 
     const agentEntry = await spawnSwarmAgent({
       projectRoot, config, swarmAgent: swarm.agents[i],
