@@ -79,10 +79,54 @@ export function cronPidPath(projectRoot: string): string {
   return path.join(ppgDir(projectRoot), 'cron.pid');
 }
 
+export function serveDir(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve');
+}
+
+export function tlsDir(projectRoot: string): string {
+  return path.join(serveDir(projectRoot), 'tls');
+}
+
+export function tlsCaKeyPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'ca-key.pem');
+}
+
+export function tlsCaCertPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'ca-cert.pem');
+}
+
+export function tlsServerKeyPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'server-key.pem');
+}
+
+export function tlsServerCertPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'server-cert.pem');
+}
+
+export function servePidPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve.pid');
+}
+
+export function serveLogPath(projectRoot: string): string {
+  return path.join(logsDir(projectRoot), 'serve.log');
+}
+
+export function serveJsonPath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve.json');
+}
+
 export function worktreeBaseDir(projectRoot: string): string {
   return path.join(projectRoot, '.worktrees');
 }
 
 export function worktreePath(projectRoot: string, id: string): string {
   return path.join(worktreeBaseDir(projectRoot), id);
+}
+
+export function serveStatePath(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve.json');
+}
+
+export function authPath(projectRoot: string): string {
+  return path.join(serveDir(projectRoot), 'auth.json');
 }
