@@ -1,0 +1,118 @@
+<UserControl x:Class="PPGDesktop.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource ContentBackgroundBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
+        <StackPanel MaxWidth="600">
+
+            <TextBlock Text="Settings" FontSize="24" FontWeight="Bold"
+                       Foreground="{StaticResource ForegroundBrush}" Margin="0,0,0,24" />
+
+            <!-- Connection -->
+            <Border Background="{StaticResource CardBackgroundBrush}" CornerRadius="8"
+                    Padding="20,16" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Connection" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource ForegroundBrush}" Margin="0,0,0,12" />
+
+                    <TextBlock Text="Server URL" FontSize="12"
+                               Foreground="{StaticResource MutedForegroundBrush}" Margin="0,0,0,4" />
+                    <TextBox Text="{Binding ServerUrl, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="13" Padding="8,6" Margin="0,0,0,12"
+                             Background="{StaticResource ChromeBackgroundBrush}"
+                             Foreground="{StaticResource ForegroundBrush}"
+                             BorderBrush="{StaticResource BorderBrush}" />
+
+                    <TextBlock Text="Bearer Token" FontSize="12"
+                               Foreground="{StaticResource MutedForegroundBrush}" Margin="0,0,0,4" />
+                    <PasswordBox x:Name="TokenBox"
+                                 FontSize="13" Padding="8,6" Margin="0,0,0,12"
+                                 Background="{StaticResource ChromeBackgroundBrush}"
+                                 Foreground="{StaticResource ForegroundBrush}"
+                                 BorderBrush="{StaticResource BorderBrush}"
+                                 PasswordChanged="TokenBox_PasswordChanged" />
+
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Test Connection" Command="{Binding TestConnectionCommand}"
+                                Padding="12,6" Margin="0,0,8,0"
+                                Background="{StaticResource CardHeaderBrush}"
+                                Foreground="{StaticResource ForegroundBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" />
+                        <Button Content="Reconnect" Command="{Binding ReconnectCommand}"
+                                Padding="12,6"
+                                Background="{StaticResource AccentBrush}"
+                                Foreground="White" BorderThickness="0" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding ConnectionTestResult}" FontSize="12"
+                               Foreground="{StaticResource MutedForegroundBrush}"
+                               Margin="0,8,0,0"
+                               Visibility="{Binding ConnectionTestResult, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Terminal -->
+            <Border Background="{StaticResource CardBackgroundBrush}" CornerRadius="8"
+                    Padding="20,16" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Terminal" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource ForegroundBrush}" Margin="0,0,0,12" />
+
+                    <TextBlock Text="Font Family" FontSize="12"
+                               Foreground="{StaticResource MutedForegroundBrush}" Margin="0,0,0,4" />
+                    <ComboBox ItemsSource="{Binding FontFamilies}"
+                              SelectedValue="{Binding TerminalFontFamily}"
+                              FontSize="13" Padding="8,6" Margin="0,0,0,12"
+                              Background="{StaticResource ChromeBackgroundBrush}"
+                              Foreground="{StaticResource ForegroundBrush}"
+                              BorderBrush="{StaticResource BorderBrush}" />
+
+                    <TextBlock Text="{Binding TerminalFontSize, StringFormat='Font Size: {0}'}"
+                               FontSize="12" Foreground="{StaticResource MutedForegroundBrush}"
+                               Margin="0,0,0,4" />
+                    <Slider Value="{Binding TerminalFontSize}" Minimum="10" Maximum="24"
+                            TickFrequency="1" IsSnapToTickEnabled="True"
+                            Margin="0,0,0,4" />
+                </StackPanel>
+            </Border>
+
+            <!-- Appearance -->
+            <Border Background="{StaticResource CardBackgroundBrush}" CornerRadius="8"
+                    Padding="20,16" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Appearance" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource ForegroundBrush}" Margin="0,0,0,12" />
+
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton Content="Dark" GroupName="Theme"
+                                     IsChecked="{Binding Appearance, Converter={StaticResource InverseBool},
+                                                 ConverterParameter=dark}"
+                                     Foreground="{StaticResource ForegroundBrush}"
+                                     Margin="0,0,16,0" />
+                        <RadioButton Content="Light" GroupName="Theme"
+                                     IsChecked="{Binding Appearance, Converter={StaticResource InverseBool},
+                                                 ConverterParameter=light}"
+                                     Foreground="{StaticResource ForegroundBrush}"
+                                     Margin="0,0,16,0" />
+                        <RadioButton Content="System" GroupName="Theme"
+                                     IsChecked="{Binding Appearance, Converter={StaticResource InverseBool},
+                                                 ConverterParameter=system}"
+                                     Foreground="{StaticResource ForegroundBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Save Button -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock Text="Saved!" FontSize="12" Foreground="#34d399"
+                           VerticalAlignment="Center" Margin="0,0,12,0"
+                           Visibility="{Binding IsSaved, Converter={StaticResource BoolToVisibility}}" />
+                <Button Content="Save Settings" Command="{Binding SaveCommand}"
+                        Padding="16,8"
+                        Background="{StaticResource AccentBrush}"
+                        Foreground="White" BorderThickness="0" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

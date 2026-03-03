@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="xterm.css" />
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1e1e1e; }
+    #terminal { height: 100%; width: 100%; }
+    .placeholder {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; color: #808080; font-family: 'Segoe UI', sans-serif; font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="terminal"></div>
+  <script src="xterm.min.js"></script>
+  <script src="xterm-addon-fit.min.js"></script>
+  <script>
+    // Check if xterm loaded (placeholder files won't define Terminal)
+    if (typeof Terminal === 'undefined') {
+      document.getElementById('terminal').innerHTML =
+        '<div class="placeholder">xterm.js not installed. Run download-xterm.ps1 to set up terminal dependencies.</div>';
+      window.chrome.webview.postMessage(JSON.stringify({ type: 'ready', error: 'xterm_not_installed' }));
+    } else {
+      const term = new Terminal({
+        fontFamily: 'Cascadia Code, Cascadia Mono, Consolas, monospace',
+        fontSize: 14,
+        theme: {
+          background: '#1e1e1e',
+          foreground: '#d4d4d4',
+          cursor: '#d4d4d4',
+          cursorAccent: '#1e1e1e',
+          selectionBackground: 'rgba(255, 255, 255, 0.3)',
+          black: '#1e1e1e',
+          red: '#f44747',
+          green: '#6a9955',
+          yellow: '#d7ba7d',
+          blue: '#569cd6',
+          magenta: '#c586c0',
+          cyan: '#4ec9b0',
+          white: '#d4d4d4',
+          brightBlack: '#808080',
+          brightRed: '#f44747',
+          brightGreen: '#6a9955',
+          brightYellow: '#d7ba7d',
+          brightBlue: '#569cd6',
+          brightMagenta: '#c586c0',
+          brightCyan: '#4ec9b0',
+          brightWhite: '#ffffff'
+        }
+      });
+
+      const fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(document.getElementById('terminal'));
+      fitAddon.fit();
+
+      // User input -> C# host
+      term.onData(function(data) {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'input', data: data }));
+      });
+
+      // C# host -> terminal output
+      window.chrome.webview.addEventListener('message', function(e) {
+        var msg = JSON.parse(e.data);
+        if (msg.type === 'output') {
+          term.write(msg.data);
+        } else if (msg.type === 'clear') {
+          term.clear();
+        } else if (msg.type === 'configure') {
+          if (msg.fontSize) term.options.fontSize = msg.fontSize;
+          if (msg.fontFamily) term.options.fontFamily = msg.fontFamily;
+          fitAddon.fit();
+        }
+      });
+
+      // Resize handler
+      new ResizeObserver(function() {
+        fitAddon.fit();
+        window.chrome.webview.postMessage(JSON.stringify({
+          type: 'resize',
+          cols: term.cols,
+          rows: term.rows
+        }));
+      }).observe(document.getElementById('terminal'));
+
+      // Signal ready
+      window.chrome.webview.postMessage(JSON.stringify({ type: 'ready' }));
+    }
+  </script>
+</body>
+</html>
