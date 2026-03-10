@@ -79,6 +79,30 @@ export function cronPidPath(projectRoot: string): string {
   return path.join(ppgDir(projectRoot), 'cron.pid');
 }
 
+export function serveDir(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve');
+}
+
+export function tlsDir(projectRoot: string): string {
+  return path.join(serveDir(projectRoot), 'tls');
+}
+
+export function tlsCaKeyPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'ca-key.pem');
+}
+
+export function tlsCaCertPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'ca-cert.pem');
+}
+
+export function tlsServerKeyPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'server-key.pem');
+}
+
+export function tlsServerCertPath(projectRoot: string): string {
+  return path.join(tlsDir(projectRoot), 'server-cert.pem');
+}
+
 export function worktreeBaseDir(projectRoot: string): string {
   return path.join(projectRoot, '.worktrees');
 }
