@@ -1,6 +1,6 @@
 import { requireManifest, findAgent } from '../core/manifest.js';
 import { getRepoRoot } from '../core/worktree.js';
-import * as tmux from '../core/tmux.js';
+import { getBackend } from '../core/backend.js';
 import { PpgError, AgentNotFoundError } from '../lib/errors.js';
 import { output, outputError } from '../lib/output.js';
 
@@ -27,7 +27,7 @@ export async function logsCommand(agentId: string, options: LogsOptions): Promis
     let lastOutput = '';
     const interval = setInterval(async () => {
       try {
-        const content = await tmux.capturePane(agent.tmuxTarget, lines);
+        const content = await getBackend().capturePane(agent.tmuxTarget, lines);
         if (content !== lastOutput) {
           // Find new lines
           if (lastOutput) {
@@ -57,7 +57,7 @@ export async function logsCommand(agentId: string, options: LogsOptions): Promis
   } else {
     // One-shot capture
     try {
-      const content = await tmux.capturePane(agent.tmuxTarget, lines);
+      const content = await getBackend().capturePane(agent.tmuxTarget, lines);
       if (options.json) {
         output({
           agentId: agent.id,

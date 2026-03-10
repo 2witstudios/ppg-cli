@@ -1,6 +1,7 @@
 import { execa, ExecaError } from 'execa';
 import { TmuxNotFoundError } from '../lib/errors.js';
 import { execaEnv } from '../lib/env.js';
+import type { ProcessManager, WindowInfo as PMWindowInfo } from './process-manager.js';
 
 /**
  * Sanitize a string for use as a tmux session name.
@@ -319,4 +320,26 @@ export async function isInsideTmux(): Promise<boolean> {
 
 export async function sendCtrlC(target: string): Promise<void> {
   await execa('tmux', ['send-keys', '-t', target, 'C-c'], execaEnv);
+}
+
+export class TmuxBackend implements ProcessManager {
+  async checkAvailable(): Promise<void> { return checkTmux(); }
+  async sessionExists(name: string): Promise<boolean> { return sessionExists(name); }
+  async ensureSession(name: string): Promise<void> { return ensureSession(name); }
+  async createWindow(session: string, name: string, cwd: string): Promise<string> { return createWindow(session, name, cwd); }
+  async splitPane(target: string, direction: 'horizontal' | 'vertical', cwd: string): Promise<{ paneId: string; target: string }> { return splitPane(target, direction, cwd); }
+  async sendKeys(target: string, command: string): Promise<void> { return sendKeys(target, command); }
+  async sendLiteral(target: string, text: string): Promise<void> { return sendLiteral(target, text); }
+  async sendRawKeys(target: string, keys: string): Promise<void> { return sendRawKeys(target, keys); }
+  async sendCtrlC(target: string): Promise<void> { return sendCtrlC(target); }
+  async capturePane(target: string, lines?: number): Promise<string> { return capturePane(target, lines); }
+  async killPane(target: string): Promise<void> { return killPane(target); }
+  async killWindow(target: string): Promise<void> { return killWindow(target); }
+  async getPaneInfo(target: string): Promise<PaneInfo | null> { return getPaneInfo(target); }
+  async listSessionPanes(session: string): Promise<Map<string, PaneInfo>> { return listSessionPanes(session); }
+  async listSessionWindows(session: string): Promise<PMWindowInfo[]> { return listSessionWindows(session); }
+  async killOrphanWindows(session: string, selfPaneId?: string | null): Promise<number> { return killOrphanWindows(session, selfPaneId); }
+  async selectWindow(target: string): Promise<void> { return selectWindow(target); }
+  isInsideSession(): boolean { return !!process.env.TMUX; }
+  sanitizeName(name: string): string { return sanitizeTmuxName(name); }
 }
