@@ -1,13 +1,12 @@
-import { execa } from 'execa';
 import { updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import { PpgError, NotInitializedError, WorktreeNotFoundError, GhNotFoundError } from '../lib/errors.js';
+import { createWorktreePr } from '../core/pr.js';
+import { NotInitializedError, WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
-import { execaEnv } from '../lib/env.js';
 
-// GitHub PR body limit is 65536 chars; leave room for truncation notice
-const MAX_BODY_LENGTH = 60_000;
+// Re-export for backwards compatibility with existing tests/consumers
+export { buildBodyFromResults, truncateBody } from '../core/pr.js';
 
 export interface PrOptions {
   title?: string;
@@ -31,82 +30,16 @@ export async function prCommand(worktreeRef: string, options: PrOptions): Promis
   const wt = resolveWorktree(manifest, worktreeRef);
   if (!wt) throw new WorktreeNotFoundError(worktreeRef);
 
-  // Verify gh is available
-  try {
-    await execa('gh', ['--version'], execaEnv);
-  } catch {
-    throw new GhNotFoundError();
-  }
-
-  // Push the worktree branch
-  info(`Pushing branch ${wt.branch} to origin`);
-  try {
-    await execa('git', ['push', '-u', 'origin', wt.branch], { ...execaEnv, cwd: projectRoot });
-  } catch (err) {
-    throw new PpgError(
-      `Failed to push branch ${wt.branch}: ${err instanceof Error ? err.message : err}`,
-      'INVALID_ARGS',
-    );
-  }
-
-  // Build PR title and body
-  const title = options.title ?? wt.name;
-  const body = options.body ?? await buildBodyFromResults(Object.values(wt.agents));
-
-  // Build gh pr create args
-  const ghArgs = [
-    'pr', 'create',
-    '--head', wt.branch,
-    '--base', wt.baseBranch,
-    '--title', title,
-    '--body', body,
-  ];
-  if (options.draft) {
-    ghArgs.push('--draft');
-  }
-
-  info(`Creating PR: ${title}`);
-  let prUrl: string;
-  try {
-    const result = await execa('gh', ghArgs, { ...execaEnv, cwd: projectRoot });
-    prUrl = result.stdout.trim();
-  } catch (err) {
-    throw new PpgError(
-      `Failed to create PR: ${err instanceof Error ? err.message : err}`,
-      'INVALID_ARGS',
-    );
-  }
-
-  // Store PR URL in manifest
-  await updateManifest(projectRoot, (m) => {
-    if (m.worktrees[wt.id]) {
-      m.worktrees[wt.id].prUrl = prUrl;
-    }
-    return m;
+  info(`Creating PR for ${wt.branch}`);
+  const result = await createWorktreePr(projectRoot, wt, {
+    title: options.title,
+    body: options.body,
+    draft: options.draft,
   });
 
   if (options.json) {
-    output({
-      success: true,
-      worktreeId: wt.id,
-      branch: wt.branch,
-      baseBranch: wt.baseBranch,
-      prUrl,
-    }, true);
+    output({ success: true, ...result }, true);
   } else {
-    success(`PR created: ${prUrl}`);
+    success(`PR created: ${result.prUrl}`);
   }
-}
-
-/** Build PR body from agent prompts, with truncation. */
-export async function buildBodyFromResults(agents: { id: string; prompt: string }[]): Promise<string> {
-  if (agents.length === 0) return '';
-  const sections = agents.map((a) => `## Agent: ${a.id}\n\n${a.prompt}`);
-  return truncateBody(sections.join('\n\n---\n\n'));
-}
-
-/** Truncate body to stay within GitHub's PR body size limit. */
-export function truncateBody(body: string): string {
-  if (body.length <= MAX_BODY_LENGTH) return body;
-  return body.slice(0, MAX_BODY_LENGTH) + '\n\n---\n\n*[Truncated — full results available in `.ppg/results/`]*';
 }

@@ -4,6 +4,8 @@ import { refreshAllAgentStatuses } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
 import { output, formatStatus, formatTable, type Column } from '../lib/output.js';
 import type { AgentEntry, WorktreeEntry } from '../types/manifest.js';
+import { computeLifecycle } from '../core/lifecycle.js';
+export { computeLifecycle, type WorktreeLifecycle } from '../core/lifecycle.js';
 
 export interface StatusOptions {
   json?: boolean;
@@ -102,20 +104,6 @@ function printWorktreeStatus(wt: WorktreeEntry): void {
 
   const table = formatTable(agents as unknown as Record<string, unknown>[], columns);
   console.log(table.split('\n').map((l) => `  ${l}`).join('\n'));
-}
-
-export type WorktreeLifecycle = 'merged' | 'cleaned' | 'busy' | 'shipped' | 'idle';
-
-export function computeLifecycle(wt: WorktreeEntry): WorktreeLifecycle {
-  if (wt.status === 'merged') return 'merged';
-  if (wt.status === 'cleaned') return 'cleaned';
-
-  const agents = Object.values(wt.agents);
-
-  if (agents.some((a) => a.status === 'running')) return 'busy';
-  if (wt.prUrl) return 'shipped';
-
-  return 'idle';
 }
 
 function formatTime(iso: string): string {
