@@ -1,0 +1,137 @@
+<Window x:Class="PPGDesktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:PPGDesktop.Views"
+        xmlns:vm="clr-namespace:PPGDesktop.ViewModels"
+        Title="{Binding Title}"
+        Height="800" Width="1280"
+        MinHeight="600" MinWidth="900"
+        Background="{StaticResource ChromeBackgroundBrush}"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.InputBindings>
+        <KeyBinding Key="N" Modifiers="Ctrl+Shift" Command="{Binding ShowSpawnDialogCommand}" />
+        <KeyBinding Key="R" Modifiers="Ctrl+Shift" Command="{Binding RefreshCommand}" />
+        <KeyBinding Key="OemComma" Modifiers="Ctrl" Command="{Binding NavigateSettingsCommand}" />
+    </Window.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Background="{StaticResource CardHeaderBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="8,4">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="PPG" FontSize="16" FontWeight="Bold"
+                               Foreground="{StaticResource AccentBrush}" Margin="0,0,12,0" />
+                    <Button Content="Home" Command="{Binding NavigateHomeCommand}"
+                            Style="{StaticResource ToolbarButton}" />
+                    <Button Content="Spawn" Command="{Binding ShowSpawnDialogCommand}"
+                            Style="{StaticResource ToolbarButton}" Margin="4,0" />
+                    <Button Content="Refresh" Command="{Binding RefreshCommand}"
+                            Style="{StaticResource ToolbarButton}" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                            VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <Button Content="Settings" Command="{Binding NavigateSettingsCommand}"
+                            Style="{StaticResource ToolbarButton}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" MinWidth="200" MaxWidth="400" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Sidebar -->
+            <views:SidebarView Grid.Column="0" DataContext="{Binding Sidebar}" />
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
+                          Background="{StaticResource BorderBrush}" />
+
+            <!-- Content Area -->
+            <ContentControl Grid.Column="2" Content="{Binding CurrentView}">
+                <ContentControl.Resources>
+                    <DataTemplate DataType="{x:Type vm:HomeDashboardViewModel}">
+                        <views:HomeDashboardView />
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                        <views:SettingsView />
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:TerminalViewModel}">
+                        <views:TerminalView />
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:WorktreeNode}">
+                        <views:WorktreeDetailView />
+                    </DataTemplate>
+                </ContentControl.Resources>
+            </ContentControl>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2" Background="{StaticResource CardHeaderBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                Padding="8,3">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Ellipse Width="8" Height="8" Margin="0,0,6,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="#9ca3af" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ConnectionState}" Value="connected">
+                                        <Setter Property="Fill" Value="#34d399" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding ConnectionState}" FontSize="11"
+                               Foreground="{StaticResource MutedForegroundBrush}" />
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Right" Text="Ctrl+Shift+N: Spawn | Ctrl+Shift+R: Refresh"
+                           FontSize="11" Foreground="{StaticResource MutedForegroundBrush}"
+                           HorizontalAlignment="Right" />
+            </DockPanel>
+        </Border>
+    </Grid>
+
+    <Window.Resources>
+        <Style x:Key="ToolbarButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#3f3f46" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#52525b" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+</Window>

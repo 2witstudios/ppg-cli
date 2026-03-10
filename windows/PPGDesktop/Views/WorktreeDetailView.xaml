@@ -1,0 +1,96 @@
+<UserControl x:Class="PPGDesktop.Views.WorktreeDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource ContentBackgroundBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
+        <StackPanel MaxWidth="700">
+            <!-- Header -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                <Ellipse Width="12" Height="12"
+                         Fill="{Binding Status, Converter={StaticResource StatusToColor}}"
+                         Margin="0,0,10,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Name}" FontSize="22" FontWeight="Bold"
+                           Foreground="{StaticResource ForegroundBrush}" />
+            </StackPanel>
+
+            <!-- Info Card -->
+            <Border Background="{StaticResource CardBackgroundBrush}" CornerRadius="8"
+                    Padding="20,16" Margin="0,0,0,16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="ID" FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Id}" FontSize="12"
+                                   Foreground="{StaticResource ForegroundBrush}"
+                                   FontFamily="Cascadia Code, Consolas" />
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Branch" FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Branch}" FontSize="12"
+                                   Foreground="{StaticResource ForegroundBrush}"
+                                   FontFamily="Cascadia Code, Consolas" />
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Status" FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Status}" FontSize="12"
+                                   Foreground="{StaticResource ForegroundBrush}" />
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Agents" FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding AgentCount}" FontSize="12"
+                                   Foreground="{StaticResource ForegroundBrush}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Agents List -->
+            <TextBlock Text="Agents" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{StaticResource ForegroundBrush}" Margin="0,0,0,8" />
+
+            <ItemsControl ItemsSource="{Binding Agents}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{StaticResource CardBackgroundBrush}" CornerRadius="6"
+                                Padding="12,10" Margin="0,0,0,6">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                                    <Ellipse Width="8" Height="8"
+                                             Fill="{Binding Status, Converter={StaticResource StatusToColor}}"
+                                             Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                                               Foreground="{StaticResource ForegroundBrush}" />
+                                    <TextBlock Text="{Binding AgentType, StringFormat=' [{0}]'}"
+                                               FontSize="12" Foreground="{StaticResource MutedForegroundBrush}"
+                                               Margin="4,0,0,0" />
+                                </StackPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Status}"
+                                           FontSize="12" Foreground="{StaticResource MutedForegroundBrush}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </DockPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -28,7 +28,6 @@ Never run \`claude\`, \`codex\`, or \`opencode\` directly as bash commands — t
 - \`ppg spawn --name <name> --prompt "<task>" --json\` — Spawn worktree + agent
 - \`ppg spawn --name <name> --agent codex --prompt "<task>" --json\` — Use Codex agent
 - \`ppg spawn --name <name> --agent opencode --prompt "<task>" --json\` — Use OpenCode agent
-- \`ppg spawn --branch <branch> --prompt "<task>" --json\` — Attach to existing branch (e.g. from a PR)
 - \`ppg spawn --worktree <id> --agent codex --prompt "review --base main" --json\` — Codex review
 - \`ppg status --json\` — Check statuses
 - \`ppg aggregate --all --json\` — Collect results (includes PR URLs)

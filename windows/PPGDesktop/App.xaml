@@ -1,0 +1,33 @@
+<Application x:Class="PPGDesktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:PPGDesktop.Converters">
+    <Application.Resources>
+        <ResourceDictionary>
+            <converters:StatusToColorConverter x:Key="StatusToColor" />
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <converters:InverseBoolConverter x:Key="InverseBool" />
+
+            <!-- Dark theme colors -->
+            <Color x:Key="ChromeBackgroundColor">#1e1e1e</Color>
+            <Color x:Key="ContentBackgroundColor">#252526</Color>
+            <Color x:Key="SidebarBackgroundColor">#1e1e1e</Color>
+            <Color x:Key="CardBackgroundColor">#2d2d30</Color>
+            <Color x:Key="CardHeaderColor">#333337</Color>
+            <Color x:Key="ForegroundColor">#d4d4d4</Color>
+            <Color x:Key="MutedForegroundColor">#808080</Color>
+            <Color x:Key="AccentColor">#0078d4</Color>
+            <Color x:Key="BorderColor">#3f3f46</Color>
+
+            <SolidColorBrush x:Key="ChromeBackgroundBrush" Color="{StaticResource ChromeBackgroundColor}" />
+            <SolidColorBrush x:Key="ContentBackgroundBrush" Color="{StaticResource ContentBackgroundColor}" />
+            <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{StaticResource SidebarBackgroundColor}" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="{StaticResource CardBackgroundColor}" />
+            <SolidColorBrush x:Key="CardHeaderBrush" Color="{StaticResource CardHeaderColor}" />
+            <SolidColorBrush x:Key="ForegroundBrush" Color="{StaticResource ForegroundColor}" />
+            <SolidColorBrush x:Key="MutedForegroundBrush" Color="{StaticResource MutedForegroundColor}" />
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+            <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
