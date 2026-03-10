@@ -1,13 +1,11 @@
-import { execa } from 'execa';
 import { requireManifest, updateManifest, resolveWorktree } from '../core/manifest.js';
 import { refreshAllAgentStatuses } from '../core/agent.js';
-import { getRepoRoot, getCurrentBranch } from '../core/worktree.js';
-import { cleanupWorktree } from '../core/cleanup.js';
+import { getRepoRoot } from '../core/worktree.js';
+import { mergeWorktree } from '../core/merge.js';
 import { getCurrentPaneId } from '../core/self.js';
-import { listSessionPanes, type PaneInfo } from '../core/tmux.js';
-import { PpgError, WorktreeNotFoundError, MergeFailedError } from '../lib/errors.js';
+import { listSessionPanes } from '../core/tmux.js';
+import { WorktreeNotFoundError } from '../lib/errors.js';
 import { output, success, info, warn } from '../lib/output.js';
-import { execaEnv } from '../lib/env.js';
 
 export interface MergeOptions {
   strategy?: 'squash' | 'no-ff';
@@ -29,18 +27,6 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
 
   if (!wt) throw new WorktreeNotFoundError(worktreeId);
 
-  // Check all agents finished
-  const agents = Object.values(wt.agents);
-  const incomplete = agents.filter((a) => a.status === 'running');
-
-  if (incomplete.length > 0 && !options.force) {
-    const ids = incomplete.map((a) => a.id).join(', ');
-    throw new PpgError(
-      `${incomplete.length} agent(s) still running: ${ids}. Use --force to merge anyway.`,
-      'AGENTS_RUNNING',
-    );
-  }
-
   if (options.dryRun) {
     info('Dry run — no changes will be made');
     info(`Would merge branch ${wt.branch} into ${wt.baseBranch} using ${options.strategy ?? 'squash'} strategy`);
@@ -50,89 +36,42 @@ export async function mergeCommand(worktreeId: string, options: MergeOptions): P
     return;
   }
 
-  // Set worktree status to merging
-  await updateManifest(projectRoot, (m) => {
-    if (m.worktrees[wt.id]) {
-      m.worktrees[wt.id].status = 'merging';
-    }
-    return m;
-  });
+  const cleanupEnabled = options.cleanup !== false;
 
-  const strategy = options.strategy ?? 'squash';
-
-  try {
-    const currentBranch = await getCurrentBranch(projectRoot);
-    if (currentBranch !== wt.baseBranch) {
-      info(`Switching to base branch ${wt.baseBranch}`);
-      await execa('git', ['checkout', wt.baseBranch], { ...execaEnv, cwd: projectRoot });
-    }
-
-    info(`Merging ${wt.branch} into ${wt.baseBranch} (${strategy})`);
-
-    if (strategy === 'squash') {
-      await execa('git', ['merge', '--squash', wt.branch], { ...execaEnv, cwd: projectRoot });
-      await execa('git', ['commit', '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
-        ...execaEnv,
-        cwd: projectRoot,
-      });
-    } else {
-      await execa('git', ['merge', '--no-ff', wt.branch, '-m', `ppg: merge ${wt.name} (${wt.branch})`], {
-        ...execaEnv,
-        cwd: projectRoot,
-      });
-    }
-
-    success(`Merged ${wt.branch} into ${wt.baseBranch}`);
-  } catch (err) {
-    await updateManifest(projectRoot, (m) => {
-      if (m.worktrees[wt.id]) {
-        m.worktrees[wt.id].status = 'failed';
-      }
-      return m;
-    });
-    throw new MergeFailedError(
-      `Merge failed: ${err instanceof Error ? err.message : err}`,
-    );
+  // Build self-protection context for cleanup
+  const selfPaneId = cleanupEnabled ? getCurrentPaneId() : null;
+  let paneMap;
+  if (cleanupEnabled && selfPaneId) {
+    paneMap = await listSessionPanes(manifest.sessionName);
   }
 
-  // Mark as merged
-  await updateManifest(projectRoot, (m) => {
-    if (m.worktrees[wt.id]) {
-      m.worktrees[wt.id].status = 'merged';
-      m.worktrees[wt.id].mergedAt = new Date().toISOString();
-    }
-    return m;
+  info(`Merging ${wt.branch} into ${wt.baseBranch} (${options.strategy ?? 'squash'})`);
+
+  const result = await mergeWorktree(projectRoot, wt, {
+    strategy: options.strategy,
+    cleanup: cleanupEnabled,
+    force: options.force,
+    cleanupOptions: cleanupEnabled ? { selfPaneId, paneMap } : undefined,
   });
 
-  // Cleanup with self-protection
-  let selfProtected = false;
-  if (options.cleanup !== false) {
-    info('Cleaning up...');
+  success(`Merged ${wt.branch} into ${wt.baseBranch}`);
 
-    const selfPaneId = getCurrentPaneId();
-    let paneMap: Map<string, PaneInfo> | undefined;
-    if (selfPaneId) {
-      paneMap = await listSessionPanes(manifest.sessionName);
-    }
-
-    const cleanupResult = await cleanupWorktree(projectRoot, wt, { selfPaneId, paneMap });
-    selfProtected = cleanupResult.selfProtected;
-
-    if (selfProtected) {
-      warn(`Some tmux targets skipped during cleanup — contains current ppg process`);
-    }
+  if (result.selfProtected) {
+    warn(`Some tmux targets skipped during cleanup — contains current ppg process`);
+  }
+  if (result.cleaned) {
     success(`Cleaned up worktree ${wt.id}`);
   }
 
   if (options.json) {
     output({
       success: true,
-      worktreeId: wt.id,
-      branch: wt.branch,
-      baseBranch: wt.baseBranch,
-      strategy,
-      cleaned: options.cleanup !== false,
-      selfProtected: selfProtected || undefined,
+      worktreeId: result.worktreeId,
+      branch: result.branch,
+      baseBranch: result.baseBranch,
+      strategy: result.strategy,
+      cleaned: result.cleaned,
+      selfProtected: result.selfProtected || undefined,
     }, true);
   }
 }
