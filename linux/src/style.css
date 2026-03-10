@@ -1,0 +1,29 @@
+/* PPG Desktop — Custom CSS */
+
+/* Status colors */
+.status-running { color: #34d399; }
+.status-idle { color: #fbbf24; }
+.status-exited { color: #60a5fa; }
+.status-gone { color: #9ca3af; }
+.status-failed { color: #f87171; }
+
+/* Sidebar styling */
+.sidebar {
+    background-color: alpha(@window_bg_color, 0.95);
+}
+
+/* Card styling for stats */
+.card {
+    padding: 8px;
+    border-radius: 12px;
+}
+
+/* Monospace text */
+.monospace {
+    font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+}
+
+/* Navigation sidebar selection */
+.navigation-sidebar row:selected {
+    border-radius: 8px;
+}

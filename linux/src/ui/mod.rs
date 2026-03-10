@@ -1,0 +1,9 @@
+pub mod command_palette;
+pub mod home_dashboard;
+pub mod pane_grid;
+pub mod settings_dialog;
+pub mod setup_view;
+pub mod sidebar;
+pub mod terminal_pane;
+pub mod window;
+pub mod worktree_detail;
