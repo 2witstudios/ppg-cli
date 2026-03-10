@@ -70,6 +70,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     let scrollView = NSScrollView()
     let outlineView = NSOutlineView()
     private let gearButton = NSButton()
+    private let feedbackButton = NSButton()
     private let addProjectButton = NSButton()
 
     var projectWorktrees: [String: [WorktreeModel]] = [:]
@@ -85,6 +86,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
     var onDeleteWorktree: ((ProjectContext, String) -> Void)?            // (project, worktreeId)
     var onDataRefreshed: ((SidebarItem?) -> Void)?
     var onSettingsClicked: (() -> Void)?
+    var onFeedbackClicked: (() -> Void)?
     var onAddProject: (() -> Void)?
     var onProjectAddClicked: ((ProjectContext) -> Void)?
     var onDashboardClicked: (() -> Void)?
@@ -219,6 +221,15 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         gearButton.translatesAutoresizingMaskIntoConstraints = false
         footerBar.addSubview(gearButton)
 
+        feedbackButton.bezelStyle = .accessoryBarAction
+        feedbackButton.image = NSImage(systemSymbolName: "exclamationmark.bubble", accessibilityDescription: "Feedback")
+        feedbackButton.isBordered = false
+        feedbackButton.contentTintColor = Theme.primaryText
+        feedbackButton.target = self
+        feedbackButton.action = #selector(feedbackButtonClicked)
+        feedbackButton.translatesAutoresizingMaskIntoConstraints = false
+        footerBar.addSubview(feedbackButton)
+
         addProjectButton.bezelStyle = .accessoryBarAction
         addProjectButton.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: "Add Project")
         addProjectButton.title = "Add Project"
@@ -257,6 +268,9 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
             gearButton.leadingAnchor.constraint(equalTo: footerBar.leadingAnchor, constant: 8),
             gearButton.centerYAnchor.constraint(equalTo: footerBar.centerYAnchor),
 
+            feedbackButton.leadingAnchor.constraint(equalTo: gearButton.trailingAnchor, constant: 2),
+            feedbackButton.centerYAnchor.constraint(equalTo: footerBar.centerYAnchor),
+
             addProjectButton.trailingAnchor.constraint(equalTo: shortcutLabel.leadingAnchor, constant: -4),
             addProjectButton.centerYAnchor.constraint(equalTo: footerBar.centerYAnchor),
 
@@ -271,6 +285,7 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
         view.wantsLayer = true
         view.layer?.backgroundColor = Theme.contentBackground.resolvedCGColor(for: view.effectiveAppearance)
         gearButton.contentTintColor = Theme.primaryText.resolvedColor(for: view.effectiveAppearance)
+        feedbackButton.contentTintColor = Theme.primaryText.resolvedColor(for: view.effectiveAppearance)
         addProjectButton.contentTintColor = Theme.primaryText.resolvedColor(for: view.effectiveAppearance)
 
         // Rebuild row views so inline + buttons don't keep stale cached control chrome.
@@ -329,6 +344,10 @@ class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlin
 
     @objc private func settingsButtonClicked() {
         onSettingsClicked?()
+    }
+
+    @objc private func feedbackButtonClicked() {
+        onFeedbackClicked?()
     }
 
     @objc private func addProjectButtonClicked() {
