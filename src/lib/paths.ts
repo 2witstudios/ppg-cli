@@ -86,3 +86,11 @@ export function worktreeBaseDir(projectRoot: string): string {
 export function worktreePath(projectRoot: string, id: string): string {
   return path.join(worktreeBaseDir(projectRoot), id);
 }
+
+export function serveDir(projectRoot: string): string {
+  return path.join(ppgDir(projectRoot), 'serve');
+}
+
+export function authPath(projectRoot: string): string {
+  return path.join(serveDir(projectRoot), 'auth.json');
+}
