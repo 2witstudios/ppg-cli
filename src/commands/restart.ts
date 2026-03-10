@@ -1,15 +1,12 @@
 import fs from 'node:fs/promises';
-import { requireManifest, updateManifest, findAgent } from '../core/manifest.js';
+import { requireManifest, findAgent } from '../core/manifest.js';
 import { loadConfig, resolveAgentConfig } from '../core/config.js';
-import { spawnAgent, killAgent } from '../core/agent.js';
+import { restartAgent } from '../core/agent.js';
 import { getRepoRoot } from '../core/worktree.js';
-import * as tmux from '../core/tmux.js';
 import { openTerminalWindow } from '../core/terminal.js';
-import { agentId as genAgentId, sessionId as genSessionId } from '../lib/id.js';
 import { agentPromptFile } from '../lib/paths.js';
 import { PpgError, AgentNotFoundError } from '../lib/errors.js';
 import { output, success, info } from '../lib/output.js';
-import { renderTemplate, type TemplateContext } from '../core/template.js';
 
 export interface RestartOptions {
   prompt?: string;
@@ -29,12 +26,6 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
 
   const { worktree: wt, agent: oldAgent } = found;
 
-  // Kill old agent if still running
-  if (oldAgent.status === 'running') {
-    info(`Killing existing agent ${oldAgent.id}`);
-    await killAgent(oldAgent);
-  }
-
   // Read original prompt from prompt file, or use override
   let promptText: string;
   if (options.prompt) {
@@ -51,73 +42,43 @@ export async function restartCommand(agentRef: string, options: RestartOptions):
     }
   }
 
-  // Resolve agent config
   const agentConfig = resolveAgentConfig(config, options.agent ?? oldAgent.agentType);
 
-  // Ensure tmux session
-  await tmux.ensureSession(manifest.sessionName);
+  if (oldAgent.status === 'running') {
+    info(`Killing existing agent ${oldAgent.id}`);
+  }
 
-  // Create new tmux window in same worktree
-  const newAgentId = genAgentId();
-  const windowTarget = await tmux.createWindow(manifest.sessionName, `${wt.name}-restart`, wt.path);
-
-  // Render template vars
-  const ctx: TemplateContext = {
-    WORKTREE_PATH: wt.path,
-    BRANCH: wt.branch,
-    AGENT_ID: newAgentId,
-    PROJECT_ROOT: projectRoot,
-    TASK_NAME: wt.name,
-    PROMPT: promptText,
-  };
-  const renderedPrompt = renderTemplate(promptText, ctx);
-
-  const newSessionId = genSessionId();
-  const agentEntry = await spawnAgent({
-    agentId: newAgentId,
-    agentConfig,
-    prompt: renderedPrompt,
-    worktreePath: wt.path,
-    tmuxTarget: windowTarget,
+  const result = await restartAgent({
     projectRoot,
-    branch: wt.branch,
-    sessionId: newSessionId,
-  });
-
-  // Update manifest: mark old agent as gone, add new agent
-  await updateManifest(projectRoot, (m) => {
-    const mWt = m.worktrees[wt.id];
-    if (mWt) {
-      const mOldAgent = mWt.agents[oldAgent.id];
-      if (mOldAgent && mOldAgent.status === 'running') {
-        mOldAgent.status = 'gone';
-      }
-      mWt.agents[newAgentId] = agentEntry;
-    }
-    return m;
+    agentId: oldAgent.id,
+    worktree: wt,
+    oldAgent,
+    sessionName: manifest.sessionName,
+    agentConfig,
+    promptText,
   });
 
   // Only open Terminal window when explicitly requested via --open (fire-and-forget)
   if (options.open === true) {
-    openTerminalWindow(manifest.sessionName, windowTarget, `${wt.name}-restart`).catch(() => {});
+    openTerminalWindow(manifest.sessionName, result.tmuxTarget, `${wt.name}-restart`).catch(() => {});
   }
 
   if (options.json) {
     output({
       success: true,
-      oldAgentId: oldAgent.id,
+      oldAgentId: result.oldAgentId,
       newAgent: {
-        id: newAgentId,
-        tmuxTarget: windowTarget,
-        sessionId: newSessionId,
-        worktreeId: wt.id,
-        worktreeName: wt.name,
-        branch: wt.branch,
-        path: wt.path,
+        id: result.newAgentId,
+        tmuxTarget: result.tmuxTarget,
+        sessionId: result.sessionId,
+        worktreeId: result.worktreeId,
+        worktreeName: result.worktreeName,
+        branch: result.branch,
+        path: result.path,
       },
     }, true);
   } else {
-    success(`Restarted agent ${oldAgent.id} → ${newAgentId} in worktree ${wt.name}`);
-    info(`  New agent ${newAgentId} → ${windowTarget}`);
+    success(`Restarted agent ${result.oldAgentId} → ${result.newAgentId} in worktree ${wt.name}`);
+    info(`  New agent ${result.newAgentId} → ${result.tmuxTarget}`);
   }
 }
